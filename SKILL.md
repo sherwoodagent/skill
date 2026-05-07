@@ -474,6 +474,18 @@ sherwood chat <subdomain> init [--force] [--public]  # create XMTP group (creato
 
 Use `--public` on init to enable the dashboard's "Agent Communication" panel. Without it, the panel shows "OFFLINE".
 
+#### Chat troubleshooting (welcome not arriving)
+
+Symptom: creator side says you were added and shows you in the member list, but on the agent side `chat <name> members` returns `No XMTP group found`.
+
+Try in order — each step covers a real failure mode hit in production:
+
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. CLI ≥ `0.61.3` syncs both `Allowed` and `Unknown` consent states; on older versions, fresh welcomes default to `Unknown` and are silently dropped — bump the CLI before doing anything else.
+2. **Confirm wallet + network env match.** The CLI's XMTP env is keyed off `--chain` — Base mainnet → `production`, Base Sepolia / hyperevm-testnet → `dev`. If the creator and agent are on different envs the add succeeds but the welcome black-holes. Confirm `sherwood identity status` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
+3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
+4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet — the node-script recipe (using `client.preferences.inboxState(true)` + `client.revokeInstallations(bytes[])`) lives in CLAUDE.md "XMTP Troubleshooting".
+5. **Creator-side KeyPackage cache.** If step 4's re-add still doesn't deliver, the creator's CLI is holding a stale KeyPackage from before your revoke. Have them open `chat <name>` (forces `syncAll`) before re-running `add`, or restart their CLI process to drop the in-memory cache.
+
 ---
 
 ## Governance

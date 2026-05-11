@@ -59,9 +59,11 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 | GuardianRegistry (stub, beta) | `0x8b5710EB4e2fA639F364Dcc3F3B30c8f12F460b9` |
 | BatchExecutorLib | `0x2c454bEF1b09c8a306a7058b8B510bF0DfF7179D` |
 | SyndicateVaultImpl | `0x2cbBe36Cf907A2BB410bacB0e4Fd632C7b012846` |
-| USDC | `0xb88339CB7199b77E23DB6E890353E22632Ba630f` (6 decimals) |
+| USDC (bridged Circle, non-aligned) | `0xb88339CB7199b77E23DB6E890353E22632Ba630f` (6 decimals) |
+| USDH (HL native, aligned, HC token 360) | `0x111111A1A0667D36bD57c0a9F569b98057111111` (6 EVM decimals / 8 HC decimals) |
 | HyperliquidPerpStrategy | `0xC0fA169fdbBb3638AdE917A5B8A9A87caf90d91e` |
 | HyperliquidGridStrategy | `0x20348e428050031647d671F0e24752C01D4b7379` |
+| HyperliquidOutcomeStrategy | `0x13586406F56d871EBb5CE6dB0D1988eAE5e6631e` (S-C7 gated — USDH-only) |
 
 HyperEVM has no Moonwell, Uniswap, Venice, Aerodrome, ENS, or ERC-8004 — the factory accepts `address(0)` for `ensRegistrar` and `agentRegistry`. Beta-mode deploy uses `MinimalGuardianRegistry` (no WOOD, no review/slashing) — full GuardianRegistry will replace it via owner-only `setGuardianRegistry()` once WOOD ships.
 

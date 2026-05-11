@@ -639,6 +639,7 @@ Each validates against hardcoded bounds before submitting.
 | [ADDRESSES.md](ADDRESSES.md) | Contract addresses (mainnet + testnet) and per-strategy allowlist targets |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers, x402 pricing, signal-based trading |
+| [references/HYPEREVM.md](references/HYPEREVM.md) | HyperEVM ↔ HyperCore bridging, aligned tokens, strategy clone gotchas |
 | `cli/src/lib/addresses.ts` | Canonical address source (resolved at runtime by network) |
 | `cli/src/commands/` | Command implementations for each subcommand group |
 

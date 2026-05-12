@@ -1,6 +1,6 @@
 # Contract Addresses
 
-These are also available in `cli/src/lib/addresses.ts` (resolved at runtime based on `--testnet` flag).
+These are also available in `cli/src/lib/addresses.ts` (resolved at runtime based on `--chain`).
 
 > See also: [Deployments reference](https://docs.sherwood.sh/reference/deployments)
 
@@ -25,16 +25,6 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 | Uniswap QuoterV2 | `0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a` |
 | VVV | `0xacfe6019ed1a7dc6f7b508c02d1b04ec88cc21bf` |
 | VVV Staking (sVVV) | `0x321b7ff75154472b18edb199033ff4d116f340ff` |
-
-## Base Sepolia (Testnet)
-
-| Contract | Address |
-|----------|---------|
-| SyndicateFactory | `0x121AaC2B96Ec365e457fcCc1C2ED5a6142064069` |
-| SyndicateGovernor | `0xE5ecf2B06E3f3e298B632C0cf6575f9d9422F55E` |
-| BatchExecutorLib | `0x847758DDb37F1709da5bB3d3F8aC395938e6a84f` |
-| USDC (test) | `0x036CbD53842c5426634e7929541eC2318f3dCF7e` |
-| WETH | `0x4200000000000000000000000000000000000006` |
 
 ## Robinhood L2 Testnet
 
@@ -69,7 +59,7 @@ V1.5 redeploy (PR #282 / `chore/redeploy-beta-v1.5`): old proxies (factory `0x7e
 
 ## EAS (Ethereum Attestation Service)
 
-Base predeploys (same on mainnet and Sepolia):
+Base predeploys:
 
 | Contract | Address |
 |----------|---------|
@@ -95,16 +85,6 @@ ERC-1167 clonable singletons. Use `sherwood strategy list` to see current addres
 These V1.5 templates implement `IStrategy.onLiveDeposit` + `_positionValue`. MoonwellSupply, WstETHMoonwell, and the Hyperliquid templates report live NAV (`valid=true`) — the vault stays unlocked at fair NAV during their active proposals. Aerodrome / Venice / Mamo report `valid=false` and route through the async-redeem queue (live NAV deferred per pre-mainnet punchlist).
 
 Old V1 addresses (kept on-chain for in-flight settle-out only): MoonwellSupply `0x649f…9F00`, AerodromeLP `0x6ccd…26CE`, VeniceInference `0x49BF…E41b`, WstETHMoonwell `0xA318…D1e6`, MamoYield `0x9ca8…DF42`, Portfolio `0x7865…3f64`.
-
-## Strategy Templates (Base Sepolia)
-
-| Template | Address |
-|----------|---------|
-| MoonwellSupplyStrategy | `0xf67107afd786b6CB8829e55634b1686B8Bb7937a` |
-| AerodromeLPStrategy | `0xDf45018C64f5d6fd254B5d5437e96A27D5F01D09` |
-| VeniceInferenceStrategy | `0xB3E20A505D6e086eaEE02a58C264D41cb746E76E` |
-| WstETHMoonwellStrategy | `0x8F75B609519cEC5a9B9DF3cb74BcF095be5Ee2fD` |
-| MamoYieldStrategy | `0x49ea76685D79ff41bF7F60e22d9D367d0981bD58` |
 
 ## Uniswap Trading API
 

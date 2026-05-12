@@ -18,7 +18,7 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm (recommended — includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli
+npm i -g @sherwoodagent/cli@0.59.18
 ```
 
 **Option B: Standalone binary (no chat support)**
@@ -26,9 +26,9 @@ Download from [GitHub releases](https://github.com/sherwoodagent/sherwood/releas
 
 Both options require Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
 
-**Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
+**Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
-All commands below use `sherwood` as shorthand. Add `--testnet` for Base Sepolia.
+All commands below use `sherwood` as shorthand. Pass `--chain <network>` to target HyperEVM or Robinhood L2; default chain is Base mainnet.
 
 ## Agent Lifecycle
 
@@ -141,7 +141,7 @@ Before invoking the command, **echo every resolved parameter back to the user an
 
 The summary MUST include all of:
 
-- **Chain** — Base mainnet by default. Confirm whether the user wants `--testnet` (Base Sepolia) or `--chain hyperevm`. Never assume.
+- **Chain** — Base mainnet by default. Confirm `--chain` explicitly when the user wants `hyperevm` or `robinhood-testnet`. Never assume.
 - **Subdomain** — show the full ENS name (`<subdomain>.sherwoodagent.eth`). Subdomain registration is permanent; a typo wastes gas and orphans the record.
 - **Vault asset** — show the symbol AND the resolved token address. USDC is common but not universal — confirm even when "obvious".
 - **Name**, **description**, **agent ID**, **`--open-deposits`** flag, **`--public-chat`** flag.
@@ -481,7 +481,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 Try in order — each step covers a real failure mode hit in production:
 
 1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. CLI ≥ `0.61.3` syncs both `Allowed` and `Unknown` consent states; on older versions, fresh welcomes default to `Unknown` and are silently dropped — bump the CLI before doing anything else.
-2. **Confirm wallet + network env match.** The CLI's XMTP env is keyed off `--chain` — Base mainnet → `production`, Base Sepolia / hyperevm-testnet → `dev`. If the creator and agent are on different envs the add succeeds but the welcome black-holes. Confirm `sherwood identity status` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
+2. **Confirm wallet + network env match.** The CLI's XMTP env is keyed off `--chain` — all beta-supported chains (Base mainnet, HyperEVM, Robinhood L2) route to XMTP `production`. If the creator and agent are on different chains the add succeeds but the welcome black-holes. Confirm `sherwood identity status` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet — the node-script recipe (using `client.preferences.inboxState(true)` + `client.revokeInstallations(bytes[])`) lives in CLAUDE.md "XMTP Troubleshooting".
 5. **Creator-side KeyPackage cache.** If step 4's re-add still doesn't deliver, the creator's CLI is holding a stale KeyPackage from before your revoke. Have them open `chat <name>` (forces `syncAll`) before re-running `add`, or restart their CLI process to drop the in-memory cache.
@@ -510,7 +510,7 @@ Before invoking the command, **echo every resolved parameter back to the user an
 
 The summary MUST include all of:
 
-- **Chain** — must match the vault's chain. A proposal sent to the wrong chain either fails or hits a different vault. Confirm `--testnet` / `--chain hyperevm` explicitly.
+- **Chain** — must match the vault's chain. A proposal sent to the wrong chain either fails or hits a different vault. Confirm `--chain` explicitly (`base`, `hyperevm`, or `robinhood-testnet`).
 - **Vault** — show both the address AND the syndicate subdomain so the user can verify it's the intended fund.
 - **Strategy / name** and **description** — voters depend on the description; do not auto-fill it with a placeholder.
 - **Performance fee** — show as bps AND as a percentage (e.g. `1500 bps = 15% of profit`). Capped by `governor.maxFeeBps`.
@@ -548,7 +548,7 @@ If `--metadata-uri` is not provided, the CLI pins metadata to IPFS via Pinata (`
 ### List proposals
 
 ```bash
-sherwood proposal list [--vault <addr>] [--state <filter>] [--testnet]
+sherwood proposal list [--vault <addr>] [--state <filter>] [--chain <network>]
 ```
 
 Filter by state: `pending`, `approved`, `executed`, `settled`, `all` (default: `all`).
@@ -556,7 +556,7 @@ Filter by state: `pending`, `approved`, `executed`, `settled`, `all` (default: `
 ### Show proposal detail
 
 ```bash
-sherwood proposal show <id> [--testnet]
+sherwood proposal show <id> [--chain <network>]
 ```
 
 Displays metadata, state, timestamps, vote breakdown, decoded calls, capital snapshot (if executed), and P&L/fees (if settled).
@@ -564,7 +564,7 @@ Displays metadata, state, timestamps, vote breakdown, decoded calls, capital sna
 ### Vote on a proposal
 
 ```bash
-sherwood proposal vote --id <proposalId> --support <for|against|abstain> [--testnet]
+sherwood proposal vote --id <proposalId> --support <for|against|abstain> [--chain <network>]
 ```
 
 Caller must have voting power (vault shares at snapshot). Displays vote weight before confirming.
@@ -572,7 +572,7 @@ Caller must have voting power (vault shares at snapshot). Displays vote weight b
 ### Execute an approved proposal
 
 ```bash
-sherwood proposal execute --id <proposalId> [--testnet]
+sherwood proposal execute --id <proposalId> [--chain <network>]
 ```
 
 Anyone can call. Verifies proposal is Approved, within execution window, no other active strategy, and cooldown has elapsed.
@@ -580,7 +580,7 @@ Anyone can call. Verifies proposal is Approved, within execution window, no othe
 ### Settle an executed proposal
 
 ```bash
-sherwood proposal settle --id <proposalId> [--calls <path-to-json>] [--testnet]
+sherwood proposal settle --id <proposalId> [--calls <path-to-json>] [--chain <network>]
 ```
 
 Auto-routes to the correct settlement path:
@@ -593,7 +593,7 @@ Output: P&L, fees distributed, redemptions unlocked.
 ### Veto a proposal (vault owner only)
 
 ```bash
-sherwood proposal veto --id <proposalId> [--testnet]
+sherwood proposal veto --id <proposalId> [--chain <network>]
 ```
 
 Vault owner can veto Pending or Approved proposals. Sets state to `Rejected` (distinct from `Cancelled`). This is the primary safety mechanism in optimistic governance.
@@ -601,7 +601,7 @@ Vault owner can veto Pending or Approved proposals. Sets state to `Rejected` (di
 ### Cancel a proposal
 
 ```bash
-sherwood proposal cancel --id <proposalId> [--testnet]
+sherwood proposal cancel --id <proposalId> [--chain <network>]
 ```
 
 Proposer can cancel if Pending/Approved. Vault owner can emergency cancel at any non-settled state.
@@ -609,7 +609,7 @@ Proposer can cancel if Pending/Approved. Vault owner can emergency cancel at any
 ### Governor info
 
 ```bash
-sherwood governor info [--testnet]
+sherwood governor info [--chain <network>]
 ```
 
 Displays current parameters: voting period, execution window, veto threshold, max performance fee, max strategy duration, cooldown period, protocol fee, and registered vaults.
@@ -617,13 +617,13 @@ Displays current parameters: voting period, execution window, veto threshold, ma
 ### Governor parameter setters (owner only)
 
 ```bash
-sherwood governor set-voting-period --seconds <n> [--testnet]
-sherwood governor set-execution-window --seconds <n> [--testnet]
-sherwood governor set-veto-threshold --bps <n> [--testnet]
-sherwood governor set-max-fee --bps <n> [--testnet]
-sherwood governor set-max-duration --seconds <n> [--testnet]
-sherwood governor set-cooldown --seconds <n> [--testnet]
-sherwood governor set-protocol-fee --bps <n> [--testnet]
+sherwood governor set-voting-period --seconds <n> [--chain <network>]
+sherwood governor set-execution-window --seconds <n> [--chain <network>]
+sherwood governor set-veto-threshold --bps <n> [--chain <network>]
+sherwood governor set-max-fee --bps <n> [--chain <network>]
+sherwood governor set-max-duration --seconds <n> [--chain <network>]
+sherwood governor set-cooldown --seconds <n> [--chain <network>]
+sherwood governor set-protocol-fee --bps <n> [--chain <network>]
 ```
 
 Each validates against hardcoded bounds before submitting.
@@ -636,7 +636,7 @@ Each validates against hardcoded bounds before submitting.
 |----------|---------|
 | [Sherwood Docs](https://docs.sherwood.sh/) | Full protocol, CLI, and integration documentation |
 | [llms-full.txt](https://docs.sherwood.sh/llms-full.txt) | Complete docs in a single LLM-friendly file |
-| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (mainnet + testnet) and per-strategy allowlist targets |
+| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Base mainnet, HyperEVM mainnet, Robinhood L2 testnet) and per-strategy allowlist targets |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers, x402 pricing, signal-based trading |
 | `cli/src/lib/addresses.ts` | Canonical address source (resolved at runtime by network) |
@@ -646,8 +646,7 @@ Each validates against hardcoded bounds before submitting.
 
 | Flag | Effect |
 |------|--------|
-| `--chain <network>` | Target network: `base`, `base-sepolia`, `hyperevm`, `hyperevm-testnet`, `robinhood-testnet` |
-| `--testnet` | Shorthand for `--chain base-sepolia` |
+| `--chain <network>` | Target network: `base` (default), `hyperevm`, `robinhood-testnet` |
 | `--vault <addr>` | Override vault (default: from config) |
 | `--execute` | Submit onchain (default: simulate only) |
 
@@ -685,7 +684,7 @@ command -v hermes && hermes plugins list | grep -q sherwood-monitor && echo "ins
 ### Install
 
 ```bash
-hermes plugins install sherwoodagent/sherwood-hermes-plugin
+hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0
 ```
 
 Requirements: Python ≥ 3.11, **Node ≥ 20 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
@@ -695,7 +694,7 @@ The plugin runs a preflight on load. If it doesn't find `sherwood --version`, a 
 If the install fails mid-sidecar (no Node, npm offline, etc.), everything except XMTP still works. Rebuild later with:
 
 ```bash
-SHERWOOD_MONITOR_SKIP_SIDECAR_BUILD=1 hermes plugins install sherwoodagent/sherwood-hermes-plugin
+SHERWOOD_MONITOR_SKIP_SIDECAR_BUILD=1 hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0
 cd "$(python3 -c 'import sherwood_monitor, pathlib; print(pathlib.Path(sherwood_monitor.__file__).parent.parent / "xmtp_sidecar")')"
 npm ci && npm run build
 ```

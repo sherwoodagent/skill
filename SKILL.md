@@ -26,9 +26,55 @@ Download from [GitHub releases](https://github.com/sherwoodagent/sherwood/releas
 
 Both options require Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
 
+**Option C: HTTP API (no install, generic agents)**
+If you can't install Node packages — browser agent, Lambda runtime, MCP server in a restricted sandbox — hit the API directly. Every onchain action returns unsigned calldata that you sign and broadcast with whatever wallet you already control. The API never sees your private key.
+
+```bash
+# Read: list deployments
+curl -s https://app.sherwood.sh/api/v1/markets
+
+# Read: vault state
+curl -s 'https://app.sherwood.sh/api/v1/vaults/0xVault?chain=8453'
+
+# Calldata: prepare a 100 USDC deposit
+curl -sX POST https://app.sherwood.sh/api/v1/prepare/deposit \
+  -H 'content-type: application/json' \
+  -d '{"chainId":8453,"vault":"0xVault","receiver":"0xYou","amountDecimal":"100"}'
+```
+
+Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1. Endpoint catalog: `https://app.sherwood.sh/api/v1/markets`.
+
+**Option D: `@sherwoodagent/sdk` (TypeScript agents, no CLI dependencies)**
+If you're writing in TypeScript and want types + tree-shaking without the full CLI weight (XMTP, Anthropic SDK, agent0, etc.):
+
+```bash
+npm i @sherwoodagent/sdk viem
+```
+
+```ts
+import { encodeDeposit, readVaultInfo, CHAIN_IDS } from "@sherwoodagent/sdk";
+import { createPublicClient, http } from "viem";
+import { base } from "viem/chains";
+
+const client = createPublicClient({ chain: base, transport: http(RPC_URL) });
+const info = await readVaultInfo(client, "0xVault");
+
+const action = encodeDeposit({
+  vault: "0xVault",
+  receiver: "0xYou",
+  asset: info.asset,
+  assetSymbol: info.assetSymbol,
+  assetDecimals: info.assetDecimals,
+  assets: 100_000_000n, // 100 USDC
+}, CHAIN_IDS.BASE);
+// Sign + broadcast action.txs[*] with your wallet client
+```
+
+Same encoders the CLI uses — guaranteed parity by construction. The SDK never imports a wallet client or reads env vars; you bring your own RPC and signing.
+
 **Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
-All commands below use `sherwood` as shorthand. Pass `--chain <network>` to target HyperEVM or Robinhood L2; default chain is Base mainnet.
+All CLI commands below use `sherwood` as shorthand. Pass `--chain <network>` to target HyperEVM or Robinhood L2; default chain is Base mainnet. The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
 
 ## Agent Lifecycle
 

@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.6.0'
+  version: '0.7.3'
 ---
 
 # Sherwood
@@ -22,7 +22,7 @@ npm i -g @sherwoodagent/cli@0.59.18
 ```
 
 **Option B: Standalone binary (no chat support)**
-Download from [GitHub releases](https://github.com/sherwoodagent/sherwood/releases). Faster install, but XMTP chat commands are not available.
+Download from [GitHub releases](https://github.com/sherwoodagent/sherwood/releases) — repo access required (the Sherwood org repo is currently private; ask in Discord for access). Faster install, but XMTP chat commands are not available.
 
 Both options require Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
 
@@ -337,7 +337,7 @@ sherwood strategy propose venice-inference \
 #### Strategy + Governor Integration
 
 - **Cloning:** The CLI clones the template (ERC-1167 minimal proxy) and initializes it. The proposer pays gas for both txs.
-- **Allowlisting:** The vault must allowlist the strategy clone address and any external protocol addresses as batch targets via `sherwood vault add-target`. See each strategy's skill and `ADDRESSES.md` for required targets.
+- **Allowlisting:** The vault must allowlist the strategy clone address and any external protocol addresses as batch targets. The CLI handles this inline during `sherwood strategy propose` — see each strategy's skill and `ADDRESSES.md` for required targets.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
 
@@ -469,20 +469,9 @@ sherwood vault balance
 sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626)
 ```
 
-### Vault rescue operations (owner only)
-
-Recover stuck assets that aren't the vault's primary asset:
-
-```bash
-sherwood vault rescue-eth --to <addr> --amount <wei>
-sherwood vault rescue-erc721 --token <nft> --id <tokenId> --to <addr>
-```
-
-Guards prevent rescuing the vault's own asset token.
-
 ### Stuck proposal recovery (guardian skill)
 
-If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`syndicate-owner` guardian skill** — see `skill/skills/syndicate-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook and the purpose-built `sherwood proposal unstick` command that clears the lock safely. This is a guardian-only path and is intentionally not surfaced in this top-level skill.
+If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`syndicate-owner` guardian skill** — see `skill/skills/syndicate-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely. This is a guardian-only path and is intentionally not surfaced in this top-level skill.
 
 ---
 
@@ -531,7 +520,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. CLI ≥ `0.61.3` syncs both `Allowed` and `Unknown` consent states; on older versions, fresh welcomes default to `Unknown` and are silently dropped — bump the CLI before doing anything else.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@latest` before continuing.
 2. **Confirm wallet + network env match.** The CLI's XMTP env is keyed off `--chain` — all beta-supported chains (Base mainnet, HyperEVM, Robinhood L2) route to XMTP `production`. If the creator and agent are on different chains the add succeeds but the welcome black-holes. Confirm `sherwood identity status` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet — the node-script recipe (using `client.preferences.inboxState(true)` + `client.revokeInstallations(bytes[])`) lives in CLAUDE.md "XMTP Troubleshooting".
@@ -813,7 +802,8 @@ User wants to...
 ├── Cancel proposal    → Governance: proposal cancel --id <id>
 ├── Check governance   → Governance: governor info, proposal list, proposal show <id>
 ├── Tune parameters    → Governance: governor set-* (owner only)
-├── Rescue stuck assets → vault rescue-eth / rescue-erc721 (owner only)
+├── Recover stuck vault → delegate to `syndicate-owner` guardian skill (owner only)
+├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-proposal, claim-delegator, claim-wood}
 ├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
 ├── Fund Venice via governance → delegate to `strategies/venice-inference` skill
 ├── Private inference   → Phase 5: venice infer (or delegate to `strategies/venice-inference` skill)

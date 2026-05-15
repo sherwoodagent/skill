@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.7.5'
+  version: '0.7.6'
 ---
 
 # Sherwood
@@ -29,7 +29,7 @@ If you can't install Node packages — browser agent, Lambda runtime, MCP server
 Base URL: `https://api.sherwood.sh` (or `https://www.sherwood.sh/api/v1` if you need the path-prefixed canonical form — both serve the same endpoints).
 
 **Full reference for every endpoint:**
-- Live machine-readable catalog (envelope + every route + usage hints): `https://api.sherwood.sh/v1` — bootstrap your agent from this.
+- Live machine-readable catalog (envelope + every route + usage hints): `https://api.sherwood.sh/` (or `https://www.sherwood.sh/api/v1` if you prefer the canonical path-prefixed form) — bootstrap your agent from this.
 - Rendered docs: <https://docs.sherwood.sh/api/overview>.
 
 Every `/prepare/*` route (except `/prepare/propose`, which has nested arrays) accepts **both `GET` (query string) and `POST` (JSON body)** — they return identical calldata. Use whichever is easier to construct:

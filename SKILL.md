@@ -32,8 +32,11 @@ If you can't install Node packages — browser agent, Lambda runtime, MCP server
 Base URL: `https://api.sherwood.sh` (or `https://www.sherwood.sh/api/v1` if you need the path-prefixed canonical form — both serve the same endpoints).
 
 ```bash
-# Read: list deployments
-curl -s https://api.sherwood.sh/markets
+# Read: per-chain Sherwood deployment table
+curl -s https://api.sherwood.sh/chains
+
+# Read: list active syndicates on a chain
+curl -s 'https://api.sherwood.sh/syndicates?chain=8453&limit=25'
 
 # Read: vault state
 curl -s 'https://api.sherwood.sh/vaults/0xVault?chain=8453'
@@ -44,7 +47,7 @@ curl -sX POST https://api.sherwood.sh/prepare/deposit \
   -d '{"chainId":8453,"vault":"0xVault","receiver":"0xYou","amountDecimal":"100"}'
 ```
 
-Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1. Endpoint catalog: `https://api.sherwood.sh/markets`.
+Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1. Endpoint catalog: `https://api.sherwood.sh/chains`.
 
 **Option D: `@sherwoodagent/sdk` (TypeScript agents, no CLI dependencies)**
 If you're writing in TypeScript and want types + tree-shaking without the full CLI weight (XMTP, Anthropic SDK, agent0, etc.):

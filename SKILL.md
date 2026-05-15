@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.7.4'
+  version: '0.7.5'
 ---
 
 # Sherwood
@@ -28,6 +28,12 @@ If you can't install Node packages — browser agent, Lambda runtime, MCP server
 
 Base URL: `https://api.sherwood.sh` (or `https://www.sherwood.sh/api/v1` if you need the path-prefixed canonical form — both serve the same endpoints).
 
+**Full reference for every endpoint:**
+- Live machine-readable catalog (envelope + every route + usage hints): `https://api.sherwood.sh/v1` — bootstrap your agent from this.
+- Rendered docs: <https://docs.sherwood.sh/api/overview>.
+
+Every `/prepare/*` route (except `/prepare/propose`, which has nested arrays) accepts **both `GET` (query string) and `POST` (JSON body)** — they return identical calldata. Use whichever is easier to construct:
+
 ```bash
 # Read: per-chain Sherwood deployment table
 curl -s https://api.sherwood.sh/chains
@@ -38,13 +44,20 @@ curl -s 'https://api.sherwood.sh/syndicates?chain=8453&limit=25'
 # Read: vault state
 curl -s 'https://api.sherwood.sh/vaults/0xVault?chain=8453'
 
-# Calldata: prepare a 100 USDC deposit
+# Calldata via GET — easiest one-liner
+curl -s 'https://api.sherwood.sh/prepare/deposit?chainId=8453&vault=0xVault&receiver=0xYou&amountDecimal=100'
+
+# Same as POST — equivalent
 curl -sX POST https://api.sherwood.sh/prepare/deposit \
   -H 'content-type: application/json' \
   -d '{"chainId":8453,"vault":"0xVault","receiver":"0xYou","amountDecimal":"100"}'
+
+# Calldata: vote / execute / settle / cancel — all GET-friendly
+curl -s 'https://api.sherwood.sh/prepare/vote?chainId=8453&proposalId=1&vote=For'
+curl -s 'https://api.sherwood.sh/prepare/execute?chainId=8453&proposalId=1'
 ```
 
-Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1. Endpoint catalog: `https://api.sherwood.sh/chains`.
+Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1.
 
 **Running on Hermes Agent?** After installing the CLI (Option A), also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 

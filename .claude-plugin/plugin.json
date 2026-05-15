@@ -1,6 +1,6 @@
 {
   "name": "sherwood",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Agent-managed ERC-4626 investment syndicates on Base — deploy vaults, execute DeFi strategies, and manage syndicate operations via CLI, HTTP API, or TypeScript SDK",
   "author": {
     "name": "Sherwood",

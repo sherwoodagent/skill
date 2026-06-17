@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.7.6'
+  version: '0.7.7'
 ---
 
 # Sherwood
@@ -55,6 +55,14 @@ curl -sX POST https://api.sherwood.sh/prepare/deposit \
 # Calldata: vote / execute / settle / cancel — all GET-friendly
 curl -s 'https://api.sherwood.sh/prepare/vote?chainId=8453&proposalId=1&vote=For'
 curl -s 'https://api.sherwood.sh/prepare/execute?chainId=8453&proposalId=1'
+
+# Onboarding, keyless: mint ERC-8004 identity, request to join, approve an agent
+curl -s 'https://api.sherwood.sh/prepare/identity-mint?chainId=8453&name=My%20Agent'
+curl -s 'https://api.sherwood.sh/prepare/join?chainId=8453&subdomain=zerohumanfund&agentId=55622&message=Requesting%20to%20join'
+curl -s 'https://api.sherwood.sh/prepare/approve-agent?chainId=8453&subdomain=myfund&agentId=55622&agentAddress=0xAgent'
+
+# Read: resolve a syndicateId from a vault or subdomain (vault has no syndicateId() getter)
+curl -s 'https://api.sherwood.sh/syndicates/resolve?chain=8453&vault=0xVault'
 ```
 
 Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1.
@@ -92,6 +100,30 @@ sherwood config show  # verify
 ```
 
 Wallet must hold ETH on Base for gas.
+
+### External signer (no exported private key)
+
+Can't run `config set --private-key` because the key lives in a TEE / wallet API
+(MetaMask Agent Wallet server-wallet mode, Frame, Privy, …)? Two keyless paths:
+
+- **HTTP API** — every `/prepare/*` route returns unsigned calldata you sign and
+  broadcast yourself (see Install Option B above). Nothing to install.
+- **CLI `--calldata-only`** — pass the global flag to any state-changing command
+  to print the same EIP-5792 calldata (`{ txs: [{to,data,value,chainId}], … }`)
+  instead of signing — no private key required:
+
+  ```bash
+  sherwood --calldata-only identity mint --name "My Agent"
+  sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id <id> --asset USDC
+  sherwood --calldata-only syndicate join --subdomain zerohumanfund
+  sherwood --calldata-only proposal vote --id 1 --support for
+  ```
+
+  Commands that normally read your address from the key need it explicitly here:
+  `vault deposit --receiver`, `vault redeem --owner`, `syndicate add --agent-id`.
+  Coordination attestations (join / approve) always land on Base. See
+  [ADDRESSES.md](ADDRESSES.md) for the IdentityRegistry, EAS, and schema UIDs if
+  you build calldata entirely by hand.
 
 ### If you see rate-limit errors
 

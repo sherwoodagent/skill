@@ -18,7 +18,7 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.59.18
+npm i -g @sherwoodagent/cli@0.64.0
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
@@ -306,14 +306,14 @@ sherwood strategy propose moonwell-supply \
 sherwood proposal create \
   --vault 0x... --name "Moonwell USDC Yield" \
   --description "Supply 10 USDC to Moonwell for 7 days" \
-  --performance-fee 1000 --duration 7d \
+  --duration 7d \
   --execute-calls ./calls/execute.json \
   --settle-calls ./calls/settle.json
 
 # Or skip --write-calls to submit directly:
 sherwood strategy propose venice-inference \
   --vault 0x... --amount 500 --asset USDC --min-vvv 900 \
-  --name "Venice Inference" --performance-fee 0 --duration 7d
+  --name "Venice Inference" --duration 7d
 ```
 
 #### Strategy + Governor Integration
@@ -423,7 +423,7 @@ Add `--execute` to submit onchain.
 Venice inference funding uses the VeniceInferenceStrategy template via the proposal flow:
 
 ```bash
-sherwood proposal create --strategy venice-inference --performance-fee 0 --duration 1h
+sherwood proposal create --strategy venice-inference --duration 1h
 sherwood venice provision  # self-provision API key (requires sVVV)
 sherwood venice status     # check sVVV balances + API key
 ```
@@ -546,7 +546,6 @@ sherwood proposal create \
   --vault 0x... \
   --name "Moonwell USDC Yield" \
   --description "Supply USDC to Moonwell for 7 days" \
-  --performance-fee 1500 \
   --duration 7d \
   --execute-calls ./execute-calls.json \
   --settle-calls ./settle-calls.json
@@ -557,7 +556,6 @@ sherwood proposal create \
 | `--vault` | yes | Vault address the proposal targets |
 | `--name` | yes* | Strategy name (skipped if `--metadata-uri` provided) |
 | `--description` | yes* | Strategy rationale and risk summary (skipped if `--metadata-uri`) |
-| `--performance-fee` | yes | Agent fee in bps (e.g. 1500 = 15%, capped by governor) |
 | `--duration` | yes | Strategy duration. Accepts seconds or human format (`7d`, `24h`, `1h`) |
 | `--execute-calls` | yes | Path to JSON file with execute Call[] array (open positions) |
 | `--settle-calls` | yes | Path to JSON file with settlement Call[] array (close positions) |
@@ -566,6 +564,8 @@ sherwood proposal create \
 Execute calls run at proposal execution (open positions). Settlement calls run at proposal settlement (close positions). Each file is a JSON array of `[{ target, data, value }]`.
 
 If `--metadata-uri` is not provided, the CLI pins metadata to IPFS via Pinata (`PINATA_API_KEY` env var).
+
+> **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set once by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 5% / 500 bps, max 50% / 5000 bps). The governor reads it live from the vault at settlement and clamps it to `maxPerformanceFeeBps`.
 
 ### List proposals
 

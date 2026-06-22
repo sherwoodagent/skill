@@ -20,7 +20,6 @@ interface ISyndicateGovernor {
         address proposer;
         address vault;
         string metadataURI;
-        uint256 performanceFeeBps;
         uint256 splitIndex;
         uint256 strategyDuration;
         uint256 votesFor;
@@ -41,6 +40,7 @@ interface ISyndicateGovernor {
 interface ISyndicateVault {
     function asset() external view returns (address);
     function totalAssets() external view returns (uint256);
+    function agentFeeBps() external view returns (uint256);
 }
 
 /// @title SimulateProposal — Fork-test a governance proposal before it auto-passes
@@ -58,8 +58,11 @@ contract SimulateProposal is Test {
         emit log_named_address("Proposer", proposal.proposer);
         emit log_named_address("Vault", proposal.vault);
         emit log_named_string("Metadata URI", proposal.metadataURI);
-        emit log_named_uint("Performance Fee (bps)", proposal.performanceFeeBps);
         emit log_named_uint("Strategy Duration (s)", proposal.strategyDuration);
+        // The agent fee is no longer a per-proposal field — it lives on the vault
+        // as `agentFeeBps` (vault owner sets it via `vault.setAgentFeeBps`); the
+        // governor reads it live at settlement.
+        emit log_named_uint("Vault agent fee (bps)", ISyndicateVault(vault).agentFeeBps());
         emit log_named_uint("State", uint256(proposal.state));
 
         // Fetch proposal calls — concatenation of execute + settle. The

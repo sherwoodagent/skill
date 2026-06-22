@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.4.0'
+  version: '0.5.0'
 ---
 
 # Syndicate Vault Owner — Guardian Agent
@@ -94,8 +94,6 @@ Risk code reference:
 | `TRANSFER_TO_UNKNOWN` | critical | `transfer()` sends funds to an unlabeled address |
 | `TRANSFER_FROM_TO_UNKNOWN` | critical | `transferFrom()` sends funds to an unlabeled address |
 | `APPROVE_TO_UNKNOWN` | critical | `approve()` grants allowance to an unlabeled address |
-| `EXCESSIVE_PERFORMANCE_FEE` | critical | Fee within 20% of the governor hard cap |
-| `HIGH_PERFORMANCE_FEE` | warning | Fee exceeds 20% |
 | `SHORT_STRATEGY_DURATION` | warning | Duration under 1 hour |
 | `LONG_STRATEGY_DURATION` | warning | Duration over 30 days |
 | `ALL_TARGETS_VERIFIED` | info | All targets are known protocols |
@@ -139,7 +137,6 @@ cast call <strategy_address> "amountADesired()(uint256)" --rpc-url $RPC_URL  # A
 | Calls to unknown/unverified contracts | Could be a backdoor or drain contract |
 | `approve()` or `transfer()` to external EOAs | Direct fund extraction |
 | Large fund movements outside known DeFi protocols | Capital leaving the vault's control |
-| `performanceFeeBps` close to `MAX_PERFORMANCE_FEE_CAP` (5000 = 50%) | Agent extracts excessive fees |
 | Very short strategy duration (< 1 hour) | Flash-loan-style attack window |
 | Very long strategy duration (> 30 days) | Capital locked with minimal oversight |
 | Calldata that cannot be decoded | Opaque operations — safety first |
@@ -171,10 +168,10 @@ New proposal detected
 |           |
 |           +-- Any CRITICAL risk code in output --> VETO immediately
 |           |     (SIMULATION_FAILED, UNKNOWN_TARGET, TRANSFER_TO_UNKNOWN,
-|           |      APPROVE_TO_UNKNOWN, UNDECODED_CALLDATA, EXCESSIVE_PERFORMANCE_FEE)
+|           |      APPROVE_TO_UNKNOWN, UNDECODED_CALLDATA)
 |           |
 |           +-- Only WARNING codes --> REVIEW CAREFULLY
-|           |     (HIGH_PERFORMANCE_FEE, SHORT_STRATEGY_DURATION, LONG_STRATEGY_DURATION)
+|           |     (SHORT_STRATEGY_DURATION, LONG_STRATEGY_DURATION)
 |           |
 |           +-- RISK ASSESSMENT: CLEAN --> LET PASS (optionally vote FOR as signal)
 ```
@@ -255,6 +252,20 @@ As vault owner, you have these emergency powers:
 | **Remove agent** | `sherwood vault remove-agent <address>` | Revoke a compromised agent's access |
 | **Rescue ETH** | `sherwood vault rescue-eth <to> <amount>` | Recover stuck ETH from the vault |
 | **Rescue ERC-721** | `sherwood vault rescue-erc721 <token> <id> <to>` | Recover stuck NFTs from the vault |
+
+### Vault parameters (owner only)
+
+The agent's performance fee is a **vault property**, not a per-proposal value. You set one fee for the whole vault; proposals do not carry a fee.
+
+```bash
+# Set the agent performance fee (default 500 = 5%, vault cap 5000 = 50%)
+sherwood syndicate set-agent-fee --bps 1500
+
+# On-chain equivalent
+cast send $VAULT_ADDRESS "setAgentFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+```
+
+The governor reads `agentFeeBps` live from the vault at settlement and clamps it to its own `maxPerformanceFeeBps`, so the effective fee is `min(vault.agentFeeBps(), governor.maxPerformanceFeeBps())`. Lower the vault fee here if an agent's cut is too high — there is no proposal to veto for fee reasons.
 
 ### Recovering a stuck Executed proposal (LP funds locked)
 

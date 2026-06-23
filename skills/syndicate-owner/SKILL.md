@@ -258,14 +258,14 @@ As vault owner, you have these emergency powers:
 The agent's performance fee is a **vault property**, not a per-proposal value. You set one fee for the whole vault; proposals do not carry a fee.
 
 ```bash
-# Set the agent performance fee (default 500 = 5%, vault cap 5000 = 50%)
+# Set the agent performance fee (default 500 = 5%, vault cap 1500 = 15%)
 sherwood syndicate set-agent-fee --bps 1500
 
 # On-chain equivalent
 cast send $VAULT_ADDRESS "setAgentFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
-The governor reads `agentFeeBps` live from the vault at settlement and clamps it to its own `maxPerformanceFeeBps`, so the effective fee is `min(vault.agentFeeBps(), governor.maxPerformanceFeeBps())`. Lower the vault fee here if an agent's cut is too high — there is no proposal to veto for fee reasons.
+The governor snapshots `agentFeeBps` from the vault onto each proposal at propose time (immutable for that proposal — a later change can't alter an already-created proposal); at settlement it uses that snapshot, clamped to its own `maxPerformanceFeeBps`, so the effective fee is `min(snapshotted agentFeeBps, governor.maxPerformanceFeeBps())`. Lower the vault fee here to change the cut on **future** proposals if an agent's cut is too high — there is no proposal to veto for fee reasons.
 
 ### Recovering a stuck Executed proposal (LP funds locked)
 
@@ -411,7 +411,7 @@ cast send $GOVERNOR_ADDRESS "setVotingPeriod(uint256)" <seconds> --private-key $
 # Adjust veto threshold (min: 1000 = 10%, max: 10000 = 100%)
 cast send $GOVERNOR_ADDRESS "setVetoThresholdBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
-# Adjust max performance fee (cap: 5000 = 50%)
+# Adjust max performance fee (cap: 1500 = 15%)
 cast send $GOVERNOR_ADDRESS "setMaxPerformanceFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
 # Adjust max strategy duration (min: 1 hour, max: 365 days)
@@ -518,7 +518,7 @@ struct Call {
 | Voting period | 1 hour | 30 days |
 | Execution window | 1 hour | 7 days |
 | Veto threshold | 1000 bps (10%) | 10000 bps (100%) |
-| Max performance fee | — | 5000 bps (50%) |
+| Max performance fee | — | 1500 bps (15%) |
 | Strategy duration | 1 hour | 365 days |
 | Cooldown period | 1 hour | 30 days |
 

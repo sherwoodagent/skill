@@ -59,9 +59,10 @@ contract SimulateProposal is Test {
         emit log_named_address("Vault", proposal.vault);
         emit log_named_string("Metadata URI", proposal.metadataURI);
         emit log_named_uint("Strategy Duration (s)", proposal.strategyDuration);
-        // The agent fee is no longer a per-proposal field — it lives on the vault
-        // as `agentFeeBps` (vault owner sets it via `vault.setAgentFeeBps`); the
-        // governor reads it live at settlement.
+        // The agent fee is no longer a per-proposal input — it lives on the vault
+        // as `agentFeeBps` (vault owner sets it via `vault.setAgentFeeBps`). The
+        // governor snapshots the vault's `agentFeeBps` onto the proposal at propose
+        // time and uses that snapshot, clamped to `maxPerformanceFeeBps`, at settlement.
         emit log_named_uint("Vault agent fee (bps)", ISyndicateVault(vault).agentFeeBps());
         emit log_named_uint("State", uint256(proposal.state));
 

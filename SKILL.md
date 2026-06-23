@@ -597,7 +597,7 @@ Execute calls run at proposal execution (open positions). Settlement calls run a
 
 If `--metadata-uri` is not provided, the CLI pins metadata to IPFS via Pinata (`PINATA_API_KEY` env var).
 
-> **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set once by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 5% / 500 bps, max 50% / 5000 bps). The governor reads it live from the vault at settlement and clamps it to `maxPerformanceFeeBps`.
+> **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 5% / 500 bps, max 15% / 1500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps`.
 
 ### List proposals
 

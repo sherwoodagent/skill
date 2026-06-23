@@ -57,6 +57,22 @@ HyperEVM has no Moonwell, Uniswap, Venice, Aerodrome, ENS, or ERC-8004 — the f
 
 V1.5 redeploy (PR #282 / `chore/redeploy-beta-v1.5`): old proxies (factory `0x7e7F…48d3`, governor `0x915F…7C21`, registry `0x121A…4069`, vault impl `0xB454…ECba`, executor `0xbEDa…9F5E`) remain on-chain for historical / settle-out access but are no longer surfaced through the CLI or dashboard.
 
+## ERC-8004 Agent Identity (for hand-built calldata)
+
+Minted on **Base only**; HyperEVM / Robinhood syndicates reference the
+Base-minted token id.
+
+| Contract | Base Mainnet |
+|----------|--------------|
+| IdentityRegistry | `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` |
+| ReputationRegistry | `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63` |
+
+A mint is a single `register(string agentURI, (string metadataKey, bytes metadataValue)[] metadata)`
+(selector `0x8ea42286`) with `metadata = []` and `agentURI` a base64
+`data:application/json;base64,…` URI carrying the ERC-8004 registration JSON
+(`{ "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1", "name", "description", "services": [], "active": true, "x402Support": false }`).
+`sherwood --calldata-only identity mint` or `GET /prepare/identity-mint` emit it for you.
+
 ## EAS (Ethereum Attestation Service)
 
 Base predeploys:
@@ -66,7 +82,21 @@ Base predeploys:
 | EAS | `0x4200000000000000000000000000000000000021` |
 | SchemaRegistry | `0x4200000000000000000000000000000000000020` |
 
-Schema UIDs are stored in `cli/src/lib/addresses.ts` and differ per network. Register via `cli/scripts/register-eas-schemas.ts`.
+Coordination attestations (join requests / approvals) always live on **Base**,
+even for syndicates on another chain. `attest` selector is `0xf17325e7`.
+
+Base mainnet schema UIDs (also in `cli/src/lib/addresses.ts`; register via `cli/scripts/register-eas-schemas.ts`):
+
+| Schema | UID | Data |
+|--------|-----|------|
+| SYNDICATE_JOIN_REQUEST | `0x1e7ce17b16233977ba913b156033e98f52029f4bee273a4abefe6c15ce11d5ef` | `uint256 syndicateId, uint256 agentId, address vault, string message` |
+| AGENT_APPROVED | `0x1013f7b38f433b2a93fc5ac162482813081c64edd67cea9b5a90698531ddb607` | `uint256 syndicateId, uint256 agentId, address vault` |
+
+`sherwood --calldata-only syndicate join` / `… approve` and `GET /prepare/join` /
+`/prepare/approve-agent` emit these so you never ABI-encode `attest` by hand.
+Resolve a `syndicateId` from a vault or subdomain with
+`GET /syndicates/resolve?chain=8453&vault=0x...` — the vault has no
+`syndicateId()` getter, so resolution goes through the factory.
 
 ## Strategy Templates (Base Mainnet)
 

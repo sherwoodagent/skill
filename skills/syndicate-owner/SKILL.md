@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.4.0'
+  version: '0.5.0'
 ---
 
 # Syndicate Vault Owner — Guardian Agent
@@ -94,8 +94,6 @@ Risk code reference:
 | `TRANSFER_TO_UNKNOWN` | critical | `transfer()` sends funds to an unlabeled address |
 | `TRANSFER_FROM_TO_UNKNOWN` | critical | `transferFrom()` sends funds to an unlabeled address |
 | `APPROVE_TO_UNKNOWN` | critical | `approve()` grants allowance to an unlabeled address |
-| `EXCESSIVE_PERFORMANCE_FEE` | critical | Fee within 20% of the governor hard cap |
-| `HIGH_PERFORMANCE_FEE` | warning | Fee exceeds 20% |
 | `SHORT_STRATEGY_DURATION` | warning | Duration under 1 hour |
 | `LONG_STRATEGY_DURATION` | warning | Duration over 30 days |
 | `ALL_TARGETS_VERIFIED` | info | All targets are known protocols |
@@ -139,7 +137,6 @@ cast call <strategy_address> "amountADesired()(uint256)" --rpc-url $RPC_URL  # A
 | Calls to unknown/unverified contracts | Could be a backdoor or drain contract |
 | `approve()` or `transfer()` to external EOAs | Direct fund extraction |
 | Large fund movements outside known DeFi protocols | Capital leaving the vault's control |
-| `performanceFeeBps` close to `MAX_PERFORMANCE_FEE_CAP` (5000 = 50%) | Agent extracts excessive fees |
 | Very short strategy duration (< 1 hour) | Flash-loan-style attack window |
 | Very long strategy duration (> 30 days) | Capital locked with minimal oversight |
 | Calldata that cannot be decoded | Opaque operations — safety first |
@@ -171,10 +168,10 @@ New proposal detected
 |           |
 |           +-- Any CRITICAL risk code in output --> VETO immediately
 |           |     (SIMULATION_FAILED, UNKNOWN_TARGET, TRANSFER_TO_UNKNOWN,
-|           |      APPROVE_TO_UNKNOWN, UNDECODED_CALLDATA, EXCESSIVE_PERFORMANCE_FEE)
+|           |      APPROVE_TO_UNKNOWN, UNDECODED_CALLDATA)
 |           |
 |           +-- Only WARNING codes --> REVIEW CAREFULLY
-|           |     (HIGH_PERFORMANCE_FEE, SHORT_STRATEGY_DURATION, LONG_STRATEGY_DURATION)
+|           |     (SHORT_STRATEGY_DURATION, LONG_STRATEGY_DURATION)
 |           |
 |           +-- RISK ASSESSMENT: CLEAN --> LET PASS (optionally vote FOR as signal)
 ```
@@ -255,6 +252,20 @@ As vault owner, you have these emergency powers:
 | **Remove agent** | `sherwood vault remove-agent <address>` | Revoke a compromised agent's access |
 | **Rescue ETH** | `sherwood vault rescue-eth <to> <amount>` | Recover stuck ETH from the vault |
 | **Rescue ERC-721** | `sherwood vault rescue-erc721 <token> <id> <to>` | Recover stuck NFTs from the vault |
+
+### Vault parameters (owner only)
+
+The agent's performance fee is a **vault property**, not a per-proposal value. You set one fee for the whole vault; proposals do not carry a fee.
+
+```bash
+# Set the agent performance fee (default 500 = 5%, vault cap 1500 = 15%)
+sherwood syndicate set-agent-fee --bps 1500
+
+# On-chain equivalent
+cast send $VAULT_ADDRESS "setAgentFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+```
+
+The governor snapshots `agentFeeBps` from the vault onto each proposal at propose time (immutable for that proposal — a later change can't alter an already-created proposal); at settlement it uses that snapshot, clamped to its own `maxPerformanceFeeBps`, so the effective fee is `min(snapshotted agentFeeBps, governor.maxPerformanceFeeBps())`. Lower the vault fee here to change the cut on **future** proposals if an agent's cut is too high — there is no proposal to veto for fee reasons.
 
 ### Recovering a stuck Executed proposal (LP funds locked)
 
@@ -400,7 +411,7 @@ cast send $GOVERNOR_ADDRESS "setVotingPeriod(uint256)" <seconds> --private-key $
 # Adjust veto threshold (min: 1000 = 10%, max: 10000 = 100%)
 cast send $GOVERNOR_ADDRESS "setVetoThresholdBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
-# Adjust max performance fee (cap: 5000 = 50%)
+# Adjust max performance fee (cap: 1500 = 15%)
 cast send $GOVERNOR_ADDRESS "setMaxPerformanceFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
 # Adjust max strategy duration (min: 1 hour, max: 365 days)
@@ -507,7 +518,7 @@ struct Call {
 | Voting period | 1 hour | 30 days |
 | Execution window | 1 hour | 7 days |
 | Veto threshold | 1000 bps (10%) | 10000 bps (100%) |
-| Max performance fee | — | 5000 bps (50%) |
+| Max performance fee | — | 1500 bps (15%) |
 | Strategy duration | 1 hour | 365 days |
 | Cooldown period | 1 hour | 30 days |
 

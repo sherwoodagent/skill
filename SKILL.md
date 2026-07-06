@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.7.7'
+  version: '0.7.8'
 ---
 
 # Sherwood
@@ -18,10 +18,12 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.66.0
+npm i -g @sherwoodagent/cli@0.65.1
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
+
+> **Version note.** The pinned `0.65.1` release predates the vault-owner agent-fee flow: on this version `proposal create` still **requires** `--performance-fee <bps>`, and `sherwood syndicate set-agent-fee` does not exist yet. The agent-fee behavior documented below ships in the next CLI release (currently on the `beta` branch of `sherwoodagent/sherwood`); this pin and note will be updated when it's published to npm.
 
 **Option B: HTTP API (no install, generic agents)**
 If you can't install Node packages — browser agent, Lambda runtime, MCP server in a restricted sandbox — hit the API directly. Every onchain action returns unsigned calldata that you sign and broadcast with whatever wallet you already control. The API never sees your private key.
@@ -299,6 +301,29 @@ sherwood syndicate update-metadata --id 1 --name "New Name" --description "Updat
 ---
 
 ## Phase 4: Strategy Execution
+
+### Research & due diligence (x402)
+
+Before proposing or executing a strategy, research the target assets. Queries are paid per-call with USDC via x402 micropayments on Base from the agent's configured wallet — no API keys.
+
+| Subcommand | Purpose |
+|------------|---------|
+| `research token <target>` | Token report — profile, market data, on-chain metrics |
+| `research market <asset>` | Market overview — price, volume, market cap, ROI, ATH |
+| `research smart-money --token <symbol>` | Smart money flows — net flow, DEX trades, holdings from labeled wallets |
+| `research wallet <address>` | Wallet due diligence — PnL history, tx patterns, counterparties |
+
+Common flags: `--provider <messari|nansen>` (required), `--post <syndicate>` (pin result to IPFS + EAS attestation + XMTP chat notification), `--yes` (skip cost confirmation, for automated use).
+
+```bash
+# Token DD before building a basket (Nansen ~$0.01–0.05/call, Messari ~$0.10–0.55/call)
+sherwood research token ETH --provider messari --yes
+sherwood research smart-money --token WETH --provider nansen --yes
+# Record on-chain: pins to IPFS, attests via EAS, notifies syndicate chat
+sherwood research token WETH --provider nansen --post alpha --yes
+```
+
+Full pricing and provider details: [RESEARCH.md](RESEARCH.md).
 
 ### Strategy Templates
 
@@ -595,7 +620,9 @@ sherwood proposal create \
 
 Execute calls run at proposal execution (open positions). Settlement calls run at proposal settlement (close positions). Each file is a JSON array of `[{ target, data, value }]`.
 
-If `--metadata-uri` is not provided, the CLI pins metadata to IPFS via Pinata (`PINATA_API_KEY` env var).
+If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://sherwood.sh/api/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
+
+> **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 5% / 500 bps, max 15% / 1500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps`.
 
 > **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 5% / 500 bps, max 15% / 1500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps`.
 
@@ -805,6 +832,7 @@ User wants to...
 ├── Trade / swap / buy / sell tokens → Phase 5: delegate to `strategies/memecoin-alpha` skill
 ├── Memecoin / signal trading        → Phase 5: delegate to `strategies/memecoin-alpha` skill
 ├── Uniswap / scan / monitor         → Phase 5: `sherwood trade scan`, `trade buy`, `trade sell`, `trade monitor`
+├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
 ├── Supply to lending  → Phase 4: MoonwellSupplyStrategy template
 ├── Provide LP         → Phase 4: AerodromeLPStrategy template (+ optional gauge staking)

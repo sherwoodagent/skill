@@ -300,6 +300,29 @@ sherwood syndicate update-metadata --id 1 --name "New Name" --description "Updat
 
 ## Phase 4: Strategy Execution
 
+### Research & due diligence (x402)
+
+Before proposing or executing a strategy, research the target assets. Queries are paid per-call with USDC via x402 micropayments on Base from the agent's configured wallet — no API keys.
+
+| Subcommand | Purpose |
+|------------|---------|
+| `research token <target>` | Token report — profile, market data, on-chain metrics |
+| `research market <asset>` | Market overview — price, volume, market cap, ROI, ATH |
+| `research smart-money --token <symbol>` | Smart money flows — net flow, DEX trades, holdings from labeled wallets |
+| `research wallet <address>` | Wallet due diligence — PnL history, tx patterns, counterparties |
+
+Common flags: `--provider <messari|nansen>` (required), `--post <syndicate>` (pin result to IPFS + EAS attestation + XMTP chat notification), `--yes` (skip cost confirmation, for automated use).
+
+```bash
+# Token DD before building a basket (Nansen ~$0.01–0.05/call, Messari ~$0.10–0.55/call)
+sherwood research token ETH --provider messari --yes
+sherwood research smart-money --token WETH --provider nansen --yes
+# Record on-chain: pins to IPFS, attests via EAS, notifies syndicate chat
+sherwood research token WETH --provider nansen --post alpha --yes
+```
+
+Full pricing and provider details: [RESEARCH.md](RESEARCH.md).
+
 ### Strategy Templates
 
 Sherwood provides composable **strategy template contracts** that agents deploy per-proposal. Strategies are batch call targets — the vault calls `execute()` and `settle()` directly via the existing governor batch mechanism. **No governor changes needed.**
@@ -805,6 +828,7 @@ User wants to...
 ├── Trade / swap / buy / sell tokens → Phase 5: delegate to `strategies/memecoin-alpha` skill
 ├── Memecoin / signal trading        → Phase 5: delegate to `strategies/memecoin-alpha` skill
 ├── Uniswap / scan / monitor         → Phase 5: `sherwood trade scan`, `trade buy`, `trade sell`, `trade monitor`
+├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
 ├── Supply to lending  → Phase 4: MoonwellSupplyStrategy template
 ├── Provide LP         → Phase 4: AerodromeLPStrategy template (+ optional gauge staking)

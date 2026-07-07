@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.7.8'
+  version: '0.7.9'
 ---
 
 # Sherwood
@@ -18,12 +18,12 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.65.1
+npm i -g @sherwoodagent/cli@0.65.2
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
 
-> **Version note.** The pinned `0.65.1` release predates the vault-owner agent-fee flow: on this version `proposal create` still **requires** `--performance-fee <bps>`, and `sherwood syndicate set-agent-fee` does not exist yet. The agent-fee behavior documented below ships in the next CLI release (currently on the `beta` branch of `sherwoodagent/sherwood`); this pin and note will be updated when it's published to npm.
+> **Version note.** The pinned `0.65.2` release predates the vault-owner agent-fee flow: on this version `proposal create` still **requires** `--performance-fee <bps>`, and `sherwood syndicate set-agent-fee` does not exist yet. The agent-fee behavior documented below ships in the next CLI release (currently on the `beta` branch of `sherwoodagent/sherwood`); this pin and note will be updated when it's published to npm.
 
 **Option B: HTTP API (no install, generic agents)**
 If you can't install Node packages — browser agent, Lambda runtime, MCP server in a restricted sandbox — hit the API directly. Every onchain action returns unsigned calldata that you sign and broadcast with whatever wallet you already control. The API never sees your private key.
@@ -119,6 +119,7 @@ Can't run `config set --private-key` because the key lives in a TEE / wallet API
   sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id <id> --asset USDC
   sherwood --calldata-only syndicate join --subdomain zerohumanfund
   sherwood --calldata-only proposal vote --id 1 --support for
+  sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x...  # see "Keyless strategy proposals"
   ```
 
   Commands that normally read your address from the key need it explicitly here:
@@ -345,6 +346,9 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 | **MoonwellSupplyStrategy** | `moonwell-supply` | Supply tokens to Moonwell lending market, earn yield |
 | **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking |
 | **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path) |
+| **WstETHMoonwellStrategy** | `wsteth-moonwell` | WETH → wstETH → Moonwell — stack Lido + lending yield |
+| **MamoYieldStrategy** | `mamo-yield` | Deposit into Mamo for optimized yield across Moonwell + Morpho vaults |
+| **PortfolioStrategy** | `portfolio` | Weighted basket of tokens (crypto or stock tokens) with rebalancing |
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls. The vault has no allowlist for strategy calls — it trusts the governor.
 
@@ -379,6 +383,43 @@ sherwood strategy propose venice-inference \
 - **Allowlisting:** The vault must allowlist the strategy clone address and any external protocol addresses as batch targets. The CLI handles this inline during `sherwood strategy propose` — see each strategy's skill and `ADDRESSES.md` for required targets.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
+
+#### Keyless strategy proposals (external signer / calldata-only)
+
+When the proposer key lives in a TEE or wallet API (MetaMask server wallet, Privy, …) the whole clone + propose flow works without a configured private key — one command (CLI ≥ 0.65.2):
+
+```bash
+sherwood --calldata-only strategy propose portfolio \
+  --vault 0xVAULT --proposer 0xAGENT \
+  --amount 1000 --asset USDC \
+  --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
+  --name "ETH Supercycle Basket" --description "AAVE/WETH/cbBTC basket, 7d" \
+  --performance-fee 1000 --duration 7d
+```
+
+Emits one JSON payload containing two transactions plus the predicted `clone` and `salt`:
+
+1. `StrategyFactory.cloneAndInitDeterministic` — deploys the strategy clone at a CREATE2 address pinned by (factory, template, vault, salt)
+2. `governor.propose(...)` — references that clone; the execute/settle batch calls are baked in
+
+Broadcast **sequentially from the `--proposer` wallet**: send tx 1, wait for it to confirm, then send tx 2. If tx 1 reverts, do not send tx 2. The CLI preflights with read-only calls first: `--proposer` must be a registered agent on the vault (`syndicate approve` it first), the vault must not be paused, and the vault balance must cover `--amount`.
+
+**Metadata** is pinned to IPFS automatically via the hosted uploader (`https://www.sherwood.sh/api/ipfs/upload`, unauthenticated — no signer involved) when `--metadata-uri` is omitted; `--name` feeds the pinned JSON. Pass `--metadata-uri ipfs://…` to use a pre-pinned document instead.
+
+Two-step variant — when a local signing wallet handles the clone and only the propose comes from the external signer:
+
+```bash
+# 1. Local wallet clones + inits, writes the call JSONs, prints the clone address
+sherwood strategy propose portfolio --vault 0xVAULT \
+  --amount 1000 --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
+  --write-calls ./calls
+
+# 2. Emit the propose calldata for the external signer (metadata auto-pins here too)
+sherwood --calldata-only proposal create --vault 0xVAULT \
+  --strategy 0xCLONE --name "ETH Supercycle Basket" --description "..." \
+  --performance-fee 1000 --duration 7d \
+  --execute-calls ./calls/execute.json --settle-calls ./calls/settle.json
+```
 
 #### MoonwellSupplyStrategy
 
@@ -429,6 +470,22 @@ sherwood strategy propose venice-inference \
 ```
 
 > For the full Venice inference workflow (provision API key, run inference, settle), delegate to the **`strategies/venice-inference` skill**.
+
+#### PortfolioStrategy
+
+Swaps the vault asset into a weighted basket of tokens via Uniswap V3 and unwinds back to the asset at settle. Swap routes are auto-detected per token (direct pool or via WETH).
+
+- **Execute:** pulls asset → swaps into each basket token at its target weight
+- **Settle:** swaps the basket back → pushes asset to vault
+- **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
+- **Flags:** `--tokens` takes registry symbols (USDC, WETH, cbBTC, AERO, AAVE, …) or raw `0x` addresses in any casing (normalized since CLI 0.65.2); `--weights` are bps and must sum to 10000
+
+```bash
+sherwood strategy propose portfolio \
+  --vault 0x... --amount 1000 --asset USDC \
+  --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
+  --write-calls ./portfolio-calls
+```
 
 #### Writing Custom Strategies
 

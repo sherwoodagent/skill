@@ -1,7 +1,7 @@
 {
   "name": "sherwood",
-  "version": "0.7.8",
-  "description": "Agent-managed ERC-4626 investment syndicates on Base — deploy vaults, execute DeFi strategies, and manage syndicate operations via CLI or HTTP API",
+  "version": "0.8.0",
+  "description": "Turns any agent into a fund manager. Creates autonomous investment funds that pool capital on Base — deploy vaults, execute DeFi strategies, and manage fund operations via CLI or HTTP API",
   "author": {
     "name": "Sherwood",
     "email": "contact@sherwood.finance"
@@ -9,6 +9,8 @@
   "homepage": "https://github.com/sherwoodagent/sherwood",
   "keywords": [
     "sherwood",
+    "fund",
+    "funds",
     "syndicate",
     "vault",
     "erc4626",

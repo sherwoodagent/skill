@@ -26,19 +26,50 @@ These are also available in `cli/src/lib/addresses.ts` (resolved at runtime base
 | VVV | `0xacfe6019ed1a7dc6f7b508c02d1b04ec88cc21bf` |
 | VVV Staking (sVVV) | `0x321b7ff75154472b18edb199033ff4d116f340ff` |
 
-## Robinhood L2 Testnet
+## Robinhood L2 Testnet (chain 46630)
+
+V2 redeploy — full stack: core contracts + guardian layer (registry + sWOOD) +
+live-NAV (PriceRouter + Uniswap-compatible adapter backed by Synthra) +
+StrategyFactory keyless deploy. Source of truth: `contracts/chains/46630.json`.
 
 | Contract | Address |
 |----------|---------|
-| SyndicateFactory | `0x6d026e2f5Ff0C34A01690EC46Cb601B8fF391985` |
-| SyndicateGovernor | `0xd882056ba6b0aEd8908c541884B327121E2f2C9C` |
-| BatchExecutorLib | `0x1493f5a7E5d82e1e56c34e2Ba300f56F97186017` |
-| WETH | `0x7943e237c7F95DA44E0301572D358911207852Fa` |
-| PortfolioStrategy | `0xAe981882923E0C76A7F10E7cAa3782023c0abd9B` |
-| SynthraSwapAdapter | `0x39a37537E179919cb2dDDb1D6920dD11bAf3aDF0` |
-| SynthraDirectAdapter | `0xdae81cDCfcB14c56fCeB788A147Fcd6CbEdfEeca` |
+| SyndicateFactory | `0x81F785E31B9f31BC437978B5E7dEe8006F43dd8b` |
+| SyndicateGovernor | `0xdAB22196ac2c6C5C33445f3125C28aF98E0cA2d0` |
+| SyndicateVaultImpl | `0xB21b3af1E9f99222d136517363d0d185AF2449cd` |
+| BatchExecutorLib | `0xB869dF634679C6a36D6C82D47D1793486F4cba3a` |
+| GuardianRegistry | `0x2fe810666E673Fbd87cA00f95EBf82a19A5b543F` |
+| StakedWood (sWOOD) | `0x320911DEF7Ec4c0C435B9cCEE3fAfE9EEad171C9` |
+| WOOD token (fixture) | `0x4435Aae199907f60588902Bcd7c4363a13Bb2951` |
+| PriceRouter | `0x7Cc36bcc6a1f0F2607BacC8692fe2aD52eB14fd7` |
+| PortfolioStrategy | `0x3a6121371D51B59De3A14Bc401EfBd3fb726E109` |
+| StrategyFactory | `0xBBb2884dEAD8235d75a0405ecC3c9F5713cBE904` |
+| UniswapSwapAdapter (Synthra-backed) | `0x2e8aB422Db9127F1a70d8C38A15903f22B51DA97` |
 | Synthra Router | `0x3Ce954107b1A675826B33bF23060Dd655e3758fE` |
+| Synthra QuoterV2 shim | `0xC703139b5C7EA26D906fcd6d335798d2EC9A1262` |
 | Chainlink Verifier Proxy | `0x72790f9eB82db492a7DDb6d2af22A270Dcc3Db64` |
+
+## Robinhood Chain Mainnet (chain 4663)
+
+Sherwood protocol contracts are **pending deploy** — only externals are wired.
+USDG is the canonical stable (no USDC on this chain). Chainlink **push feeds**
+(AggregatorV3, 8 decimals) price the portfolio.
+
+| Contract | Address |
+|----------|---------|
+| USDG (canonical stable, 6 decimals) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| WETH | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
+| Uniswap V3 Factory | `0x1f7d7550b1b028f7571e69a784071f0205fd2efa` |
+| Uniswap V3 SwapRouter02 | `0xcaf681a66d020601342297493863e78c959e5cb2` |
+| Uniswap V3 QuoterV2 | `0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7` |
+| Uniswap V4 PoolManager | `0x8366a39cc670b4001a1121b8f6a443a643e40951` |
+| Uniswap V4 Quoter | `0x8dc178efb8111bb0973dd9d722ebeff267c98f94` |
+| Chainlink ETH/USD feed | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` |
+| Chainlink USDG/USD feed | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` |
+
+Tokenized stocks (AAPL/TSLA/NVDA/AMD have verified default v4 routes; others need
+`--swap-routes`) and their Chainlink push feeds are wired in
+`cli/src/lib/addresses.ts` (`ROBINHOOD_TOKENS` / `ROBINHOOD_CHAINLINK`).
 
 ## HyperEVM Mainnet
 

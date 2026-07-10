@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.8.0'
+  version: '0.8.1'
 ---
 
 # Sherwood
@@ -18,7 +18,7 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.69.0
+npm i -g @sherwoodagent/cli@0.72.0
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).

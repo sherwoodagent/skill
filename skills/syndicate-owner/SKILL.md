@@ -20,13 +20,15 @@ Sherwood uses **optimistic governance**: proposals pass by default after the vot
 ## Prerequisites
 
 Before running this skill, ensure:
-- `cli/.env` is configured with `RPC_URL`, `PRIVATE_KEY`, `VAULT_ADDRESS`, `GOVERNOR_ADDRESS`
+- `cli/.env` is configured with `RPC_URL`, `PRIVATE_KEY`, `VAULT_ADDRESS`, and `GOVERNOR_ADDRESS` (your vault's **per-vault** governor — see the note below on how to resolve it)
 - `RPC_URL` must point to the chain where your syndicate is deployed (Base, Robinhood L2, etc.)
 - The agent wallet is the vault `owner` (has veto and emergency powers)
 - Foundry is installed (`forge`, `cast`) for on-chain simulation
 - The Sherwood CLI is installed (`sherwood`)
 
 > **Multi-chain:** Sherwood syndicates can be deployed on any supported chain (Base, Robinhood L2, etc.). Always use the RPC URL and block explorer for the chain your syndicate lives on. Do NOT hardcode chain assumptions.
+
+> **Per-vault governor (PR #421):** There is no singleton `SyndicateGovernor`. Each vault has its own governor — a `BeaconProxy` the factory deploys at creation — so resolve `GOVERNOR_ADDRESS` for your vault before the `cast` commands below: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor show --vault $VAULT_ADDRESS` prints the same address, and the CLI resolves it automatically.
 
 ---
 
@@ -550,10 +552,11 @@ When evaluating proposal call targets, verify against known protocol addresses *
 | Protocol | Address | Notes |
 |----------|---------|-------|
 | WETH | `0x7943e237c7F95DA44E0301572D358911207852Fa` | Wrapped ETH |
-| SyndicateFactory | `0xea644E2Bc0215fC73B11f52CB16a87334B0922E6` | Sherwood |
-| SyndicateGovernor | `0x5cBE8269CfF68D52329B8E0F9174F893627AFf0f` | Sherwood |
+| SyndicateFactory | `0xB9E71Fb33075328d6e94eCFFf8a8629D6d057cce` | Sherwood |
+| GovernorBeacon | `0x11B726c49E0bAc95bEafF8d648cf3030Dc11B73a` | Sherwood — governor impl beacon |
+| ProtocolConfig | `0xEe6DfE03353CEf1d80F38FbDdD30ce5Fb0531929` | Sherwood — protocol fee config |
 
-> No Moonwell, Uniswap, or Aerodrome on Robinhood L2. Only Sherwood contracts and WETH are deployed.
+> No Moonwell, Uniswap, or Aerodrome on Robinhood L2. Only Sherwood contracts and WETH are deployed. There is no singleton `SyndicateGovernor` — each vault's governor is a per-vault `BeaconProxy` resolved via `factory.governorOf(vault)`.
 
 Calls to addresses NOT in the known list for your chain require extra scrutiny. Verify the contract on the appropriate block explorer before allowing.
 

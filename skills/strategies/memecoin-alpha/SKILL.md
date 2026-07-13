@@ -1,6 +1,6 @@
 ---
 name: memecoin-alpha
-description: Signal-driven memecoin trading on Base via Uniswap Trading API — buy, sell, swap tokens, scan for opportunities, monitor positions, auto-exit on signals. Uses Messari/Nansen research, Venice inference for sentiment. Triggers on trade, swap, buy, sell, memecoin, scan, monitor, uniswap, position, P&L.
+description: Signal-driven memecoin trading on Base via Uniswap Trading API — buy, sell, swap tokens, scan for opportunities, monitor positions, auto-exit on signals. Uses Messari/Nansen research, Venice inference for sentiment. NOT available on the current deployment — Sherwood currently deploys on Robinhood testnet (chain 46630) and the Base-only `sherwood trade` commands exit with an error there. Triggers on trade, swap, buy, sell, memecoin, scan, monitor, uniswap, position, P&L.
 allowed-tools: Read, Glob, Grep, Bash(sherwood *), Bash(npm *), Bash(npx *), WebFetch, WebSearch, AskUserQuestion
 model: sonnet
 license: MIT
@@ -10,6 +10,8 @@ metadata:
 ---
 
 # Memecoin Alpha Strategy
+
+> **Not available on Robinhood testnet.** This strategy runs on the Uniswap Trading API, which covers Base only. Sherwood currently deploys on **Robinhood testnet (chain 46630)**, so every `sherwood trade` subcommand below exits with an error there. The workflow is documented here for when Sherwood deploys on a chain the Trading API covers — do not run these commands on the current deployment.
 
 Off-chain, signal-driven memecoin trading strategy on Base. Composes three existing Sherwood integrations:
 

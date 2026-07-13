@@ -1,6 +1,6 @@
 ---
 name: sherwood
-description: Turns any agent into a fund manager. Creates autonomous investment syndicates that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. Triggers on syndicate creation, vault management, agent registration, strategy execution, governance proposals, voting, settlement, depositor approvals, allowance disbursements, Venice funding, token trading (buy/sell/swap via Uniswap), memecoin signal scanning, position monitoring, and general Sherwood CLI operations.
+description: Turns any agent into a fund manager. Creates autonomous investment syndicates that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. Triggers on syndicate creation, vault management, agent registration, strategy execution, governance proposals, voting, settlement, depositor approvals, allowance disbursements, Venice funding, token research, and general Sherwood CLI operations.
 allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:*), Bash(curl:*), Bash(jq:*), Bash(cat:*), Bash(sherwood:*), Bash(which:*), WebFetch, WebSearch, AskUserQuestion
 license: MIT
 metadata:
@@ -85,7 +85,6 @@ All CLI commands below use `sherwood` as shorthand. Sherwood currently deploys o
 4. Govern      →  proposal create → vote → execute → settle/cancel
                   governor info, governor set-* (owner only)
 5. Operate     →  execute strategies, disburse allowances, fund Venice
-                  trade memecoins (scan → buy → monitor → sell via Uniswap)
 6. Monitor     →  vault info, balance, chat
 ```
 
@@ -547,20 +546,11 @@ sherwood venice provision  # self-provision API key (requires sVVV)
 sherwood venice status     # check sVVV balances + API key
 ```
 
-### Trade memecoins (Uniswap Trading API)
+### Trade memecoins (not available on Robinhood testnet)
 
-Signal-driven memecoin trading on Base. Uses Nansen smart money, Messari fundamentals, and Venice sentiment (X/Twitter via web search) for entries/exits. Requires a Uniswap API key from [developers.uniswap.org](https://developers.uniswap.org/).
+The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood currently deploys on **Robinhood testnet (chain 46630)**, so every `trade` subcommand exits with an error there — do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
 
-```bash
-sherwood config set --uniswap-api-key <key>   # one-time setup
-sherwood trade scan                             # signal analysis on known memecoins
-sherwood trade buy --token DEGEN --amount 50    # buy via Uniswap Trading API
-sherwood trade positions                        # view P&L
-sherwood trade monitor --interval 300           # auto-exit on stop loss / signal flip
-sherwood trade sell --token DEGEN               # manual sell
-```
-
-See the `strategies/memecoin-alpha` skill for the full workflow, exit strategy configuration, and cost breakdown.
+For onchain swaps on the current deployment, use the **PortfolioStrategy** template via the proposal flow — routing goes through Synthra (Uniswap-V3-compatible). Run `sherwood providers` to see what the CLI can actually execute: `synthra-swap` (trading: `swap.quote`, `swap.route-detect`, `swap.calldata` on Robinhood testnet) plus the `messari` and `nansen` research providers (chain-agnostic).
 
 ### LP operations
 
@@ -764,7 +754,7 @@ Each validates against hardcoded bounds before submitting.
 | [llms-full.txt](https://docs.sherwood.sh/llms-full.txt) | Complete docs in a single LLM-friendly file |
 | [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood testnet, chain 46630) and per-strategy allowlist targets |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
-| [RESEARCH.md](RESEARCH.md) | Research providers, x402 pricing, signal-based trading |
+| [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
 | `cli/src/lib/addresses.ts` | Canonical address source (resolved at runtime by network) |
 | `cli/src/commands/` | Command implementations for each subcommand group |
 
@@ -873,9 +863,9 @@ User wants to...
 ├── Review requests    → Phase 3: syndicate requests → syndicate approve/reject
 ├── Configure vault    → Phase 3: register agents → approve depositors
 ├── Trade (levered)    → Phase 4: delegate to `levered-swap` skill
-├── Trade / swap / buy / sell tokens → Phase 5: delegate to `strategies/memecoin-alpha` skill
-├── Memecoin / signal trading        → Phase 5: delegate to `strategies/memecoin-alpha` skill
-├── Uniswap / scan / monitor         → Phase 5: `sherwood trade scan`, `trade buy`, `trade sell`, `trade monitor`
+├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Synthra routing)
+├── Memecoin / signal trading        → not available on Robinhood testnet — `sherwood trade` requires the
+│                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
 ├── Supply to lending  → Phase 4: MoonwellSupplyStrategy template

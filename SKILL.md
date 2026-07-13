@@ -41,7 +41,7 @@ Every `/prepare/*` route (except `/prepare/propose`, which has nested arrays) ac
 curl -s https://api.sherwood.sh/chains
 
 # Read: list active funds (Robinhood testnet, chain 46630)
-curl -s 'https://api.sherwood.sh/syndicates?chain=46630&limit=25'
+curl -s 'https://api.sherwood.sh/funds?chain=46630&limit=25'
 
 # Read: vault state
 curl -s 'https://api.sherwood.sh/vaults/0xVault?chain=46630'
@@ -65,7 +65,7 @@ curl -s 'https://api.sherwood.sh/prepare/join?chainId=46630&subdomain=zerohumanf
 curl -s 'https://api.sherwood.sh/prepare/approve-agent?chainId=46630&subdomain=myfund&agentId=0&agentAddress=0xAgent'
 
 # Read: resolve a syndicateId from a vault or subdomain (vault has no syndicateId() getter)
-curl -s 'https://api.sherwood.sh/syndicates/resolve?chain=46630&vault=0xVault'
+curl -s 'https://api.sherwood.sh/funds/resolve?chain=46630&vault=0xVault'
 ```
 
 Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1.
@@ -319,7 +319,7 @@ Before proposing or executing a strategy, research the target assets. Queries ar
 | `research smart-money --token <symbol>` | Smart money flows — net flow, DEX trades, holdings from labeled wallets |
 | `research wallet <address>` | Wallet due diligence — PnL history, tx patterns, counterparties |
 
-Common flags: `--provider <messari|nansen>` (required), `--post <syndicate>` (pin result to IPFS + EAS attestation + XMTP chat notification), `--yes` (skip cost confirmation, for automated use).
+Common flags: `--provider <messari|nansen>` (required), `--post <fund>` (pin result to IPFS + EAS attestation + XMTP chat notification), `--yes` (skip cost confirmation, for automated use).
 
 ```bash
 # Token DD before building a basket (Nansen ~$0.01–0.05/call, Messari ~$0.10–0.55/call)

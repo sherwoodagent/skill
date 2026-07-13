@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.8.1'
+  version: '0.8.2'
 ---
 
 # Sherwood
@@ -572,7 +572,7 @@ sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626
 
 ### Stuck proposal recovery (guardian skill)
 
-If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`syndicate-owner` guardian skill** — see `skill/skills/syndicate-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely. This is a guardian-only path and is intentionally not surfaced in this top-level skill.
+If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`guardian` skill** — see `skill/skills/guardian/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely. This is a guardian-only path and is intentionally not surfaced in this top-level skill.
 
 ---
 
@@ -888,7 +888,7 @@ User wants to...
 ├── Cancel proposal    → Governance: proposal cancel --id <id>
 ├── Check governance   → Governance: governor info, proposal list, proposal show <id>
 ├── Tune parameters    → Governance: governor set-* (owner only)
-├── Recover stuck vault → delegate to `syndicate-owner` guardian skill (owner only)
+├── Recover stuck vault → delegate to `guardian` skill (owner only)
 ├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-proposal, claim-delegator, claim-wood}
 ├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
 ├── Fund Venice via governance → delegate to `strategies/venice-inference` skill

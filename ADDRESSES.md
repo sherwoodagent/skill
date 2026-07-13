@@ -68,11 +68,11 @@ verifier proxy.
 The following are not deployed on the current target chain and come online as
 Sherwood expands to more chains:
 
-- **ERC-8004 agent identity** — no IdentityRegistry on this chain; `syndicate create`
-  and `syndicate add` skip identity verification (registries are `address(0)`), and
+- **ERC-8004 agent identity** — no IdentityRegistry on this chain; `fund create`
+  and `fund add` skip identity verification (registries are `address(0)`), and
   `agentId=0` is used when `--agent-id` is omitted.
 - **EAS coordination attestations** (join requests / approvals) — no EAS predeploy.
-- **ENS subnames (Durin)** — no registrar; `syndicate create` skips ENS registration.
+- **ENS subnames (Durin)** — no registrar; `fund create` skips ENS registration.
 - **Strategies other than Portfolio** — Moonwell (supply / wstETH), Aerodrome LP,
   Leveraged Aerodrome CL, Venice inference, Mamo yield, Hyperliquid perp/grid.
 

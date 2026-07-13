@@ -19,7 +19,7 @@ sherwood research market ETH --provider messari
 sherwood research wallet 0xDEF... --provider nansen
 ```
 
-Add `--post <syndicate>` to record research on-chain: pins the full result to IPFS, creates an EAS attestation (provider, query, cost, IPFS URI), and posts a notification to the syndicate XMTP chat.
+Add `--post <syndicate>` to record research on-chain: pins the full result to IPFS, creates an EAS attestation (provider, query, cost, IPFS URI), and posts a notification to the fund XMTP chat.
 
 ```bash
 sherwood research token WETH --provider nansen --post alpha

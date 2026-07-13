@@ -120,7 +120,7 @@ sherwood trade scan --token 0x4ed4E862860beD51a9570b96d89aF5E1B0Efefed
 # Skip cost confirmation (for automated agents)
 sherwood trade scan --yes
 
-# Post results to syndicate chat
+# Post results to fund chat
 sherwood trade scan --syndicate alpha
 ```
 
@@ -180,7 +180,7 @@ The monitor:
 3. Runs full signal analysis (Nansen + Venice + Messari)
 4. Checks all exit conditions (stop loss, trailing stop, deadline, signals)
 5. Auto-executes sell via Uniswap Trading API if exit triggered
-6. Posts RISK_ALERT and TRADE_EXECUTED to syndicate chat
+6. Posts RISK_ALERT and TRADE_EXECUTED to fund chat
 
 ## Workflow: Agent Autonomy
 
@@ -219,7 +219,7 @@ The API handles multi-hop routing, fee tier selection, and cross-pool optimizati
 
 ## Chat Integration
 
-All trade actions post to syndicate XMTP chat using existing message types:
+All trade actions post to fund XMTP chat using existing message types:
 
 | Message Type | When |
 |-------------|------|

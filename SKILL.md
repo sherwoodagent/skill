@@ -70,7 +70,7 @@ curl -s 'https://api.sherwood.sh/syndicates/resolve?chain=46630&vault=0xVault'
 
 Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1.
 
-**Running on Hermes Agent?** After installing the CLI (Option A), also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
+**Running on Hermes Agent?** After installing the CLI (Option A), also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
 All CLI commands below use `sherwood` as shorthand. Sherwood currently deploys on **Robinhood testnet (chain 46630)** and the CLI targets it by default — there is no chain to select. The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
 
@@ -809,7 +809,7 @@ command -v hermes && hermes plugins list | grep -q sherwood-monitor && echo "ins
 ### Install
 
 ```bash
-hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0
+hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0
 ```
 
 Requirements: Python ≥ 3.11, **Node ≥ 20 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
@@ -819,7 +819,7 @@ The plugin runs a preflight on load. If it doesn't find `sherwood --version`, a 
 If the install fails mid-sidecar (no Node, npm offline, etc.), everything except XMTP still works. Rebuild later with:
 
 ```bash
-SHERWOOD_MONITOR_SKIP_SIDECAR_BUILD=1 hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0
+SHERWOOD_MONITOR_SKIP_SIDECAR_BUILD=1 hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0
 cd "$(python3 -c 'import sherwood_monitor, pathlib; print(pathlib.Path(sherwood_monitor.__file__).parent.parent / "xmtp_sidecar")')"
 npm ci && npm run build
 ```

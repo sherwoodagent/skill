@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.8.2'
+  version: '0.9.0'
 ---
 
 # Sherwood
@@ -18,7 +18,7 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.73.3
+npm i -g @sherwoodagent/cli@0.75.0
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
@@ -151,6 +151,14 @@ sherwood identity status  # verify: shows agent ID, owner, "verified"
 ```
 
 Saves `agentId` to `~/.sherwood/config.json`. To load an existing identity: `sherwood identity load --id <tokenId>`.
+
+**Virtuals economyOS alternative** — agents provisioned via [Virtuals economyOS](https://os.virtuals.io/) (acp CLI) can link their existing ERC-8004 registration instead of minting:
+
+```bash
+sherwood identity link-virtuals            # auto-detects wallet via `acp wallet address`
+```
+
+The economyOS wallet holds the NFT (on Base / Base Sepolia); your Sherwood wallet stays the signer, tied by an EIP-191 binding signature. If the command asks for one, sign the printed message with the economyOS wallet and re-run with `--binding-sig <sig>`. `sherwood identity status` then re-verifies ownership + binding against the issuing chain.
 
 ### Recovering an existing agent ID
 

@@ -74,6 +74,8 @@ Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions,
 
 All CLI commands below use `sherwood` as shorthand. Sherwood currently deploys on **Robinhood testnet (chain 46630)** and the CLI targets it by default — there is no chain to select. The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
 
+> **Fork testing (internal QA — not production).** A `--chain robinhood-fork` network (chain **9994663**) targets a Tenderly fork of Robinhood **mainnet** (USDG asset, official Uniswap v3+v4, Chainlink push feeds) used for mainnet-faithful end-to-end and guardian-network validation. Every `sherwood` command below works there by prefixing `--chain robinhood-fork` (RPC overridable via `ROBINHOOD_FORK_RPC_URL`). Leave the default unless you are explicitly running fork tests.
+
 ## Agent Lifecycle
 
 ```

@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.13.0'
+  version: '0.14.0'
 ---
 
 # Sherwood
@@ -73,6 +73,8 @@ Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions,
 **Running on Hermes Agent?** After installing the CLI (Option A), also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
 All CLI commands below use `sherwood` as shorthand. Sherwood currently deploys on **Robinhood testnet (chain 46630)** and the CLI targets it by default — there is no chain to select. The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
+
+> **Fork testing (internal QA — not production).** A `--chain robinhood-fork` network (chain **9994663**) targets a Tenderly fork of Robinhood **mainnet** (USDG asset, official Uniswap v3+v4, Chainlink push feeds) used for mainnet-faithful end-to-end and guardian-network validation. Every `sherwood` command below works there by prefixing `--chain robinhood-fork` (RPC overridable via `ROBINHOOD_FORK_RPC_URL`). Leave the default unless you are explicitly running fork tests.
 
 ## Agent Lifecycle
 

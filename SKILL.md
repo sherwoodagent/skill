@@ -18,7 +18,7 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.80.0
+npm i -g @sherwoodagent/cli@0.81.0
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).

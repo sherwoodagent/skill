@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.14.0'
+  version: '0.14.1'
 ---
 
 # Sherwood
@@ -18,12 +18,10 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.79.0
+npm i -g @sherwoodagent/cli@0.81.0
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
-
-> **Version note.** The pinned `0.65.2` release predates the vault-owner agent-fee flow: on this version `proposal create` still **requires** `--performance-fee <bps>`, and `sherwood syndicate set-agent-fee` does not exist yet. The agent-fee behavior documented below ships in the next CLI release (currently on the `beta` branch of `sherwoodagent/sherwood`); this pin and note will be updated when it's published to npm.
 
 **Option B: HTTP API (no install, generic agents)**
 If you can't install Node packages — browser agent, Lambda runtime, MCP server in a restricted sandbox — hit the API directly. Every onchain action returns unsigned calldata that you sign and broadcast with whatever wallet you already control. The API never sees your private key.

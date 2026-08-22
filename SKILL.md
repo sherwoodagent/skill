@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.14.1'
+  version: '0.15.0'
 ---
 
 # Sherwood
@@ -70,7 +70,7 @@ Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions,
 
 **Running on Hermes Agent?** After installing the CLI (Option A), also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
-All CLI commands below use `sherwood` as shorthand. Sherwood currently deploys on **Robinhood testnet (chain 46630)** and the CLI targets it by default — there is no chain to select. The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
+All CLI commands below use `sherwood` as shorthand. Sherwood's production deployment is **Robinhood testnet (chain 46630)** and the CLI targets it by default, so no chain flag is needed for normal use — but `--chain` does exist, and `robinhood-fork` (chain 9994663) is a real target (see the fork-testing note below). The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
 
 > **Fork testing (internal QA — not production).** A `--chain robinhood-fork` network (chain **9994663**) targets a Tenderly fork of Robinhood **mainnet** (USDG asset, official Uniswap v3+v4, Chainlink push feeds) used for mainnet-faithful end-to-end and guardian-network validation. Every `sherwood` command below works there by prefixing `--chain robinhood-fork` (RPC overridable via `ROBINHOOD_FORK_RPC_URL`). Leave the default unless you are explicitly running fork tests.
 
@@ -219,6 +219,21 @@ This creates an EAS attestation that the syndicate creator can review. The `join
 
 ### Create new syndicate
 
+#### Prerequisite: bond the owner stake
+
+**`syndicate create` reverts `PreparedStakeNotFound()` until the creator has a
+prepared owner stake.** The factory requires the creator to bond WOOD before it
+will deploy a vault — `minOwnerStake` is 10,000 WOOD (read the live value from
+`guardianRegistry.minOwnerStake()`).
+
+```bash
+sherwood guardian prepare-owner-stake 10000
+```
+
+This approves WOOD and calls `prepareOwnerStake` in one step; run it once per
+creator wallet, before `syndicate create`. If you see `PreparedStakeNotFound()`,
+this is the missing step — nothing in the revert names it.
+
 `syndicate create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on Robinhood testnet, which has no registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
 
 #### Confirm before running
@@ -280,7 +295,7 @@ sherwood syndicate add --agent-id 42 --wallet 0xAgentWallet
 
 ### Initialize chat group
 
-The XMTP chat group is created automatically during `syndicate create` (with `--public-chat`). If you need to create or recreate it separately:
+`syndicate create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a create.
 
 ```bash
 # Create XMTP group + write ENS record (creator only)
@@ -295,12 +310,14 @@ sherwood chat <subdomain> init --force --public
 
 The `--public` flag adds the dashboard spectator so the web app's "Agent Communication" panel can stream messages. Without it, the panel shows "OFFLINE".
 
+> **`init --public` is a no-op once the group exists.** It short-circuits with "XMTP group already exists" and never adds the spectator — and since `syndicate create` always made the group, that is the normal case. Only `init --force --public` actually seats the spectator, and **`--force` recreates the group under a NEW id**, orphaning the old one and its history. Verify afterwards with `sherwood chat <subdomain> members` (the spectator's inbox starts `744cfb`), or against the service itself: `curl -s https://spectator.sherwood.sh/groups`.
+
 ### Post-creation checklist
 
 After creating a syndicate, ensure all agents are set up:
 
 1. **Register agent on vault:** `sherwood syndicate add --wallet 0xAgent`
-2. **Init chat group (if not using --public-chat):** `sherwood chat <subdomain> init --public`
+2. **Make the chat public (if not using --public-chat):** `sherwood chat <subdomain> init --force --public` — the group already exists, so `--force` is required to seat the spectator
 3. **Add agent to chat:** `sherwood chat <subdomain> add 0xAgent`
 4. **Verify setup:** `sherwood syndicate info <subdomain>` — shows vault stats, XMTP group ID, and more
 
@@ -368,6 +385,8 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 | **PortfolioStrategy** | `portfolio` | Weighted basket of tokens (crypto or stock tokens) with rebalancing |
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls. The vault has no allowlist for strategy calls — it trusts the governor.
+
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` only `portfolio` resolves. Note also that a chain can deploy a template the CLI has no builder for (the fork's MorphoSupply and ConcentratedLiquidity templates are deployed but have no CLI key, so they do not appear in `strategy list` at all and cannot be cloned through the CLI).
 
 #### Using Strategy Templates via CLI
 
@@ -612,7 +631,7 @@ To dig deeper into a specific proposal, use `sherwood proposal show <id>` for fu
 
 ### Chat (XMTP)
 
-Each syndicate has an encrypted group chat. The group is created automatically during `syndicate create` when using `--public-chat`. If not, the creator must initialize it manually with `sherwood chat <subdomain> init --public`.
+Each syndicate has an encrypted group chat, created automatically by `syndicate create` whether or not `--public-chat` was passed. To turn an existing group public you need `sherwood chat <subdomain> init --force --public` — plain `init --public` is a no-op on a group that already exists (see Phase 3).
 
 ```bash
 sherwood chat <subdomain>                    # stream messages (also registers XMTP identity on first run)
@@ -732,7 +751,7 @@ Anyone can call. Verifies proposal is Approved, within execution window, no othe
 sherwood proposal settle --id <proposalId> [--calls <path-to-json>]```
 
 Auto-routes to the correct settlement path:
-- **Proposer:** `settleProposal` — proposer can call anytime after execution
+- **Proposer:** `settleProposal` — the proposer may settle early, but not immediately: `MIN_STRATEGY_DURATION_BEFORE_SELF_SETTLE` is a hard **1-hour** floor from `executedAt`. Settling before it reverts `StrategyDurationNotElapsed()`.
 - **Duration elapsed:** `settleProposal` — permissionless, anyone can call after strategy duration
 - **Vault owner emergency:** `emergencySettle` — tries pre-committed calls first, falls back to custom `--calls`
 
@@ -755,9 +774,11 @@ Proposer can cancel if Pending/Approved. Vault owner can emergency cancel at any
 ### Governor info
 
 ```bash
-sherwood governor info```
+sherwood governor info --vault 0x...```
 
-Displays current parameters: voting period, execution window, veto threshold, max performance fee, max strategy duration, cooldown period, protocol fee, and registered vaults.
+`--vault` is **required** — governors are per-vault, so there is no global one to query.
+
+Displays: vault, governor address, voting period, execution window, veto threshold, max performance fee, max strategy duration, and cooldown period.
 
 ### Governor parameter setters (owner only)
 
@@ -901,6 +922,7 @@ User wants to...
 ├── Check governance   → Governance: governor info, proposal list, proposal show <id>
 ├── Tune parameters    → Governance: governor set-* (owner only)
 ├── Recover stuck vault → delegate to `guardian` skill (owner only)
+├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>
 ├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-proposal, claim-delegator, claim-wood}
 ├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
 ├── Fund Venice via governance → delegate to `strategies/venice-inference` skill

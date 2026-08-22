@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.14.1'
+  version: '0.14.2'
 ---
 
 # Sherwood
@@ -218,6 +218,21 @@ sherwood syndicate join --subdomain <name> --message "My strategy focus and trac
 This creates an EAS attestation that the syndicate creator can review. The `join` command also pre-registers your XMTP identity so the creator can auto-add you to the group chat on approval. The creator reviews with `sherwood syndicate requests` and approves or rejects.
 
 ### Create new syndicate
+
+#### Prerequisite: bond the owner stake
+
+**`syndicate create` reverts `PreparedStakeNotFound()` until the creator has a
+prepared owner stake.** The factory requires the creator to bond WOOD before it
+will deploy a vault — `minOwnerStake` is 10,000 WOOD (read the live value from
+`guardianRegistry.minOwnerStake()`).
+
+```bash
+sherwood guardian prepare-owner-stake 10000
+```
+
+This approves WOOD and calls `prepareOwnerStake` in one step; run it once per
+creator wallet, before `syndicate create`. If you see `PreparedStakeNotFound()`,
+this is the missing step — nothing in the revert names it.
 
 `syndicate create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on Robinhood testnet, which has no registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
 
@@ -901,6 +916,7 @@ User wants to...
 ├── Check governance   → Governance: governor info, proposal list, proposal show <id>
 ├── Tune parameters    → Governance: governor set-* (owner only)
 ├── Recover stuck vault → delegate to `guardian` skill (owner only)
+├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>
 ├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-proposal, claim-delegator, claim-wood}
 ├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
 ├── Fund Venice via governance → delegate to `strategies/venice-inference` skill

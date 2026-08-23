@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.15.1'
+  version: '0.16.0'
 ---
 
 # Sherwood
@@ -18,7 +18,7 @@ Before first use, check if the `sherwood` command exists. If not:
 
 **Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.82.0
+npm i -g @sherwoodagent/cli@0.83.0
 ```
 
 Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
@@ -70,9 +70,9 @@ Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions,
 
 **Running on Hermes Agent?** After installing the CLI (Option A), also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
-All CLI commands below use `sherwood` as shorthand. Sherwood's production deployment is **Robinhood testnet (chain 46630)** and the CLI targets it by default, so no chain flag is needed for normal use — but `--chain` does exist, and `robinhood-fork` (chain 9994663) is a real target (see the fork-testing note below). The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
+All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use. `--chain robinhood-testnet` selects the Robinhood L2 testnet (chain 46630) instead; note its redeployed factory currently has no funds. The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
 
-> **Fork testing (internal QA — not production).** A `--chain robinhood-fork` network (chain **9994663**) targets a Tenderly fork of Robinhood **mainnet** (USDG asset, official Uniswap v3+v4, Chainlink push feeds) used for mainnet-faithful end-to-end and guardian-network validation. Every `sherwood` command below works there by prefixing `--chain robinhood-fork` (RPC overridable via `ROBINHOOD_FORK_RPC_URL`). Leave the default unless you are explicitly running fork tests.
+> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). The bundled RPC is the fork's public endpoint; override with `ROBINHOOD_FORK_RPC_URL` if a new fork is minted. It runs the latest protocol build, which is **still in audit** — test capital only, not a final audited release.
 
 ## Agent Lifecycle
 

@@ -27,6 +27,12 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `Could not read decimals` | Invalid token address | Verify address is a valid ERC20 on Base |
 | `IPFS upload failed` | Hosted Sherwood pinning API unreachable or errored | Non-fatal — CLI falls back to inline `data:` metadata; check network or set `SHERWOOD_API_URL` |
 
+## Proposer Bond Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `InsufficientProposerBondWood` | Wallet WOOD balance is below the quoted proposer bond (`ExposureLedger.proposerBondWood`) | Hold more WOOD. This is **not** the 10k owner stake. The CLI sets escrow allowance but cannot mint WOOD. On the fork, the faucet 15k WOOD covers the owner stake plus a small-book bond. The amount **scales** with coverage and WOOD price — quote it; do not assume a fixed WOOD number. |
+
 ## Governance Errors
 
 | Error | Cause | Fix |

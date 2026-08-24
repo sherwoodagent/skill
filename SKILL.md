@@ -259,14 +259,9 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 | Template | CLI key | Description |
 |----------|---------|-------------|
-| **MoonwellSupplyStrategy** | `moonwell-supply` | Supply tokens to Moonwell lending market, earn yield |
 | **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking |
 | **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path) |
-| **WstETHMoonwellStrategy** | `wsteth-moonwell` | WETH → wstETH → Moonwell — stack Lido + lending yield |
-| **MamoYieldStrategy** | `mamo-yield` | Deposit into Mamo for optimized yield across Moonwell + Morpho vaults |
 | **PortfolioStrategy** | `portfolio` | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
-| **HyperliquidPerpStrategy** | `hyperliquid-perp` | Leveraged perp trading on Hyperliquid via HyperEVM precompiles |
-| **HyperliquidGridStrategy** | `hyperliquid-grid` | ATR-based grid trading on Hyperliquid via HyperEVM precompiles |
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
@@ -337,14 +332,15 @@ Cheaper coverage is only for certified tier 0/1 adapters.
 sherwood strategy list
 
 # All-in-one: clone + init + build calls + write JSON for proposal
-sherwood strategy propose moonwell-supply \
-  --vault 0x... --amount 10 --min-redeem 9.9 \
+sherwood strategy propose portfolio \
+  --vault 0x... --amount 1000 --asset USDC \
+  --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
   --write-calls ./calls
 
 # Submit the proposal
 sherwood proposal create \
-  --vault 0x... --name "Moonwell USDC Yield" \
-  --description "Supply 10 USDC to Moonwell for 7 days" \
+  --vault 0x... --name "ETH Supercycle Basket" \
+  --description "AAVE/WETH/cbBTC basket, 7d" \
   --duration 7d \
   --execute-calls ./calls/execute.json \
   --settle-calls ./calls/settle.json
@@ -397,21 +393,6 @@ sherwood --calldata-only proposal create --vault 0xVAULT \
   --strategy 0xCLONE --name "ETH Supercycle Basket" --description "..." \
   --performance-fee 1000 --duration 7d \
   --execute-calls ./calls/execute.json --settle-calls ./calls/settle.json
-```
-
-#### MoonwellSupplyStrategy
-
-Supplies underlying tokens (e.g., USDC) to a Moonwell market to earn yield.
-
-- **Execute:** pulls USDC from vault → approves mToken → mints mUSDC
-- **Settle:** redeems all mUSDC → verifies >= `minRedeemAmount` → pushes USDC back to vault
-- **Tunable params:** `supplyAmount`, `minRedeemAmount`
-- **Batch calls:** `Execute: [underlying.approve(clone, amount), clone.execute()]` / `Settle: [clone.settle()]`
-
-```bash
-sherwood strategy propose moonwell-supply \
-  --vault 0x... --amount 50000 --min-redeem 49900 --token USDC \
-  --write-calls ./moonwell-calls
 ```
 
 #### AerodromeLPStrategy
@@ -480,20 +461,6 @@ contract MyStrategy is BaseStrategy {
 ```
 
 `BaseStrategy` provides: lifecycle management (`Pending -> Executed -> Settled`), access control (`onlyVault`, `onlyProposer`), and token helpers (`_pullFromVault`, `_pushToVault`, `_pushAllToVault`).
-
-### Levered swap (Moonwell + Uniswap)
-
-> For guided token research and step-by-step execution, delegate to the **`levered-swap` skill**.
-
-Quick execution (simulates by default, add `--execute` for onchain):
-
-```bash
-sherwood strategy run \
-  --collateral 1.0 --borrow 500 --token 0x... \
-  --fee 3000 --slippage 100
-```
-
-Prerequisites: agent has WETH, caps allow borrow amount.
 
 ---
 
@@ -659,8 +626,8 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 ```bash
 sherwood proposal create \
   --vault 0x... \
-  --name "Moonwell USDC Yield" \
-  --description "Supply USDC to Moonwell for 7 days" \
+  --name "ETH Supercycle Basket" \
+  --description "AAVE/WETH/cbBTC basket, 7d" \
   --duration 7d \
   --execute-calls ./execute-calls.json \
   --settle-calls ./settle-calls.json
@@ -870,13 +837,11 @@ User wants to...
 ├── Join a fund        → Phase 2: syndicate join → creator approves (auto-adds to chat)
 ├── Review requests    → Phase 3: syndicate requests → syndicate approve/reject
 ├── Configure vault    → Phase 3: register agents → approve depositors
-├── Trade (levered)    → Phase 4: delegate to `levered-swap` skill
 ├── Trade / swap / buy / sell tokens → Phase 5: delegate to `strategies/memecoin-alpha` skill
 ├── Memecoin / signal trading        → Phase 5: delegate to `strategies/memecoin-alpha` skill
 ├── Uniswap / scan / monitor         → Phase 5: `sherwood trade scan`, `trade buy`, `trade sell`, `trade monitor`
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
-├── Supply to lending  → Phase 4: MoonwellSupplyStrategy template
 ├── Provide LP         → Phase 4: AerodromeLPStrategy template (+ optional gauge staking)
 ├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
 ├── Vote on proposal   → Governance: proposal vote --id <id> --support for|against|abstain

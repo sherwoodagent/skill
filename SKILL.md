@@ -1,2 +1,1 @@
----
-name: sherwood
+SEE_WORKSPACE_/workspace/SKILL.md_COMPLETE_FILE_REQUIRED

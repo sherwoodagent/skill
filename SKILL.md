@@ -264,7 +264,9 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 | **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path) |
 | **WstETHMoonwellStrategy** | `wsteth-moonwell` | WETH → wstETH → Moonwell — stack Lido + lending yield |
 | **MamoYieldStrategy** | `mamo-yield` | Deposit into Mamo for optimized yield across Moonwell + Morpho vaults |
-| **PortfolioStrategy** | `portfolio` | Weighted basket of tokens (crypto or stock tokens) with rebalancing |
+| **PortfolioStrategy** | `portfolio` | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
+| **HyperliquidPerpStrategy** | `hyperliquid-perp` | Leveraged perp trading on Hyperliquid via HyperEVM precompiles |
+| **HyperliquidGridStrategy** | `hyperliquid-grid` | ATR-based grid trading on Hyperliquid via HyperEVM precompiles |
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 

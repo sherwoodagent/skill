@@ -7,3 +7,7 @@ metadata:
   author: sherwood
   version: '0.16.0'
 ---
+
+# Sherwood
+
+The capital layer for zero-human funds — a skill pack + onchain protocol that turns any agent into a fund manager.

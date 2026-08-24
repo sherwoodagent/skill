@@ -1,12 +1,12 @@
 ---
 name: guardian
-description: Instructs an AI agent acting as a Sherwood guardian in two distinct roles — (1) Syndicate Vault Owner: continuously monitors governance proposals, simulates execution on forks, vetoes malicious proposals, tracks live strategy health, and triggers emergency actions to protect LP capital; and (2) staked network guardian: reviews proposals with WOOD at stake and casts an Approve/Block verdict via GuardianRegistry.voteOnProposal, where a clean simulation alone is never sufficient to Approve. Triggers on vault owner duties, proposal monitoring, veto decisions, settlement tracking, network guardian review, Approve/Block verdicts, or guardian operations.
+description: Instructs an AI agent acting as a Sherwood guardian in two distinct roles — (1) Syndicate Vault Owner: continuously monitors governance proposals, simulates execution on forks, vetoes malicious proposals, tracks live strategy health, and triggers emergency actions to protect LP capital; and (2) routing the staked network guardian role to the dedicated `network-guardian` skill, which owns the Approve/Block review of proposals with WOOD at stake. Triggers on vault owner duties, proposal monitoring, veto decisions, settlement tracking, emergency settlement, or guardian operations.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, WebSearch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.7.0'
+  version: '0.8.0'
 ---
 
 # Syndicate Vault Owner — Guardian Agent
@@ -22,7 +22,7 @@ This skill covers **two different jobs**. Know which one you are doing before yo
 | | **Vault owner (veto path)** | **Network guardian (staked review)** |
 |---|---|---|
 | Who | Owner of a specific syndicate vault | Independent reviewer with **staked WOOD** registered in `GuardianRegistry` |
-| Power | `veto` / emergency actions on **your own** vault | Cast a verdict: `GuardianRegistry.voteOnProposal(governor, proposalId, support, slashBps)` — **Approve** or **Block** |
+| Power | `veto` / emergency actions on **your own** vault | Cast a verdict: `GuardianRegistry.voteOnProposal(governor, proposalId, support)` — **Approve** or **Block** |
 | Failure mode | LPs in your vault lose capital | **Your stake is slashed** for a wrong verdict |
 | Default | Optimistic governance: silence lets a proposal pass | **No default pass** — an incomplete review is a **Block** |
 
@@ -172,47 +172,21 @@ cast send $GOVERNOR_ADDRESS "vetoProposal(uint256)" <PROPOSAL_ID> --private-key 
 
 ## Network guardian verdict policy
 
-You have **WOOD at stake**. A wrong Approve gets you slashed. Therefore:
+**This role now has its own skill: [`network-guardian`](../network-guardian/SKILL.md).**
+Use it whenever you hold staked WOOD and are voting on a review. It carries the full
+intake, the Approve/Block policy, the address-resolution recipe, and the current ABI.
 
-> **A successful simulation is necessary but NOT sufficient to Approve.**
-> Simulation success only proves the calls do not revert on a fork. It does not prove intent, custody, or where value ends up.
+The two facts that most often get encoded wrong, repeated here so they cannot be missed:
 
-### Intake — gather ALL of this before voting
-
-1. **Proposal metadata** — fetch the metadata URI and read the human description in full.
-2. **Every call** in both the **execute** and the **settle** call sets — target address, selector, decoded arguments, and any attached value.
-3. **Chain-specific allowlist** — resolve each target against the allowlist **for the chain this proposal executes on**. Chain **9994663** is the **current fork of record**; **never** reuse or copy a Base (8453) allowlist onto it, and never assume an address labeled on one chain is the same contract on another.
-4. **Economics** — performance fees, strategy duration, and total notional moved, compared against the description and the vault limits.
-
-### Block if ANY of these hold (even when simulation is CLEAN)
-
-- Any target address is **unlabeled / unverified** on this chain.
-- The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
-- The **settle** path **cannot return the vault deposit asset** — settle missing, settle that returns a different token, or settle whose return path depends on an unverified contract.
-- **Undisclosed value movement** — any transfer, approval, or ETH/token flow to an address not explained by the description, **even if `simulate` passes**.
-- Intake is incomplete, ambiguous, or you could not verify something. **Default is Block.**
-
-### Approve ONLY if ALL of these hold
-
-- The description **matches** the decoded execute and settle calls exactly, with no extra behavior.
-- **Every** target is labeled/known **or** is a verified clone of a known template **for THIS chain** (clone/bytecode check on the same chain, never a cross-chain assumption).
-- The **settle** path provably **returns the vault deposit asset** to the vault.
-- The **simulation and the value trace agree** — every balance/approval delta in the trace is explained by the description.
-
-### Casting the verdict
-
-```bash
-# support: Approve or Block
-# slashBps: penalty applied on a Block verdict — 1000 (10%) to 9999 (99.99%)
-cast send <GUARDIAN_REGISTRY> \
-  "voteOnProposal(address,uint256,uint8,uint256)" \
-  <GOVERNOR_ADDRESS> <PROPOSAL_ID> <SUPPORT> <SLASH_BPS> \
-  --rpc-url $RPC_URL --private-key $PRIVATE_KEY
-```
-
-- On **Block**, set `slashBps` proportional to severity, within **10%-99.99%** (1000-9999 bps): clear theft/drain at the top of the range; sloppy-but-not-malicious at the bottom.
-- On **Approve**, you are staking your WOOD on the four conditions above being true.
-- If you cannot complete intake before the deadline: **Block**. A wrongly blocked honest proposal can be resubmitted; a slashed stake and drained LPs cannot be undone.
+- `voteOnProposal(address governor, uint256 proposalId, GuardianVoteType support)` takes
+  **three** arguments — `0 = None` (reverts), `1 = Approve`, `2 = Block`. There is no
+  `slashBps` parameter. Slash severity is **not voted**: it is a deterministic quadratic
+  ramp from `minSlashBps` (10%) to `maxSlashBps` (100%), saturating at a 66.67% block
+  supermajority, computed at `resolveReview`. A four-argument call reverts — the selector
+  does not exist.
+- **Approve is underwriting**, not a signal: it books coverage against your free stake via
+  `ExposureLedger.recordApproval`. A clean simulation is necessary and never sufficient,
+  and incomplete evidence is a **Block**.
 
 ---
 
@@ -242,12 +216,12 @@ New proposal detected
 |                 |   read the metadata and decoded calls before letting it pass
 |                 |
 |                 +-- NETWORK GUARDIAN (staked WOOD): STOP. A CLEAN simulation is
-|                     NOT an Approve. Go to "Network guardian verdict policy" above
-|                     and complete full intake; Approve only if all four conditions
-|                     hold, otherwise Block.
+|                     NOT an Approve. Switch to the `network-guardian` skill
+|                     and complete its full intake; Approve only if every
+|                     condition there holds, otherwise Block.
 ```
 
-This tree is the **vault-owner veto** tree. For a vault owner, silence lets a proposal pass — but for a **staked network guardian**, neither silence nor a clean simulation is ever an Approve; the verdict policy above governs.
+This tree is the **vault-owner veto** tree. For a vault owner, silence lets a proposal pass — but for a **staked network guardian**, neither silence nor a clean simulation is ever an Approve; the `network-guardian` skill governs.
 
 When in doubt, **VETO**. A vetoed legitimate proposal can be resubmitted. Drained funds cannot be recovered.
 
@@ -524,7 +498,7 @@ sherwood proposal simulate --id <PROPOSAL_ID> --notify <syndicate-name>
 #    - WARNINGS → fetch metadata, review carefully
 #    - RISK ASSESSMENT: CLEAN → vault owner: no veto on simulation grounds alone
 #      (staked network guardian: CLEAN is NOT an Approve — run the full
-#       "Network guardian verdict policy" intake; default Block)
+#       `network-guardian` skill intake; default Block)
 # 4. Log results
 ```
 

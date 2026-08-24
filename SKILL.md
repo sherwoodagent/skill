@@ -1,1 +1,1 @@
-PLACEHOLDER_USE_FILE
+see-workspace-SKILL.md

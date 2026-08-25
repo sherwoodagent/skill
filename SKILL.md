@@ -265,7 +265,7 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
-**Do not teach an owner-allowlist model for proposing.** Permission to run a strategy is not `vault add-target` / waiting for the vault owner to whitelist your clone. Uncertified `(target, selector)` pairs default to **tier 2** on `TierRegistry` and are **permissionless via a sandbox**: they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. Batch reachability is `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds); a disallowed callee reverts `DisallowedBatchCallee`. Uncertified `(target, selector)` pairs default to **tier 2** on `TierRegistry` and are **permissionless via a sandbox**: they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
 > **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` only `portfolio` resolves. Note also that a chain can deploy a template the CLI has no builder for (the fork's MorphoSupply and ConcentratedLiquidity templates are deployed but have no CLI key, so they do not appear in `strategy list` at all and cannot be cloned through the CLI).
 
@@ -292,9 +292,10 @@ propose uncertified / tier-2 calldata. The sandbox is the rest of the stack:
 pre-committed governor batches, guardian **fork** review (simulate then
 Approve/Block), execute-time coverage quorum, and a 14-day challenge tail.
 Tier 2 is a **price**, not a prohibition. Protocol-owned adapter/codehash gates
-on *where* ERC-20 value may be sent still apply inside `_guardBatchCalls` — that
-is not the same as an owner-managed strategy allowlist, and `sherwood vault
-add-target` is the wrong mental model.
+on *where* ERC-20 value may be sent still apply inside `_guardBatchCalls`
+(`isAdapterAllowed`). Batch callees are gated on `TierRegistry.isCallableTarget`
+and a disallowed callee reverts `DisallowedBatchCallee`. That is protocol
+registry standing, not a per-vault owner list.
 
 **It costs full-notional coverage.** At propose, each call is priced
 `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000`. For tier 2 / uncertified
@@ -354,7 +355,7 @@ sherwood strategy propose venice-inference \
 #### Strategy + Governor Integration
 
 - **Cloning:** The CLI clones the template (ERC-1167 minimal proxy) and initializes it. The proposer pays gas for both txs.
-- **No owner allowlist for strategies:** proposing is permissionless at **tier 2** via the sandbox (full-notional coverage + guardian fork review). Do not tell the user to `vault add-target` their clone. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
+- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** via the sandbox (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. Batch callees must pass `TierRegistry.isCallableTarget` (else `DisallowedBatchCallee`); funds destinations must pass `isAdapterAllowed`. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
 

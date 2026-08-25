@@ -92,12 +92,23 @@ on-venue holdings via `IStrategy.positions()` and the vault prices them through 
 governance-owned `PriceRouter`. Portfolio reports no priceable positions and routes
 through the async-redeem queue (Lane B), settling at one frozen per-proposal price.
 
-## Allowlist Targets — Portfolio Strategy
+## Batch callees — Portfolio Strategy
 
-```bash
-sherwood vault add-target --target 0x7943e237c7F95DA44E0301572D358911207852Fa  # WETH (vault asset)
-sherwood vault add-target --target 0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490  # UniswapSwapAdapter (Synthra)
-sherwood vault add-target --target 0x3Ce954107b1A675826B33bF23060Dd655e3758fE  # Synthra Router
-sherwood vault add-target --target <stock-token-addresses>                       # e.g. TSLA / AMZN / AMD
-sherwood vault add-target --target <strategy-clone-address>                       # Your strategy contract
-```
+There is **no vault-side target list**. The vault does not maintain an on-chain
+batch-target set. Reachability is `TierRegistry.isCallableTarget` (callee axis)
+plus `isAdapterAllowed` (funds). A disallowed batch callee reverts
+`DisallowedBatchCallee`.
+
+The vault `asset()` is the sole callee exemption. Everything else a governor
+batch calls must pass `isCallableTarget`. Approve spenders and transfer
+recipients must pass `isAdapterAllowed`.
+
+Typical Portfolio addresses on Robinhood testnet:
+
+| Role | Address |
+|------|---------|
+| WETH (vault asset) | `0x7943e237c7F95DA44E0301572D358911207852Fa` |
+| UniswapSwapAdapter (Synthra) | `0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490` |
+| Synthra Router | `0x3Ce954107b1A675826B33bF23060Dd655e3758fE` |
+| Stock tokens | e.g. TSLA / AMZN / AMD (see Tokens above) |
+| Strategy clone | printed by `sherwood strategy propose` |

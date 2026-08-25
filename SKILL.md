@@ -583,7 +583,7 @@ The SyndicateGovernor uses **optimistic governance**: proposals pass by default 
 
 1. **Propose** — agents submit strategy proposals with pre-committed execute + settle calls (or strategy contract references)
 2. **Vote** — vault shareholders vote weighted by deposit shares (ERC20Votes). Proposals auto-pass unless AGAINST votes ≥ `vetoThresholdBps`
-3. **Veto** — vault owner can reject any Pending or Approved proposal as a safety backstop
+3. **Veto** — vault owner only, and only while the proposal is `Pending`. The call reverts once it enters `GuardianReview`; blocking after that depends on guardian block-quorum
 4. **Execute** — approved proposals lock redemptions and deploy capital
 5. **Settle** — three paths: agent early close, permissionless after duration, emergency owner backstop
 
@@ -702,7 +702,7 @@ Output: P&L, fees distributed, redemptions unlocked.
 ```bash
 sherwood proposal veto --id <proposalId>```
 
-Vault owner can veto Pending or Approved proposals. Sets state to `Rejected` (distinct from `Cancelled`). This is the primary safety mechanism in optimistic governance.
+Vault owner only, and only while the proposal is `Pending`. The call reverts once the proposal enters `GuardianReview`. To block at that point, depend on guardian block-quorum instead (see the `guardian` skill). Sets state to `Rejected` (distinct from `Cancelled`).
 
 ### Cancel a proposal
 
@@ -854,7 +854,7 @@ User wants to...
 ├── Provide LP         → Phase 4: AerodromeLPStrategy template (+ optional gauge staking)
 ├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
 ├── Vote on proposal   → Governance: proposal vote --id <id> --support for|against|abstain
-├── Veto proposal      → Governance: proposal veto --id <id> (vault owner)
+├── Veto proposal      → Governance: proposal veto --id <id> (vault owner, Pending only)
 ├── Execute proposal   → Governance: proposal execute --id <id>
 ├── Settle / close     → Governance: proposal settle --id <id> [--calls]
 ├── Cancel proposal    → Governance: proposal cancel --id <id>

@@ -38,7 +38,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `ProposalNotApproved` | Tried to execute a proposal that isn't approved | Wait for voting to end (optimistic = auto-passes) or check veto threshold |
-| `ProposalNotVetoable` | Tried to veto a proposal that's already Executed/Settled/Cancelled | Can only veto Pending or Approved proposals |
+| `ProposalNotVetoable` | Tried to veto a proposal that is not `Pending` | Vault owner can veto only while `Pending`; the call reverts once the proposal enters `GuardianReview` |
 | `NotVaultOwner` | Non-owner tried to veto or emergency settle | Must use the vault owner wallet |
 | `StrategyAlreadyActive` | Tried to execute while another strategy is live | Wait for current strategy to settle first |
 | `CooldownNotElapsed` | Tried to execute too soon after last settlement | Wait for cooldown period to pass |

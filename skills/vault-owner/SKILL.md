@@ -148,6 +148,8 @@ cast call <strategy_address> "amountADesired()(uint256)" --rpc-url $RPC_URL  # A
 
 ### Veto a proposal
 
+Owner-only, and **only while the proposal is `Pending` (1)**. `vetoProposal` reverts once the proposal enters `GuardianReview` (2). To block at that point, depend on guardian block-quorum (`guardian` skill) — do not retry veto.
+
 ```bash
 sherwood proposal veto <PROPOSAL_ID>
 
@@ -245,7 +247,7 @@ As vault owner, you have these emergency powers:
 
 | Action | Command | When to use |
 |--------|---------|-------------|
-| **Veto** | `sherwood proposal veto <id>` | Reject a pending or approved proposal (sets state to Rejected) |
+| **Veto** | `sherwood proposal veto <id>` | Reject a `Pending` proposal only (sets state to Rejected). Reverts once `GuardianReview` begins; block-quorum is the `guardian` skill |
 | **Emergency cancel** | `sherwood proposal emergency-cancel <id>` | Cancel any non-executed proposal |
 | **Emergency settle** | `emergencySettleWithCalls` → review → `finalizeEmergencySettle` | Owner-supplied unwind; bonded + guardian-reviewed; calls do **not** run until finalize |
 
@@ -408,9 +410,9 @@ Emergency unwind only applies to `Executed` after duration. Other states use the
 | State | Recovery path | Notes |
 |---|---|---|
 | `Draft` (0) | `cancelProposal(id)` by proposer, or wait for the collaboration window | Not locked — no funds at risk |
-| `Pending` (1) | `vetoProposal(id)` or `cancelProposal(id)` during voting | Normal flow |
-| `GuardianReview` (2) | Wait for the staked-guardian review window | Approve/Block is the `guardian` skill, not this one |
-| `Approved` (3) | Let the execution window expire → `Expired` | Vault not yet locked by execute |
+| `Pending` (1) | `vetoProposal(id)` (owner, Pending only) or `cancelProposal(id)` | Veto reverts once `GuardianReview` begins |
+| `GuardianReview` (2) | Guardian block-quorum (`guardian` skill). Owner `vetoProposal` reverts here | Approve/Block is not a veto |
+| `Approved` (3) | Let the execution window expire → `Expired` | Vault not yet locked by execute; veto already reverted |
 | `Rejected` (4) | Nothing — never executed | N/A |
 | `Expired` (5) | Nothing — vault was never locked | N/A |
 | **`Executed` (6)** | **`unstick` or `emergencySettleWithCalls` → `finalizeEmergencySettle` — this section** | Duration must have elapsed |
@@ -506,8 +508,8 @@ cast call $GOVERNOR_ADDRESS "getGovernorParams()((uint256,uint256,uint256,uint25
 
 ```
 0 = Draft           (collaborative proposal awaiting co-proposer consent)
-1 = Pending         (voting active — CAN VETO)
-2 = GuardianReview  (voting passed, guardian review window active)
+1 = Pending         (voting active — owner CAN VETO)
+2 = GuardianReview  (voting passed, guardian review window active — veto reverts; block via guardian quorum)
 3 = Approved        (review ended without block quorum)
 4 = Rejected        (voting ended, veto threshold reached OR guardians blocked)
 5 = Expired         (execution window passed without execution)

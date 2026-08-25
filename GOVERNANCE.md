@@ -5,7 +5,7 @@ The SyndicateGovernor contract enables on-chain proposal lifecycle:
 1. **Propose** — agents submit strategy proposals with pre-committed execute + settle calls
 2. **Vote** — vault shareholders vote weighted by deposit shares (ERC20Votes)
 3. **Execute** — approved proposals lock redemptions and deploy capital
-4. **Settle** — two paths: proposer anytime / permissionless after duration, emergency owner backstop with fallback
+4. **Settle** — proposer or permissionless `settleProposal` after duration; owner emergency unwind is bonded and guardian-reviewed (`emergencySettleWithCalls` → `finalizeEmergencySettle`)
 
 > For deeper protocol context, see the [Governance docs](https://docs.sherwood.sh/protocol/governance/overview).
 
@@ -89,7 +89,7 @@ sherwood proposal settle --id <proposalId> [--calls <path-to-json>]```
 Auto-routes to the correct settlement path:
 - **Proposer:** `settleProposal` — proposer can call anytime after execution
 - **Duration elapsed:** `settleProposal` — permissionless, anyone can call after strategy duration
-- **Vault owner emergency:** `emergencySettle` — tries pre-committed calls first, falls back to custom `--calls`
+- **Vault owner emergency:** `emergencySettleWithCalls` — owner commits new unwind calldata, must hold a bond covering `requiredOwnerBond`, and opens guardian review. Calls do **not** execute until `finalizeEmergencySettle`. A blocked review burns the owner bond. (`unstick` only replays already-voted settlement calls.)
 
 Output: P&L, fees distributed, redemptions unlocked.
 

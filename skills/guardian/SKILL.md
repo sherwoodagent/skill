@@ -287,20 +287,19 @@ cast call $GOVERNOR_ADDRESS "getCapitalSnapshot(uint256)(uint256)" <PROPOSAL_ID>
    ```
 
 4. **If settlement might fail** (liquidity dried up, position liquidated, slippage too high):
-   - Prepare emergency settlement with custom unwind calls
-   - Execute before the strategy window closes
+   - Prepare owner-supplied unwind calls
+   - Open `emergencySettleWithCalls` (bonded + guardian-reviewed) before the window is hopeless — calls do **not** run until `finalizeEmergencySettle`
 
 5. **When strategy expires — ensure settlement happens promptly:**
    ```bash
-   # Agent settles their own strategy
-   sherwood proposal settle <PROPOSAL_ID>
+   # Proposer / permissionless settle (pre-committed settlementCalls)
+   sherwood proposal settle --id <PROPOSAL_ID> --vault $VAULT_ADDRESS
 
-   # Or owner force-settles with custom calls
-   sherwood proposal emergency-settle <PROPOSAL_ID> --calls '<json>'
-
-   # Direct on-chain settlement
+   # Direct on-chain settlement of the voted batch
    cast send $GOVERNOR_ADDRESS "settleProposal(uint256)" <PROPOSAL_ID> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
    ```
+
+   If `settleProposal` reverts, do **not** invent a custom-call force-settle. Follow **Recovering a stuck Executed proposal** below.
 
 ---
 
@@ -314,7 +313,7 @@ As vault owner, you have these emergency powers:
 |--------|---------|-------------|
 | **Veto** | `sherwood proposal veto <id>` | Reject a pending or approved proposal (sets state to Rejected) |
 | **Emergency cancel** | `sherwood proposal emergency-cancel <id>` | Cancel any non-executed proposal |
-| **Emergency settle** | `sherwood proposal emergency-settle <id> --calls '<json>'` | Force-settle a live strategy with custom unwind calls |
+| **Emergency settle** | `emergencySettleWithCalls` → review → `finalizeEmergencySettle` | Owner-supplied unwind; bonded + guardian-reviewed; calls do **not** run until finalize |
 
 ### Vault-level
 
@@ -342,72 +341,65 @@ The governor snapshots `agentFeeBps` from the vault onto each proposal at propos
 
 ### Recovering a stuck Executed proposal (LP funds locked)
 
-**Symptom.** A proposal is in state `Executed` (5), its `strategyDuration` has elapsed, `redemptionsLocked()` on the vault returns `true`, and calling `settleProposal(id)` reverts. LPs cannot withdraw because `_activeProposal[vault]` still points at the stale proposal.
+**Symptom.** A proposal is in state `Executed` (6), its `strategyDuration` has elapsed, `redemptionsLocked()` on the vault returns `true`, and `settleProposal(id)` reverts. LPs cannot withdraw because this vault's governor still reports the stale id from **zero-arg** `getActiveProposal()` (not `getActiveProposal(vault)` — the governor is already per-vault).
 
-Common root causes:
+```bash
+cast call $GOVERNOR_ADDRESS "getProposalState(uint256)(uint8)" <ID> --rpc-url $RPC_URL   # expect 6 = Executed
+cast call $GOVERNOR_ADDRESS "getActiveProposal()(uint256)" --rpc-url $RPC_URL           # expect <ID>
+cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL                 # expect true
+```
 
-- Pre-committed settlement calls target an address that now rejects the call (broken adapter, deprecated router, contract with a reverting `receive()`).
-- Pre-committed calls assume a pool/position state that no longer exists (liquidity moved, position liquidated, decimal mismatch).
-- Settlement calldata was encoded against a router/adapter that has since been replaced.
+Common root causes: pre-committed `settlementCalls` hit a broken adapter/router, a pool/position that no longer exists, or calldata encoded against a replaced contract.
 
-**Key insight — `emergencySettle` has a built-in fallback.** `SyndicateGovernor._tryPrecommittedThenFallback` (`contracts/src/SyndicateGovernor.sol`) runs the pre-committed settlement batch inside a `try/catch`. If it reverts, the caller's fallback `calls[]` are executed instead. So a stuck `Executed` proposal is **not** permanently locked — the vault owner can always unstick it with `emergencySettle(id, fallbackCalls)` as long as:
+**Live owner paths — `GovernorEmergency` (protocol pin `f21600b0d03d6f742bdb952c5376abf7230741fd`).** There is no owner transaction that immediately runs arbitrary fallback calls. Owner-supplied calldata is committed, reviewed, then finalized.
 
-1. `block.timestamp >= executedAt + strategyDuration` (duration must have elapsed)
-2. The caller is the vault owner
-3. The fallback calls array is non-empty **and** does not revert (empty arrays re-raise the original revert, see line 667-671)
-4. The vault holds enough of the asset to cover any outbound transfers in the fallback — `_finishSettlement` recomputes PnL as `asset.balanceOf(vault) - capitalSnapshot`, so negative PnL is fine (no fees are charged), but the call must not pay out more than the vault holds
+| Function | What it does | Owner bond | Guardian review |
+|----------|----------------|------------|-----------------|
+| `unstick(proposalId)` | Replays the **already-voted** `settlementCalls` under the same coverage-scaled caps as `settleProposal`. Instant. If that batch reverts, this reverts too. | Not required (calls were already voted) | No |
+| `emergencySettleWithCalls(proposalId, calls)` | Commits **new** unwind calldata and **opens** a review window. Calls do **not** execute in this tx. | Must cover `requiredOwnerBond(vault)` and be strictly `> 0` | Yes — required |
+| `cancelEmergencySettle(proposalId)` | Owner recalls the open window before it resolves. No slash. | — | Closes the window |
+| `finalizeEmergencySettle(proposalId)` | After the review period, executes the committed calls **if not blocked**, then finishes settlement and clears `getActiveProposal()`. | Bond must still be nonzero | Reverts if guardians blocked (owner bond burned) |
+
+**Bonded owner stake (required for `emergencySettleWithCalls`).** The governor reads stake and the requirement through the registry:
+
+```bash
+REG=$(cast call $GOVERNOR_ADDRESS "guardianRegistry()(address)" --rpc-url $RPC_URL)
+cast call $REG "ownerStake(address)(uint256)" $VAULT_ADDRESS --rpc-url $RPC_URL
+cast call $REG "requiredOwnerBond(address)(uint256)" $VAULT_ADDRESS --rpc-url $RPC_URL
+cast call $REG "reviewPeriod()(uint256)" --rpc-url $RPC_URL
+```
+
+`emergencySettleWithCalls` reverts `OwnerBondInsufficient` unless `ownerStake(vault) > 0` **and** `>= requiredOwnerBond(vault)`. A guardian **block** of the emergency review burns the owner bond (100% slash via `slashOwnerBond`). Do not open this path with drain-shaped calldata.
+
+**Guardian review.** Staked network guardians review the committed unwind and may `voteBlockEmergencySettle(governor, proposalId)`. Silence does not execute the calls — the owner still has to `finalizeEmergencySettle` after `reviewPeriod`. If block quorum is reached, finalize reverts and the bond is already burned.
+
+The CLI has **no** `emergency-settle` subcommand and **no** finalize wrapper. `sherwood proposal settle --id <ID> --vault $VAULT_ADDRESS --calls unwind.json` broadcasts `emergencySettleWithCalls` (opens the window only — it does not settle). Prefer the `cast send` forms below so the contract surface is explicit.
 
 #### Recovery playbook
 
-Sherwood ships a purpose-built guardian command, **`sherwood proposal unstick`**, that automates the whole recovery when no actual unwind is needed (i.e. the vault already holds its asset — the common case for broken adapters/routers that reverted before moving funds). It is **intentionally hidden** from `sherwood --help` because it should only be reached via this skill.
+**Step 1 — Preconditions.** Caller is the vault owner. State is `Executed` (6). `block.timestamp >= executedAt + strategyDuration`. Zero-arg `getActiveProposal()` equals this id.
 
-The command:
-
-1. Loads the proposal, verifies `state == Executed` and `executedAt + strategyDuration` has elapsed.
-2. Verifies `getActiveProposal(vault) == proposalId` (confirms the vault is actually locked by *this* proposal).
-3. Verifies the calling wallet is the vault owner.
-4. Auto-crafts a no-op fallback `[{ target: asset, data: asset.balanceOf(vault), value: 0 }]`. This is a view call that cannot revert, costs ~2.5k gas, and satisfies the governor's `fallbackCalls.length > 0` requirement.
-5. Prints a plan with the decoded fallback call and asks for confirmation.
-6. Broadcasts `emergencySettle(id, fallbackCalls)` and verifies `getActiveProposal(vault) == 0` after the tx lands.
-
-**Step 1 — Dry-run the unstick to confirm preconditions pass.**
-
-```bash
-sherwood proposal unstick --id <PROPOSAL_ID> --dry-run
-```
-
-This runs every precondition check and prints the plan without broadcasting. If anything is wrong (state, duration, owner, active proposal mismatch) it exits with a descriptive error pointing at the right remediation.
-
-**Step 2 — Diagnose the pre-committed settlement revert (optional but recommended).**
-
-Before unsticking, trace the original `settleProposal` to understand *why* it's stuck. This helps decide whether a plain no-op fallback is enough or you need a custom unwind (see Step 4).
+**Step 2 — Diagnose the pre-committed revert.**
 
 ```bash
 cast call $GOVERNOR_ADDRESS "settleProposal(uint256)" <ID> --rpc-url $RPC_URL --trace 2>&1 | tail -30
 ```
 
-Innermost `Revert` frame patterns:
-
-- `WETH::withdraw` → ETH transfer to broken contract → recipient's fallback reverts
-- Router `exactInput` / `swapExactTokensForTokens` → pool doesn't exist / wrong fee tier
-- Approval on token with "approve from nonzero" semantics (USDT-style)
-
-**Step 3 — Check the vault's actual asset balance vs. the capital snapshot.**
+**Step 3 — If the voted settlement batch is still correct:** replay it with `unstick`. This is the owner-instant path when nobody has triggered a still-valid unwind. It is **not** a place to inject new calldata.
 
 ```bash
-sherwood vault info --vault $VAULT_ADDRESS
-cast call $GOVERNOR_ADDRESS "getCapitalSnapshot(uint256)(uint256)" <ID> --rpc-url $RPC_URL
+cast send $GOVERNOR_ADDRESS "unstick(uint256)" <ID> \
+  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
-If the vault already holds roughly the asset balance the proposal started with (the position was partially unwound already, or the original `execute()` batch reverted late enough that funds stayed put), **no unwind is needed → go to Step 5**. The no-op fallback will mark the proposal `Settled` and unlock redemptions without moving any funds.
+If `unstick` reverts, the voted batch is the problem — go to Step 4. Do not expect a no-op view call to mark the proposal Settled.
 
-**Step 4 — Only if an actual unwind is needed: build a custom `--calls` file.**
+**Step 4 — Build real unwind calls** (the calldata guardians will review). Examples:
 
-If the asset position is still trapped in a protocol (Moonwell mToken, Aerodrome LP, Uniswap V3 NFT, etc.), `sherwood proposal unstick` is not enough — you need to supply the unwinding calls yourself via the existing `sherwood proposal settle --calls` path. Examples:
-
-- Moonwell `mToken` balance stuck → `[mToken.redeem(mToken.balanceOf(vault))]`
+- Moonwell `mToken` stuck → `[mToken.redeem(mToken.balanceOf(vault))]`
 - Aerodrome LP stuck → `[gauge.withdraw(balance), router.removeLiquidity(..., deadline)]`
 - Uniswap V3 position NFT stuck → `[nftManager.decreaseLiquidity(...), nftManager.collect(...)]`
+- Vault already holds the deposit asset and nothing is trapped → submit the smallest honest unwind that returns the asset to the vault. Guardians review **calldata**, not a dummy `balanceOf`.
 
 Write a JSON file matching `BatchExecutorLib.Call[]`:
 
@@ -417,30 +409,57 @@ Write a JSON file matching `BatchExecutorLib.Call[]`:
 ]
 ```
 
-Dry-run it before broadcasting:
+Dry-run before opening the window:
 
 ```bash
-sherwood proposal simulate --vault $VAULT_ADDRESS --settle-calls fallback.json
+sherwood proposal simulate --vault $VAULT_ADDRESS --settle-calls unwind.json
 ```
 
-Then broadcast:
+**Step 5 — Open the bonded, guardian-reviewed window.** Calls still do not run.
 
 ```bash
-sherwood proposal settle --id <ID> --calls fallback.json
+cast send $GOVERNOR_ADDRESS \
+  "emergencySettleWithCalls(uint256,(address,bytes,uint256)[])" \
+  <ID> "[($TARGET,$DATA,0)]" \
+  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
-**Step 5 — Broadcast `unstick` (no-unwind case).**
+Or, if you already have a JSON file, the CLI wrapper that exists:
 
 ```bash
-sherwood proposal unstick --id <PROPOSAL_ID>        # prompts for confirmation
-sherwood proposal unstick --id <PROPOSAL_ID> --yes  # non-interactive
+sherwood proposal settle --id <ID> --vault $VAULT_ADDRESS --calls unwind.json
 ```
 
-On success the command prints the tx hash, an explorer link, and `redemptionsLocked cleared ✓` once `getActiveProposal(vault)` returns `0`.
+Confirm the window:
 
-**Step 6 — Let LPs exit.**
+```bash
+cast call $REG "isEmergencyOpen(address,uint256)(bool)" $GOVERNOR_ADDRESS <ID> --rpc-url $RPC_URL
+```
 
-Share holders can now redeem through the normal ERC-4626 path:
+Wrong calldata? Recall before the window resolves (no slash):
+
+```bash
+cast send $GOVERNOR_ADDRESS "cancelEmergencySettle(uint256)" <ID> \
+  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+```
+
+**Step 6 — After `reviewPeriod`, finalize** (owner only). There is no CLI for this — use the contract:
+
+```bash
+cast send $GOVERNOR_ADDRESS "finalizeEmergencySettle(uint256)" <ID> \
+  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+```
+
+If guardians blocked: finalize reverts and the owner bond is burned. There is no same-tx fallback.
+
+Verify the vault unlocked:
+
+```bash
+cast call $GOVERNOR_ADDRESS "getActiveProposal()(uint256)" --rpc-url $RPC_URL   # expect 0
+cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL         # expect false
+```
+
+**Step 7 — Let LPs exit.**
 
 ```bash
 # From each holder's wallet
@@ -448,32 +467,21 @@ sherwood vault redeem --vault $VAULT_ADDRESS           # redeem full balance
 sherwood vault redeem --vault $VAULT_ADDRESS --shares 0.5
 ```
 
-#### Raw `cast` fallback (last resort)
+#### What this path cannot recover
 
-`sherwood proposal unstick` is the preferred path. Only reach for raw `cast` if the CLI is unavailable (bricked build, missing dependency, non-default wallet not configured in `cli/.env`):
-
-```bash
-# Minimal no-op fallback = asset.balanceOf(vault)
-NOOP_DATA=$(cast calldata "balanceOf(address)" $VAULT_ADDRESS)
-cast send $GOVERNOR_ADDRESS \
-  "emergencySettle(uint256,(address,bytes,uint256)[])" \
-  <ID> "[($ASSET_ADDRESS,$NOOP_DATA,0)]" \
-  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-```
-
-#### What `emergencySettle` **cannot** recover
+Emergency unwind only applies to `Executed` after duration. Other states use their normal exits (indices match the `ProposalState` table in §6):
 
 | State | Recovery path | Notes |
 |---|---|---|
-| `Draft` (0) | `cancelProposal(id)` by proposer, or wait for collaboration window to expire | Not locked — no funds at risk |
+| `Draft` (0) | `cancelProposal(id)` by proposer, or wait for the collaboration window | Not locked — no funds at risk |
 | `Pending` (1) | `vetoProposal(id)` or `cancelProposal(id)` during voting | Normal flow |
-| `Approved` (2) | `vetoProposal(id)` or let execution window expire → `Expired` | Normal flow |
-| `Expired` (4) | Nothing — vault was never locked | N/A |
-| **`Executed` (5)** | **`emergencySettle(id, fallbackCalls)` — this section** | Duration must have elapsed |
-| `Settled` (6) | Already settled | N/A |
-| `Cancelled` (7) | ⚠️ Known bug: `cancelProposal` does not clear `_activeProposal` (see sherwood#177). If a vault gets locked via Cancelled state, a governor upgrade is required. | Only affects `Cancelled` — not `Executed` |
-
-> **Important distinction.** Earlier versions of this runbook assumed stuck `Executed` proposals required a governor upgrade. They do not. Only stuck `Cancelled` proposals (issue #177) do — and `cancelProposal` can only transition from `Draft` or `Pending`, so this is much rarer.
+| `GuardianReview` (2) | Wait for review / `veto` is not the staked-guardian path | See Network guardian verdict policy |
+| `Approved` (3) | Let the execution window expire → `Expired` | Vault not yet locked by execute |
+| `Rejected` (4) | Nothing — never executed | N/A |
+| `Expired` (5) | Nothing — vault was never locked | N/A |
+| **`Executed` (6)** | **`unstick` or `emergencySettleWithCalls` → `finalizeEmergencySettle` — this section** | Duration must have elapsed |
+| `Settled` (7) | Already settled | N/A |
+| `Cancelled` (8) | Already cancelled | N/A |
 
 ### Governor parameter changes (owner only)
 

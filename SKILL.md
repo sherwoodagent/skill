@@ -686,7 +686,7 @@ sherwood proposal settle --id <proposalId> [--calls <path-to-json>]```
 Auto-routes to the correct settlement path:
 - **Proposer:** `settleProposal` — the proposer may settle early, but not immediately: `MIN_STRATEGY_DURATION_BEFORE_SELF_SETTLE` is a hard **1-hour** floor from `executedAt`. Settling before it reverts `StrategyDurationNotElapsed()`.
 - **Duration elapsed:** `settleProposal` — permissionless, anyone can call after strategy duration
-- **Vault owner emergency:** `emergencySettle` — tries pre-committed calls first, falls back to custom `--calls`
+- **Vault owner emergency:** `emergencySettleWithCalls` — owner commits new unwind calldata, must hold a bond covering `requiredOwnerBond`, and opens guardian review. Calls do **not** execute until `finalizeEmergencySettle`. A blocked review burns the owner bond. (`unstick` only replays already-voted settlement calls.)
 
 Output: P&L, fees distributed, redemptions unlocked.
 

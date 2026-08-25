@@ -35,6 +35,8 @@
     "./skills/strategies/venice-inference",
     "./skills/strategies/moonwell-supply",
     "./skills/strategies/memecoin-alpha",
+    "./skills/guardian",
+    "./skills/vault-owner",
     "./skills/network-guardian"
   ]
 }

@@ -265,7 +265,7 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
-**Do not teach an owner-allowlist model for proposing.** Permission to run a strategy is not `vault add-target` / waiting for the vault owner to whitelist your clone. Uncertified `(target, selector)` pairs default to **tier 2** on `TierRegistry` and are **permissionless via a sandbox**: they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. Batch reachability is `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds); a disallowed callee reverts `DisallowedBatchCallee`. Uncertified `(target, selector)` pairs default to **tier 2** on `TierRegistry` and are **permissionless via a sandbox**: they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
 > **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` only `portfolio` resolves. Note also that a chain can deploy a template the CLI has no builder for (the fork's MorphoSupply and ConcentratedLiquidity templates are deployed but have no CLI key, so they do not appear in `strategy list` at all and cannot be cloned through the CLI).
 
@@ -292,9 +292,10 @@ propose uncertified / tier-2 calldata. The sandbox is the rest of the stack:
 pre-committed governor batches, guardian **fork** review (simulate then
 Approve/Block), execute-time coverage quorum, and a 14-day challenge tail.
 Tier 2 is a **price**, not a prohibition. Protocol-owned adapter/codehash gates
-on *where* ERC-20 value may be sent still apply inside `_guardBatchCalls` — that
-is not the same as an owner-managed strategy allowlist, and `sherwood vault
-add-target` is the wrong mental model.
+on *where* ERC-20 value may be sent still apply inside `_guardBatchCalls`
+(`isAdapterAllowed`). Batch callees are gated on `TierRegistry.isCallableTarget`
+and a disallowed callee reverts `DisallowedBatchCallee`. That is protocol
+registry standing, not a per-vault owner list.
 
 **It costs full-notional coverage.** At propose, each call is priced
 `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000`. For tier 2 / uncertified
@@ -354,7 +355,7 @@ sherwood strategy propose venice-inference \
 #### Strategy + Governor Integration
 
 - **Cloning:** The CLI clones the template (ERC-1167 minimal proxy) and initializes it. The proposer pays gas for both txs.
-- **No owner allowlist for strategies:** proposing is permissionless at **tier 2** via the sandbox (full-notional coverage + guardian fork review). Do not tell the user to `vault add-target` their clone. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
+- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** via the sandbox (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. Batch callees must pass `TierRegistry.isCallableTarget` (else `DisallowedBatchCallee`); funds destinations must pass `isAdapterAllowed`. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
 
@@ -510,9 +511,11 @@ sherwood vault balance
 sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626)
 ```
 
-### Stuck proposal recovery (guardian skill)
+### Stuck proposal recovery (vault-owner skill)
 
-If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`guardian` skill** — see `skill/skills/guardian/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely. This is a guardian-only path and is intentionally not surfaced in this top-level skill.
+If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`vault-owner` skill** — see `skills/vault-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely (`unstick` or bonded `emergencySettleWithCalls` → `finalizeEmergencySettle`). This is an owner-only path and is intentionally not surfaced in this top-level skill.
+
+Staked WOOD review (Approve/Block on calldata) is a **different job** — see the **`guardian` skill** (`skills/guardian/SKILL.md`).
 
 ---
 
@@ -685,7 +688,7 @@ sherwood proposal settle --id <proposalId> [--calls <path-to-json>]```
 Auto-routes to the correct settlement path:
 - **Proposer:** `settleProposal` — the proposer may settle early, but not immediately: `MIN_STRATEGY_DURATION_BEFORE_SELF_SETTLE` is a hard **1-hour** floor from `executedAt`. Settling before it reverts `StrategyDurationNotElapsed()`.
 - **Duration elapsed:** `settleProposal` — permissionless, anyone can call after strategy duration
-- **Vault owner emergency:** `emergencySettle` — tries pre-committed calls first, falls back to custom `--calls`
+- **Vault owner emergency:** `emergencySettleWithCalls` — owner commits new unwind calldata, must hold a bond covering `requiredOwnerBond`, and opens guardian review. Calls do **not** execute until `finalizeEmergencySettle`. A blocked review burns the owner bond. (`unstick` only replays already-voted settlement calls.)
 
 Output: P&L, fees distributed, redemptions unlocked.
 
@@ -851,12 +854,13 @@ User wants to...
 ├── Cancel proposal    → Governance: proposal cancel --id <id>
 ├── Check governance   → Governance: governor info, proposal list, proposal show <id>
 ├── Tune parameters    → Governance: governor set-* (owner only)
-├── Recover stuck vault → delegate to `guardian` skill (owner only)
-├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>
+├── Recover stuck vault → delegate to `vault-owner` skill (owner only)
+├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>  (owner bond, not review stake)
 ├── Proposer bond (at propose) → quoted WOOD into ProposerBondEscrow; hold WOOD, not just approve
 ├── Tier 2 / uncertified strategy → permissionless via sandbox; full-notional coverage; bond scales with that coverage
-
-├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-proposal, claim-delegator, claim-wood}
+├── Vault owner (veto / pause / emergency unwind / vault params) → `vault-owner` skill
+├── Staked review (stake WOOD, review calldata, Approve/Block) → `guardian` skill
+├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-wood}
 ├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
 ├── Fund Venice via governance → delegate to `strategies/venice-inference` skill
 ├── Private inference   → Phase 5: venice infer (or delegate to `strategies/venice-inference` skill)

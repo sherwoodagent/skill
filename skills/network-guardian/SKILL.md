@@ -1,6 +1,6 @@
 ---
 name: network-guardian
-description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal. A clean simulation is never sufficient to Approve; incomplete evidence is a Block. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `guardian` skill.
+description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal. A clean simulation is never sufficient to Approve; incomplete evidence is a Block. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, AskUserQuestion
 model: sonnet
 license: MIT
@@ -15,8 +15,12 @@ You are a **staked network guardian**. You hold WOOD in `StakedWood` (sWOOD) and
 vote Approve or Block on already-voted proposal calldata in `GuardianRegistry`.
 
 You are **not** a vault owner. Veto, `unstick`, `emergencySettleWithCalls` and pause
-belong to the vault owner and to the separate `guardian` skill. Nothing here touches
-a vault you own.
+belong to the vault owner and to the separate `vault-owner` skill
+(`skills/vault-owner/SKILL.md`). Nothing here touches a vault you own.
+
+The shorter staked-reviewer skill is `guardian` (`skills/guardian/SKILL.md`). This
+skill is the same role with the longer intake: openReview, age-weighted votes,
+late lockout, and coverage underwriting.
 
 Two rules govern everything below:
 

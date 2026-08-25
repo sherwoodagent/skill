@@ -564,17 +564,18 @@ cast call $GOVERNOR_ADDRESS "getGovernorParams()((uint256,uint256,uint256,uint25
 ### ProposalState enum
 
 ```
-0 = Draft        (collaborative proposal awaiting co-proposer consent)
-1 = Pending      (voting active — CAN VETO)
-2 = Approved     (voting ended, awaiting execution — CAN VETO)
-3 = Rejected     (vetoed or threshold reached)
-4 = Expired      (execution window passed without execution)
-5 = Executed     (strategy is live — can be settled after duration elapses)
-6 = Settled      (P&L calculated, fees distributed)
-7 = Cancelled    (proposer cancelled during Draft or Pending)
+0 = Draft           (collaborative proposal awaiting co-proposer consent)
+1 = Pending         (voting active — CAN VETO)
+2 = GuardianReview  (voting passed, guardian review window active)
+3 = Approved        (review ended without block quorum)
+4 = Rejected        (voting ended, veto threshold reached OR guardians blocked)
+5 = Expired         (execution window passed without execution)
+6 = Executed        (strategy is live — can be settled after duration elapses)
+7 = Settled         (P&L calculated, fee distributed)
+8 = Cancelled       (proposer or owner cancelled)
 ```
 
-When decoding `getProposal(id)` the last field is this uint8. **Always read the integer against this table, not position order** — the canonical source is `ISyndicateGovernor.sol`.
+`state` is a `uint8` member in the middle of the `StrategyProposal` struct returned by `getProposal(id)`, not the last field. Prefer `getProposalState(id)` when you only need the enum. **Always read the integer against this table, not position order** — the canonical source is `ISyndicateGovernor.sol`.
 
 ### BatchExecutorLib.Call
 

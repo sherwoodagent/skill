@@ -709,7 +709,7 @@ Vault owner only, and only while the proposal is `Pending`. The call reverts onc
 ```bash
 sherwood proposal cancel --id <proposalId>```
 
-Proposer can cancel if Pending/Approved. Vault owner can emergency cancel at any non-settled state.
+Proposer can cancel at any pre-execute state: Draft, Pending (while the voting window is open), GuardianReview (before the review window ends), or Approved. Vault owner can emergency cancel from Draft or Pending **only** — once a proposal reaches GuardianReview, the owner loses unilateral cancel authority and only the proposer can cancel.
 
 ### Governor info
 

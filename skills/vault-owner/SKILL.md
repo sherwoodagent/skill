@@ -248,7 +248,7 @@ As vault owner, you have these emergency powers:
 | Action | Command | When to use |
 |--------|---------|-------------|
 | **Veto** | `sherwood proposal veto <id>` | Reject a `Pending` proposal only (sets state to Rejected). Reverts once `GuardianReview` begins; block-quorum is the `guardian` skill |
-| **Emergency cancel** | `sherwood proposal emergency-cancel <id>` | Cancel any non-executed proposal |
+| **Emergency cancel** | `sherwood proposal emergency-cancel <id>` | Cancel a `Draft` or `Pending` proposal only. Reverts once `GuardianReview` begins — from there only the proposer can cancel |
 | **Emergency settle** | `emergencySettleWithCalls` → review → `finalizeEmergencySettle` | Owner-supplied unwind; bonded + guardian-reviewed; calls do **not** run until finalize |
 
 ### Vault-level

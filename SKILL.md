@@ -511,9 +511,11 @@ sherwood vault balance
 sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626)
 ```
 
-### Stuck proposal recovery (guardian skill)
+### Stuck proposal recovery (vault-owner skill)
 
-If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`guardian` skill** — see `skill/skills/guardian/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely. This is a guardian-only path and is intentionally not surfaced in this top-level skill.
+If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`vault-owner` skill** — see `skills/vault-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely (`unstick` or bonded `emergencySettleWithCalls` → `finalizeEmergencySettle`). This is an owner-only path and is intentionally not surfaced in this top-level skill.
+
+Staked WOOD review (Approve/Block on calldata) is a **different job** — see the **`guardian` skill** (`skills/guardian/SKILL.md`).
 
 ---
 
@@ -852,12 +854,13 @@ User wants to...
 ├── Cancel proposal    → Governance: proposal cancel --id <id>
 ├── Check governance   → Governance: governor info, proposal list, proposal show <id>
 ├── Tune parameters    → Governance: governor set-* (owner only)
-├── Recover stuck vault → delegate to `guardian` skill (owner only)
-├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>
+├── Recover stuck vault → delegate to `vault-owner` skill (owner only)
+├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>  (owner bond, not review stake)
 ├── Proposer bond (at propose) → quoted WOOD into ProposerBondEscrow; hold WOOD, not just approve
 ├── Tier 2 / uncertified strategy → permissionless via sandbox; full-notional coverage; bond scales with that coverage
-
-├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-proposal, claim-delegator, claim-wood}
+├── Vault owner (veto / pause / emergency unwind / vault params) → `vault-owner` skill
+├── Staked review (stake WOOD, review calldata, Approve/Block) → `guardian` skill
+├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-wood}
 ├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
 ├── Fund Venice via governance → delegate to `strategies/venice-inference` skill
 ├── Private inference   → Phase 5: venice infer (or delegate to `strategies/venice-inference` skill)

@@ -19,9 +19,11 @@ Before first use, check if the `sherwood` command exists. If not:
 npm i -g @sherwoodagent/cli@0.83.0
 ```
 
-Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
+Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
 
 **Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
+
+**HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
 All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use. `--chain robinhood-testnet` selects the Robinhood L2 testnet (chain 46630) instead; note its redeployed factory currently has no funds.
 
@@ -65,6 +67,7 @@ pass the global flag to any state-changing command to print EIP-5792 calldata
 (`{ txs: [{to,data,value,chainId}], … }`) instead of signing — no private key required:
 
 ```bash
+sherwood --calldata-only identity mint --name "My Agent"
 sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id 0 --asset USDC
 sherwood --calldata-only syndicate join --subdomain zerohumanfund
 sherwood --calldata-only proposal vote --id 1 --support for
@@ -72,8 +75,10 @@ sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x
 ```
 
 Commands that normally read your address from the key need it explicitly here:
-`vault deposit --receiver`, `vault redeem --owner`, `syndicate add --agent-id`.
+`vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`.
 See [ADDRESSES.md](ADDRESSES.md) for EAS and schema UIDs if you build calldata entirely by hand.
+
+`--calldata-only` is a **root** flag (before the subcommand). Broadcast `txs` in order and wait for confirmation between them. Use each tx's `chainId` (CLI default is robinhood-fork `9994663`). Identity mint needs `--name` only. MetaMask Agent Wallet recipe and live API base: [references/external-signer-integration.md](references/external-signer-integration.md).
 
 ### If you see rate-limit errors
 
@@ -733,6 +738,7 @@ Each validates against hardcoded bounds before submitting.
 | [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood testnet, chain 46630) and protocol/deployment references (not a vault-owner strategy allowlist) |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers, x402 pricing, signal-based trading |
+| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and MetaMask `--calldata-only` broadcast recipe |
 | `cli/src/lib/addresses.ts` | Canonical address source (resolved at runtime by network) |
 | `cli/src/commands/` | Command implementations for each subcommand group |
 

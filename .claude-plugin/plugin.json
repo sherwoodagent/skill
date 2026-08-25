@@ -36,6 +36,7 @@
     "./skills/strategies/moonwell-supply",
     "./skills/strategies/memecoin-alpha",
     "./skills/guardian",
-    "./skills/vault-owner"
+    "./skills/vault-owner",
+    "./skills/network-guardian"
   ]
 }

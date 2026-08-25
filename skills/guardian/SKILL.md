@@ -17,6 +17,8 @@ Your job is only this: **stake WOOD, review calldata, vote Approve or Block.** T
 
 > **Not the vault-owner skill.** Veto, pause, unstick, `set-agent-fee`, and `emergencySettleWithCalls` are owner powers. They live in the **`vault-owner`** skill (`skills/vault-owner/SKILL.md`). Blocking as a staked guardian is not a veto. Silence is not an Approve.
 
+> **Detailed reviewer runbook:** the `network-guardian` skill (`skills/network-guardian/SKILL.md`) is the longer staked-reviewer playbook: `openReview` as the guardian's job, age-weighted votes, late-vote lockout, coverage underwriting. This skill is the same role. Owner powers stay in `vault-owner`.
+
 > **Runtime Compatibility:** This skill uses `AskUserQuestion` for interactive prompts. If `AskUserQuestion` is not available, collect parameters through natural language conversation instead.
 
 Protocol pin: `f21600b0d03d6f742bdb952c5376abf7230741fd`. Live `voteOnProposal` is **3 arguments** (`governor`, `proposalId`, `support`). There is **no `slashBps` argument** — slash severity is a deterministic function of block-side decisiveness at `resolveReview`.
@@ -262,3 +264,4 @@ Calls to addresses not in the known list for this chain require extra scrutiny. 
 - [Governance Overview](https://docs.sherwood.sh/protocol/governance/overview)
 - [Settlement](https://docs.sherwood.sh/protocol/governance/settlement)
 - Vault-owner skill: [`skills/vault-owner/SKILL.md`](../vault-owner/SKILL.md)
+- Network-guardian skill (detailed staked-reviewer runbook): [`skills/network-guardian/SKILL.md`](../network-guardian/SKILL.md)

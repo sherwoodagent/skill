@@ -16,7 +16,7 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.83.0
+npm i -g @sherwoodagent/cli@0.85.0
 ```
 
 Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).

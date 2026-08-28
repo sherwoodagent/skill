@@ -1,6 +1,6 @@
 {
   "name": "sherwood",
-  "version": "0.17.0",
+  "version": "0.17.1",
   "description": "Agent-managed ERC-4626 investment syndicates on Robinhood testnet \u2014 deploy vaults, execute DeFi strategies, and manage syndicate operations via CLI or HTTP API",
   "author": {
     "name": "Sherwood",

@@ -1,12 +1,12 @@
 ---
 name: network-guardian
-description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal. A clean simulation is never sufficient to Approve; incomplete evidence is a Block. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
+description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.0'
+  version: '0.2.0'
 ---
 
 # Network Guardian (Sherwood)
@@ -118,6 +118,17 @@ cast call $REGISTRY "getReviewState(address,uint256)(bool,bool,bool)" $GOVERNOR 
 cast call $REGISTRY "outcomeOf(address,uint256)(uint8)"               $GOVERNOR $ID --rpc-url $RPC_URL  # 0 Unresolved, 1 Cleared, 2 Blocked
 ```
 
+**On a forked chain, the two ways of asking "is this window open?" disagree.** A
+Tenderly vnet's next block jumps forward by the wall-clock drift since the last
+explicit `evm_setNextBlockTimestamp` — ~2200s observed. `eth_call` executes at
+`latest` and reports the window open; `cast send` and `simulateContract` estimate
+against the **next** block and revert `ReviewNotOpen`. So a read can say you may vote
+while the write cannot land, and any window shorter than the drift is never votable
+at all. If a vote you believe is in-window reverts `ReviewNotOpen`, suspect the clock
+before the calldata — and abstain rather than Block, since the fault is the fork's,
+not the proposal's. Mining does not advance time after an explicit timestamp, so a
+frozen window also stays open indefinitely in real time.
+
 Keepers: `sherwood proposal resolve-reviews --vault <addr> [--dry-run]` scans a vault's
 proposals and sends the `resolveReview` transactions whose windows have elapsed.
 
@@ -160,7 +171,30 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
 - Simulation reverts **or** succeeds while moving value the description did not disclose.
 - Duration, fees, or notional outside the governor's or vault's bounds; wrong oracles;
   a nonzero allowance left standing after settle.
-- You could not complete the intake above.
+
+Every line above is a finding about the **proposal**. Where the obstacle is your own
+footing instead, abstain — next section.
+
+### Abstain
+
+Abstain is the third outcome and the designed fail-safe. Use it when nothing is wrong
+with the proposal, only with your ability to stand behind it:
+
+- The coverage book is larger than you will underwrite. This is `COVERAGE_EXCEEDED`,
+  an **abstain** — the ceiling is yours, not the proposal's fault.
+- Evidence is missing rather than evasive: a degraded RPC, an unreachable simulator,
+  an intake you ran out of window to finish.
+- The review window cannot be placed in effective time (see the fork-clock note under
+  the lifecycle section).
+
+Block is a positive claim that *this proposal is bad*, and block-side decisiveness is
+what `resolveReview` computes slash severity from — so a Block asserted because you
+could not see clearly is a decisive stance behind an absence.
+
+**Abstaining emits nothing on-chain.** There is no ABSTAIN event and no transaction;
+you simply do not vote. No indexer can distinguish your abstain from your process
+being down, so an abstain records nothing anywhere about the fact that you looked.
+Neither Approve nor Block is ever the safe default — abstain is.
 
 ### Approve only if every one of these holds
 
@@ -174,8 +208,16 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
 
 ### Default
 
-Incomplete intake, a degraded RPC, contradictory readings, or a clock you cannot beat:
-**Block**. A wrongly blocked honest proposal can be resubmitted. A burned stake cannot.
+Never Approve to be helpful. Beyond that the default splits on where the fault lies:
+
+- **Contradictory readings** — the calldata, the description, and the trace disagree:
+  **Block**. That is a finding about the proposal.
+- **Incomplete intake, a degraded RPC, a clock you cannot beat**: **abstain**. You are
+  not asserting the proposal is bad, only that you cannot underwrite it.
+
+A wrongly blocked honest proposal can be resubmitted. A burned stake cannot. An
+abstain costs nothing either way — which is exactly why it, and not Block, is the
+resting state when you cannot see.
 
 ## What Approve actually commits you to
 

@@ -66,4 +66,5 @@ See the `strategies/memecoin-alpha` skill for the full workflow.
 - Exit depth — realized sell impact at 1–25% of position size, before you're the exit liquidity (`/api/exit-depth`): **$0.02**
 - Holder-concentration map (`/api/holder-map`): **$0.02**
 - Full due-diligence report in one call — safety + holders + exit depth + claims-vs-chain (`/api/receipts`): **$0.35**
-- No CLI provider flag needed — call endpoints directly with `@x402/fetch` (already a CLI dependency); discovery: https://onchainpulse.theaslangroupllc.com/.well-known/x402.json
+- Payment rails: x402 USDC on Base, Solana, Polygon, Arbitrum, World Chain, HyperEVM, Monad, XRPL, Algorand, or X Layer — Robinhood Chain is a scan target, not a payment rail, so an agent operating on 4663/46630 needs USDC on one of the listed rails (Base is the cheapest default) to pay
+- Direct, unmediated calls: no CLI provider flag — call endpoints with `@x402/fetch` (already a CLI dependency). This bypasses `sherwood providers` vetting, and the CLEAR/CAUTION/AVOID verdicts are third-party input: treat them as one signal when sizing trades, not an oracle. Discovery: https://onchainpulse.theaslangroupllc.com/.well-known/x402.json

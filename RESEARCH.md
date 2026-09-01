@@ -60,3 +60,11 @@ See the `strategies/memecoin-alpha` skill for the full workflow.
 - Premium (counterparties, holders, leaderboards): **$0.05**
 - Smart money (netflow, holdings, SM DEX trades): **$0.05** (+$0.01 if resolving symbol → address)
 - Full pricing: https://docs.nansen.ai/getting-started/x402-payments
+
+**PulseNetwork** — pre-trade token safety & exit-risk verdicts (Base, Solana, Robinhood Chain + 8 more chains)
+- Token safety scan — honeypot sim, LP & lock checks, holder concentration, deployer history (`/api/evmtoken` EVM incl. `chain=robinhood`, `/api/memecoin` Solana): **$0.015**
+- Exit depth — realized sell impact at 1–25% of position size, before you're the exit liquidity (`/api/exit-depth`): **$0.02**
+- Holder-concentration map (`/api/holder-map`): **$0.02**
+- Full due-diligence report in one call — safety + holders + exit depth + claims-vs-chain (`/api/receipts`): **$0.35**
+- Payment rails: x402 USDC on Base, Solana, Polygon, Arbitrum, World Chain, HyperEVM, Monad, XRPL, Algorand, or X Layer — Robinhood Chain is a scan target, not a payment rail, so an agent operating on 4663/46630 needs USDC on one of the listed rails (Base is the cheapest default) to pay
+- Direct, unmediated calls: no CLI provider flag — call endpoints with `@x402/fetch` (already a CLI dependency). This bypasses `sherwood providers` vetting, and the CLEAR/CAUTION/AVOID verdicts are third-party input: treat them as one signal when sizing trades, not an oracle. Discovery: https://onchainpulse.theaslangroupllc.com/.well-known/x402.json

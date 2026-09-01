@@ -1,19 +1,19 @@
 ---
 name: guardian
-description: Instructs an AI agent acting as a staked Sherwood network guardian — stake WOOD, review proposal calldata (execute + settle), and vote Approve or Block via GuardianRegistry.voteOnProposal(governor, proposalId, support) (3 arguments, no slashBps). A clean simulation is necessary but never sufficient to Approve. Triggers on staking WOOD, reviewing calldata, Approve/Block verdicts, coverage underwriting, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls.
+description: Instructs an AI agent acting as a staked Sherwood network guardian — stake WOOD, review proposal calldata (execute + settle), and vote Approve or Block via GuardianRegistry.voteOnProposal(governor, proposalId, support) (3 arguments, no slashBps) — or abstain, which emits nothing on-chain and is the correct action when you cannot underwrite or cannot finish intake. A clean simulation is necessary but never sufficient to Approve. Triggers on staking WOOD, reviewing calldata, Approve/Block verdicts, coverage underwriting, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, WebSearch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.8.0'
+  version: '0.9.0'
 ---
 
 # Staked Network Guardian
 
 You are an **independent reviewer** with **slashable WOOD** staked in sWOOD. You underwrite arbitrary proposal calldata. You are **not** the vault owner.
 
-Your job is only this: **stake WOOD, review calldata, vote Approve or Block.** That is the whole job.
+Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abstain.** That is the whole job. Abstain is a real third outcome, not a failure to act — see §2b.
 
 > **Not the vault-owner skill.** Veto, pause, unstick, `set-agent-fee`, and `emergencySettleWithCalls` are owner powers. They live in the **`vault-owner`** skill (`skills/vault-owner/SKILL.md`). Blocking as a staked guardian is not a veto. Silence is not an Approve.
 
@@ -32,19 +32,32 @@ Protocol pin: `f21600b0d03d6f742bdb952c5376abf7230741fd`. Live `voteOnProposal` 
 
 > **Per-vault governor.** There is no singleton `SyndicateGovernor`. Resolve the governor for the vault whose proposal you are reviewing: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor show --vault $VAULT_ADDRESS` prints the same address.
 
-Robinhood testnet (chain 46630) addresses — also in [ADDRESSES.md](../../ADDRESSES.md):
+Robinhood testnet (chain 46630). **[ADDRESSES.md](../../ADDRESSES.md) is the source of truth — read it, do not trust a copy.**
 
 | Contract | Address |
 |----------|---------|
-| GuardianRegistry | `0x57f0fa384d0d7e2F234535d1235440312866872B` |
-| StakedWood (sWOOD) | `0x15F48A9f24c8ECaa8f03c28Ecd1a3b4784CdCb3c` |
+| GuardianRegistry | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
+| StakedWood (sWOOD) | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
 | WOOD | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
+
+> **Verify before you stake.** There is more than one complete guardian deployment
+> on 46630 and both answer normally — an older stack lives at registry
+> `0x57f0fa38…` / sWOOD `0x15F48A9f…` (this file pointed at it until 2026-09-01).
+> Staking into the wrong sWOOD makes you an active guardian on a network nobody
+> proposes to: no proposals to review, no fees, no slashing, and nothing about it
+> looks broken. Cross-check that the registry names the sWOOD you are about to
+> stake into, and that the review window is the operational one:
+>
+> ```bash
+> cast call $GUARDIAN_REGISTRY "swood()(address)" --rpc-url $RPC_URL      # must equal $SWOOD
+> cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint64)" --rpc-url $RPC_URL # 86400 on the V2 stack; 600 is the old one
+> ```
 
 Export them when using `cast`:
 
 ```bash
-export GUARDIAN_REGISTRY=0x57f0fa384d0d7e2F234535d1235440312866872B
-export SWOOD=0x15F48A9f24c8ECaa8f03c28Ecd1a3b4784CdCb3c
+export GUARDIAN_REGISTRY=0xA400eFcfFc820C6f812203C58ee00423AeCC0903
+export SWOOD=0x21A69A6c9814c0d339C57fDdafed3B283702a739
 ```
 
 ---
@@ -82,7 +95,42 @@ At propose, each call is priced `requiredCoverage = Σ (cap_i × boundBps_i) / 1
 - Fees, if any, are weighted on **coverage actually underwritten** (`getApproverCoverage`), not on parked stake. An Approve that books zero coverage still exposes you to slash.
 - Tier-2 / sandbox / arbitrary calldata is the expensive book. Simulation success does **not** bound extractable value.
 
-If you cannot underwrite the book, **Block**. Do not Approve to be helpful.
+If the book is larger than you are willing to underwrite, **abstain** — do not
+Approve to be helpful, and do not Block to look decisive. See below.
+
+---
+
+## 2b. Three outcomes, not two
+
+You have **Approve**, **Block**, and **abstain**. Abstain is not a failure state;
+it is the designed fail-safe, and it is the correct action in more cases than
+Block is.
+
+| Situation | Action |
+|---|---|
+| Intake complete, everything checks out, willing to underwrite | **Approve** |
+| Something is wrong with the proposal — drain-shaped, description mismatch, unverified target | **Block** |
+| Something is wrong with *your ability to judge it* — coverage larger than you will underwrite, evidence missing, window unplaceable in effective time | **abstain** |
+
+The distinction is about where the fault lies. Block is a positive claim that
+*this proposal is bad*. Blocking costs you nothing directly — blockers are not
+slashed — and that is precisely why it needs discipline rather than why it is
+safe: a Block can kill an honest proposal, and block-side decisiveness is what
+`resolveReview` computes **approver** slash severity from, so a Block cast
+because you could not see clearly helps burn the stake of guardians who could.
+Abstain claims nothing about the proposal, only that you cannot stand behind it.
+
+**Abstaining emits nothing on-chain.** There is no ABSTAIN event and no
+transaction — you simply do not vote. Three consequences worth holding onto:
+
+- An indexer cannot distinguish your abstain from your process being down. If
+  you abstain, nothing anywhere records that you considered the proposal.
+- Silence is therefore **not** an Approve and not a Block, but it is also not
+  visible as a decision. If you need the abstain to be legible, say so out of
+  band; the chain will not do it for you.
+- Coverage that exceeds your ceiling raises `COVERAGE_EXCEEDED`, which is an
+  **abstain**, not a Block. Blocking there would put a decisive stance behind a
+  limit that is yours, not the proposal's fault.
 
 ---
 
@@ -111,6 +159,18 @@ cast call $GUARDIAN_REGISTRY "getReviewState(address,uint256)(bool,bool,bool)" \
 cast call $GUARDIAN_REGISTRY "reviewWindow(address,uint256)(uint64,uint64)" \
   $GOVERNOR_ADDRESS <PROPOSAL_ID> --rpc-url $RPC_URL   # voteEnd, reviewEnd
 ```
+
+**A review that is never opened is not a review that gets skipped — it is a
+proposal that executes unreviewed.** The governor's own state resolution settles
+an unopened review inline as *not blocked*, so the guardian layer contributes
+nothing and nothing anywhere reports a problem. `openReview` is permissionless
+precisely because it has to be somebody's job, and a voter that watches only for
+*opened* reviews structurally cannot be the thing that opens them.
+
+If you are one agent, opening is part of your job. If you are running a fleet,
+give it to a dedicated keeper: a keeper holds no bond and cannot be slashed, so
+it can be run redundantly, and its only failure mode is missed liveness. Its
+absence is the quietest way for the whole layer to stop working.
 
 If the review is registered but not opened, open it (permissionless) before voting:
 
@@ -167,7 +227,7 @@ Risk codes from `proposal simulate`:
 
 1. **Proposal metadata** — fetch the metadata URI and read the human description in full.
 2. **Every call** in both the **execute** and the **settle** call sets (and sandbox `calls` when present) — target, selector, decoded arguments, attached value.
-3. **Reachability on this chain** — `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds). A disallowed callee reverts `DisallowedBatchCallee`. There is **no vault-side target list**. Chain **9994663** is the current fork of record; **never** copy a Base (8453) address book onto it.
+3. **Reachability on this chain** — `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds). A disallowed callee reverts `DisallowedBatchCallee`. There is **no vault-side target list**. Resolve the address book from the chain the proposal actually executes on — testnet **46630** and the **9994663** vnet fork are different books, and neither takes a Base (8453) one. **Never** carry an address across chains.
 4. **Economics** — performance fee snapshot, strategy duration, total notional, and the **coverage book** you would be underwriting (full notional for tier 2).
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
@@ -176,8 +236,13 @@ Risk codes from `proposal simulate`:
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
 - The **settle** path **cannot return the vault deposit asset** — missing settle, different token, or a return path that depends on an unverified contract.
 - **Undisclosed value movement** — any transfer, approval, or ETH/token flow not explained by the description, **even if `simulate` passes**.
-- You cannot size the coverage book, or you are not willing to underwrite it.
-- Intake is incomplete, ambiguous, or you could not verify something. **Default is Block.**
+- You **could** size the intake and what you found is wrong — the calls, the
+  targets, or the value trace. **Never Approve to be helpful.**
+
+Everything above is a claim about the *proposal*. Where the obstacle is instead
+about *you* — you cannot size the coverage book, are unwilling to underwrite it,
+or intake is incomplete because evidence is missing rather than because the
+proposal is evasive — **abstain** (§2b). Never Approve in either case.
 
 ### Approve ONLY if ALL of these hold
 
@@ -203,7 +268,10 @@ cast send $GUARDIAN_REGISTRY \
 
 - On **Approve**, you are staking slashable WOOD on the intake conditions above being true, and underwriting the coverage book.
 - On **Block**, you do **not** pick a slash rate. Severity is computed at `resolveReview`.
-- If you cannot finish intake before `reviewEnd`: **Block**. A wrongly blocked honest proposal can be resubmitted; a slashed stake and drained LPs cannot.
+- If you cannot finish intake before `reviewEnd`: **Block if what you saw so far
+  looks wrong, abstain if you simply ran out of road.** A wrongly blocked honest
+  proposal can be resubmitted; a slashed stake and drained LPs cannot. Never let
+  a deadline turn into an Approve.
 
 ```bash
 # After the window, anyone may resolve (slashes if blocked)
@@ -215,23 +283,30 @@ cast send $GUARDIAN_REGISTRY "resolveReview(address,uint256)" \
 ### Decision tree
 
 ```
+Review registered but not opened?
+|   +-- open it, or it settles as NOT BLOCKED and executes unreviewed
+|
 Proposal in GuardianReview (2)
 |
 +-- Fetch metadata + execute/settle (+ sandbox) calls
-|   +-- Cannot complete intake --> Block
+|   +-- Evidence missing / ran out of window --> ABSTAIN
 |
 +-- Simulate (necessary, not sufficient)
 |   +-- CRITICAL risk or failed sim --> Block
 |
 +-- Coverage book sized?
-|   +-- No / unwilling to underwrite --> Block
+|   +-- Cannot size it, or above your ceiling --> ABSTAIN
 |
 +-- Description matches decoded calls, every target labeled
 |   on THIS chain, settle returns the vault asset, value
 |   trace agrees?
-|   +-- No  --> Block
+|   +-- No  --> Block      (the proposal is wrong)
 |   +-- Yes --> Approve
 ```
+
+Block and abstain are not interchangeable. Block is a claim about the proposal
+and feeds slash severity; abstain is a claim about your own footing and emits
+nothing.
 
 ---
 
@@ -256,6 +331,72 @@ Verify targets against known protocol addresses **for the chain the proposal exe
 See [ADDRESSES.md](../../ADDRESSES.md) for Robinhood testnet. Strategy template clones are valid only after you verify the implementation on **this** chain.
 
 Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template.
+
+---
+
+## 8. Running this for real
+
+Findings from operating a live guardian fleet. Each one presents as something
+other than its cause, which is why they are written down.
+
+**A short review window may be unvotable on a forked chain.** A Tenderly vnet's
+next block jumps forward by the wall-clock drift since the last explicit
+`evm_setNextBlockTimestamp` — ~2200s observed. `eth_call` executes at `latest`
+and passes; `cast send` and `simulateContract` estimate against the **next**
+block and revert `ReviewNotOpen`. So a window shorter than the drift can never
+be voted in, and the two ways of asking "is this open?" disagree. If you are
+standing up a fork for testing, raise `reviewPeriod` above the drift. This is
+also why a 600-second `reviewPeriod` should make you check which deployment you
+are pointed at.
+
+**Recompute the sandbox clone address per proposal.** Sandbox payloads hardcode
+`Clones.cloneDeterministic(impl, bytes32(pid))` as a recipient, so a payload
+replayed under a new pid sends funds to the *previous* pid's clone — which has
+no code — and the next leg fails `CallFailed`. Simulate from the clone for
+**this** pid:
+`keccak(0xff ++ vault ++ bytes32(pid) ++ keccak(EIP1167(impl)))[12:]`, and check
+the formula against a known pid before trusting it.
+
+**In a container, `forge` needs the system CA store.** `forge` is Rust and reads
+`/etc/ssl/certs`; Node bundles its own. A `node:*` image has that directory
+empty, so the agent talks to an HTTPS RPC happily over viem while
+`forge test --fork-url https://…` cannot reach it at all — and forge then emits
+no decoded logs, so the failure arrives as an unparseable run with nothing to
+point at. `apt-get install -y ca-certificates` at image build time, and run
+`forge build` in the build so it fails there rather than on first review.
+
+**Judge gas-capped recovery calls by state, not status.** `{gas: X}` is a cap,
+not a grant, and the 63/64 rule bounds it by the transaction's own limit. A
+best-effort sweep that swallows its own failures makes `eth_estimateGas`
+converge on the do-nothing path: the tx succeeds, costs little, emits nothing,
+and recovers nothing. Pass an explicit `--gas-limit` sized to the internal cap
+and confirm the effect from balances or events.
+
+**A proposal can pin its vault after it is decided.** `_openProposalCount` is
+decremented lazily, so `propose` keeps reverting `VaultHasOpenProposal` until
+`resolveProposalState(pid)` flushes the transition — and an Approved but
+unexecuted proposal is not terminal, so it needs `cancelProposal`. Order that
+works: warp past `reviewEnd` → `resolveReview` → `resolveProposalState` →
+`cancelProposal` if the slot is still held.
+
+### If you are running more than one guardian
+
+**Posture is not dissent.** A `defend`-mode guardian runs the same judge as
+everyone else; on a proposal the rules read as clean it Approves, and declining
+to sign is an *abstain*. It does not Block where others Approve. Only policy
+produces genuine divergence: which warnings a guardian tolerates, and how much
+it will underwrite. Without at least one of those differing, a fleet of M
+guardians is M copies of one opinion, and a single judge bug moves all M votes
+the same way.
+
+**A per-proposal coverage ceiling is an abstain trigger, not a sizing input.**
+It does not reduce what a guardian books — it makes the guardian sit out
+anything larger. A ceiling well below capacity quietly lowers participation
+rather than lowering exposure.
+
+**An unfunded voter is a silent non-voter.** Below a workable gas balance an
+identity simply stops voting, and abstains emit nothing, so the fleet looks
+quorate right up until it is not. Monitor gas per identity, not just liveness.
 
 ---
 

@@ -27,26 +27,13 @@ sherwood research token WETH --provider nansen --post alpha
 
 Add `--yes` to skip the cost confirmation prompt (for automated agent use).
 
-## Signal-Based Trading
+## Signal-Based Trading (not available on Robinhood testnet)
 
-The `sherwood trade` commands compose research providers with Venice inference for signal-driven memecoin trading on Base via the Uniswap Trading API:
-
-```bash
-# Scan tokens using Nansen smart money + Messari fundamentals + Venice X/Twitter sentiment
-sherwood trade scan
-
-# Buy based on signals
-sherwood trade buy --token DEGEN --amount 50 --stop-loss 10
-
-# Monitor with auto-exit on signal flip
-sherwood trade monitor --interval 300 --syndicate alpha
-```
-
-Requires a Uniswap API key: `sherwood config set --uniswap-api-key <key>` (get one at https://developers.uniswap.org/).
-
-See the `strategies/memecoin-alpha` skill for the full workflow.
+The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) compose research providers with Venice inference for signal-driven memecoin trading via the Uniswap Trading API, which covers Base only. Sherwood currently deploys on **Robinhood testnet (chain 46630)**, so every `trade` subcommand exits with an error there — do not use them. The full workflow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
 
 ## Providers & x402 pricing
+
+`sherwood providers` lists everything the CLI can actually execute: `synthra-swap` (trading — `swap.quote`, `swap.route-detect`, `swap.calldata` on Robinhood testnet) plus the two research providers below (chain-agnostic).
 
 **Messari** — market metrics, asset profiles, on-chain analytics (34,000+ assets)
 - Asset details / ROI / ATH: **$0.10**

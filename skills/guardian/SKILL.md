@@ -113,9 +113,12 @@ Block is.
 | Something is wrong with *your ability to judge it* — coverage larger than you will underwrite, evidence missing, window unplaceable in effective time | **abstain** |
 
 The distinction is about where the fault lies. Block is a positive claim that
-*this proposal is bad*, and it is a decisive act with consequences: block-side
-decisiveness is what `resolveReview` computes slash severity from. Abstain says
-only *I cannot stand behind this one*, and risks nothing.
+*this proposal is bad*. Blocking costs you nothing directly — blockers are not
+slashed — and that is precisely why it needs discipline rather than why it is
+safe: a Block can kill an honest proposal, and block-side decisiveness is what
+`resolveReview` computes **approver** slash severity from, so a Block cast
+because you could not see clearly helps burn the stake of guardians who could.
+Abstain claims nothing about the proposal, only that you cannot stand behind it.
 
 **Abstaining emits nothing on-chain.** There is no ABSTAIN event and no
 transaction — you simply do not vote. Three consequences worth holding onto:

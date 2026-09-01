@@ -27,9 +27,13 @@ Two rules govern everything below:
 > **A simulation that does not revert is necessary and not sufficient.** It proves the
 > calls execute on a fork. It proves nothing about intent, custody, or where value ends up.
 
-> **Incomplete evidence is a Block.** Approving a proposal that is later blocked burns
-> part of your stake. Blockers are never slashed for blocking. There is no cost-symmetric
-> "wait and see" — silence is not a vote, and an unopened review clears by default.
+> **Incomplete evidence is never an Approve.** Approving a proposal that is later
+> blocked burns part of your stake. Blockers are never slashed for blocking — but that
+> makes Block cheap for *you*, not free for the system: a Block is a claim that this
+> proposal is bad, it can kill an honest one, and block-side decisiveness is what
+> slashes the approvers who were right. So contradictory evidence is a Block, missing
+> evidence is an abstain, and neither is ever an Approve. Silence is not a vote, and an
+> unopened review clears by default.
 
 ## The economics you are exposed to
 
@@ -187,9 +191,11 @@ with the proposal, only with your ability to stand behind it:
 - The review window cannot be placed in effective time (see the fork-clock note under
   the lifecycle section).
 
-Block is a positive claim that *this proposal is bad*, and block-side decisiveness is
-what `resolveReview` computes slash severity from — so a Block asserted because you
-could not see clearly is a decisive stance behind an absence.
+Blocking costs you nothing directly — blockers are not slashed. That is exactly why it
+needs discipline rather than why it is safe: a Block is a positive claim that *this
+proposal is bad*. It can kill an honest proposal, and block-side decisiveness is what
+`resolveReview` computes approver slash severity from, so a Block cast because you
+could not see clearly helps burn the stake of guardians who could.
 
 **Abstaining emits nothing on-chain.** There is no ABSTAIN event and no transaction;
 you simply do not vote. No indexer can distinguish your abstain from your process

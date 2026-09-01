@@ -14,7 +14,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `NotCreator` | Wallet isn't the syndicate creator | Use the creator wallet |
-| `NotAllowedTarget` | Contract not in vault allowlist | `sherwood vault add-target --target 0x...` |
+| `DisallowedBatchCallee` | Batch `target` is not `TierRegistry.isCallableTarget` (and is not the vault `asset()`) | There is no vault-side target list. Confirm callee standing on `TierRegistry.isCallableTarget`. Funds destinations are a separate axis (`isAdapterAllowed`). |
 | `DepositorNotApproved` | LP not whitelisted | `sherwood syndicate approve-depositor --depositor 0x...` |
 
 ## Execution Errors
@@ -22,17 +22,23 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `CapExceeded` | Batch exceeds vault caps | Lower amounts or update caps |
-| `Simulation failed` | Batch would revert on-chain | Check caps, allowlist, token balances |
+| `Simulation failed` | Batch would revert on-chain | Check caps, `isCallableTarget` / `DisallowedBatchCallee`, `isAdapterAllowed`, token balances |
 | `ERC721InvalidReceiver` | Vault can't receive NFTs | Vault includes ERC721Holder — redeploy if on old version |
 | `Could not read decimals` | Invalid token address | Verify address is a valid ERC20 on Base |
 | `IPFS upload failed` | Hosted Sherwood pinning API unreachable or errored | Non-fatal — CLI falls back to inline `data:` metadata; check network or set `SHERWOOD_API_URL` |
+
+## Proposer Bond Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `InsufficientProposerBondWood` | Wallet WOOD balance is below the quoted proposer bond (`ExposureLedger.proposerBondWood`) | Hold more WOOD. This is **not** the 10k owner stake. The CLI sets escrow allowance but cannot mint WOOD. On the fork, the faucet 15k WOOD covers the owner stake plus a small-book bond. The amount **scales** with coverage and WOOD price — quote it; do not assume a fixed WOOD number. |
 
 ## Governance Errors
 
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `ProposalNotApproved` | Tried to execute a proposal that isn't approved | Wait for voting to end (optimistic = auto-passes) or check veto threshold |
-| `ProposalNotVetoable` | Tried to veto a proposal that's already Executed/Settled/Cancelled | Can only veto Pending or Approved proposals |
+| `ProposalNotVetoable` | Tried to veto a proposal that is not `Pending` | Vault owner can veto only while `Pending`; the call reverts once the proposal enters `GuardianReview` |
 | `NotVaultOwner` | Non-owner tried to veto or emergency settle | Must use the vault owner wallet |
 | `StrategyAlreadyActive` | Tried to execute while another strategy is live | Wait for current strategy to settle first |
 | `CooldownNotElapsed` | Tried to execute too soon after last settlement | Wait for cooldown period to pass |

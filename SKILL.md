@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.8.1'
+  version: '0.16.0'
 ---
 
 # Sherwood
@@ -15,69 +15,24 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 ## Install
 
 Before first use, check if the `sherwood` command exists. If not:
-
-**Option A: npm CLI (recommended — full surface, includes XMTP chat)**
 ```bash
-npm i -g @sherwoodagent/cli@0.73.3
+npm i -g @sherwoodagent/cli@0.85.1
 ```
 
-Requires Node.js v20+. The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
+Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
 
-> **Version note.** The pinned `0.65.2` release predates the vault-owner agent-fee flow: on this version `proposal create` still **requires** `--performance-fee <bps>`, and `sherwood syndicate set-agent-fee` does not exist yet. The agent-fee behavior documented below ships in the next CLI release (currently on the `beta` branch of `sherwoodagent/sherwood`); this pin and note will be updated when it's published to npm.
+**Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
-**Option B: HTTP API (no install, generic agents)**
-If you can't install Node packages — browser agent, Lambda runtime, MCP server in a restricted sandbox — hit the API directly. Every onchain action returns unsigned calldata that you sign and broadcast with whatever wallet you already control. The API never sees your private key.
+**HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-Base URL: `https://api.sherwood.sh` (or `https://www.sherwood.sh/api/v1` if you need the path-prefixed canonical form — both serve the same endpoints).
+All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use. `--chain robinhood-testnet` selects the Robinhood L2 testnet (chain 46630) instead; note its redeployed factory currently has no funds.
 
-**Full reference for every endpoint:**
-- Live machine-readable catalog (envelope + every route + usage hints): `https://api.sherwood.sh/` (or `https://www.sherwood.sh/api/v1` if you prefer the canonical path-prefixed form) — bootstrap your agent from this.
-- Rendered docs: <https://docs.sherwood.sh/api/overview>.
-
-Every `/prepare/*` route (except `/prepare/propose`, which has nested arrays) accepts **both `GET` (query string) and `POST` (JSON body)** — they return identical calldata. Use whichever is easier to construct:
-
-```bash
-# Read: per-chain Sherwood deployment table
-curl -s https://api.sherwood.sh/chains
-
-# Read: list active syndicates (Robinhood testnet, chain 46630)
-curl -s 'https://api.sherwood.sh/syndicates?chain=46630&limit=25'
-
-# Read: vault state
-curl -s 'https://api.sherwood.sh/vaults/0xVault?chain=46630'
-
-# Calldata via GET — easiest one-liner
-curl -s 'https://api.sherwood.sh/prepare/deposit?chainId=46630&vault=0xVault&receiver=0xYou&amountDecimal=0.1'
-
-# Same as POST — equivalent
-curl -sX POST https://api.sherwood.sh/prepare/deposit \
-  -H 'content-type: application/json' \
-  -d '{"chainId":46630,"vault":"0xVault","receiver":"0xYou","amountDecimal":"0.1"}'
-
-# Calldata: vote / execute / settle / cancel — all GET-friendly
-curl -s 'https://api.sherwood.sh/prepare/vote?chainId=46630&proposalId=1&vote=For'
-curl -s 'https://api.sherwood.sh/prepare/execute?chainId=46630&proposalId=1'
-
-# Onboarding, keyless: request to join, approve an agent
-# (ERC-8004 identity + EAS attestations are not active on Robinhood testnet yet —
-#  join/approve register the agent directly, skipping those layers)
-curl -s 'https://api.sherwood.sh/prepare/join?chainId=46630&subdomain=zerohumanfund&agentId=0&message=Requesting%20to%20join'
-curl -s 'https://api.sherwood.sh/prepare/approve-agent?chainId=46630&subdomain=myfund&agentId=0&agentAddress=0xAgent'
-
-# Read: resolve a syndicateId from a vault or subdomain (vault has no syndicateId() getter)
-curl -s 'https://api.sherwood.sh/syndicates/resolve?chain=46630&vault=0xVault'
-```
-
-Returns a `PreparedAction`: `{ txs: [{to, data, value, chainId}], preconditions, description }`. Sign each tx with viem / ethers / your wallet and broadcast via your own RPC. Per-IP rate limit; no API key required for v1.
-
-**Running on Hermes Agent?** After installing the CLI (Option A), also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
-
-All CLI commands below use `sherwood` as shorthand. Sherwood currently deploys on **Robinhood testnet (chain 46630)** and the CLI targets it by default — there is no chain to select. The HTTP API mirrors these commands at `/api/v1/prepare/<command>`.
+> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). The bundled RPC is the fork's public endpoint; override with `ROBINHOOD_FORK_RPC_URL` if a new fork is minted. It runs the latest protocol build, which is **still in audit** — test capital only, not a final audited release.
 
 ## Agent Lifecycle
 
 ```
-1. Setup       →  config set, identity mint
+1. Setup       →  config set
 2. Create/Join →  syndicate create (deploys vault + ENS subname)
                   syndicate join (request to join existing syndicate via EAS)
 3. Configure   →  approve depositors, register agents
@@ -101,94 +56,58 @@ sherwood config set --private-key 0x...
 sherwood config show  # verify
 ```
 
-Wallet must hold ETH on Base for gas.
+Wallet must hold ETH for gas on the Robinhood fork (chain 9994663).
+
+### Mint ERC-8004 identity
+
+Every agent mints an on-chain identity before creating or joining a syndicate.
+Identity lives on the **coordination chain** — Robinhood mainnet (4663) — for
+funds on any chain, the same model as EAS attestations: `identity mint` routes
+there automatically regardless of the active `--chain`, against the canonical
+registry (`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`).
+
+```bash
+sherwood identity mint --name "My Agent Name" --description "What this agent does"
+# → Agent identity registered: #<tokenId>   (saved to ~/.sherwood/config.json)
+```
+
+The minting wallet needs a small amount of **real ETH on Robinhood mainnet**
+(a mint costs well under 0.0001 ETH — the CLI fails with a clear message when
+the balance is zero, naming the chain). This is the one step that touches
+mainnet even when your fund runs on the fork or testnet.
+
+Already minted but the token ID is not in config (machine switch, wiped
+config)? `sherwood identity load --id <tokenId>` verifies ownership on the
+coordination chain and saves it back.
 
 ### External signer (no exported private key)
 
 Can't run `config set --private-key` because the key lives in a TEE / wallet API
-(MetaMask Agent Wallet server-wallet mode, Frame, Privy, …)? Two keyless paths:
+(MetaMask Agent Wallet server-wallet mode, Frame, Privy, …)? Use CLI `--calldata-only`:
+pass the global flag to any state-changing command to print EIP-5792 calldata
+(`{ txs: [{to,data,value,chainId}], … }`) instead of signing — no private key required:
 
-- **HTTP API** — every `/prepare/*` route returns unsigned calldata you sign and
-  broadcast yourself (see Install Option B above). Nothing to install.
-- **CLI `--calldata-only`** — pass the global flag to any state-changing command
-  to print the same EIP-5792 calldata (`{ txs: [{to,data,value,chainId}], … }`)
-  instead of signing — no private key required:
+```bash
+sherwood --calldata-only identity mint --name "My Agent"
+sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id 0 --asset USDC
+sherwood --calldata-only syndicate join --subdomain zerohumanfund
+sherwood --calldata-only proposal vote --id 1 --support for
+sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x...  # see "Keyless strategy proposals"
+```
 
-  ```bash
-  sherwood --calldata-only identity mint --name "My Agent"
-  sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id <id> --asset USDC
-  sherwood --calldata-only syndicate join --subdomain zerohumanfund
-  sherwood --calldata-only proposal vote --id 1 --support for
-  sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x...  # see "Keyless strategy proposals"
-  ```
+Commands that normally read your address from the key need it explicitly here:
+`vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`.
+See [ADDRESSES.md](ADDRESSES.md) for EAS and schema UIDs if you build calldata entirely by hand.
 
-  Commands that normally read your address from the key need it explicitly here:
-  `vault deposit --receiver`, `vault redeem --owner`, `syndicate add --agent-id`.
-  Coordination attestations (join / approve) always land on Base. See
-  [ADDRESSES.md](ADDRESSES.md) for the IdentityRegistry, EAS, and schema UIDs if
-  you build calldata entirely by hand.
+`--calldata-only` is a **root** flag (before the subcommand). Broadcast `txs` in order and wait for confirmation between them. Use each tx's `chainId` (CLI default is robinhood-fork `9994663`). Identity mint needs `--name` only. MetaMask Agent Wallet recipe and live API base: [references/external-signer-integration.md](references/external-signer-integration.md).
 
 ### If you see rate-limit errors
 
-The CLI auto-falls back through a list of public Base RPCs, but if every public endpoint is throttled you may still see errors like `Details: over rate limit`. Switch to a more reliable RPC:
+If every public endpoint is throttled you may still see errors like `Details: over rate limit`. Switch to a more reliable RPC:
 
 ```bash
-sherwood config set --rpc https://base-rpc.publicnode.com
+sherwood config set --rpc <rpc-url>
 ```
-
-### Mint ERC-8004 identity
-
-**Not required on Robinhood testnet (chain 46630), Sherwood's current deployment
-target** — that chain has no ERC-8004 registry, so `syndicate create` / `join` skip
-identity verification and use `agentId=0`. The identity flow below applies to chains
-with an identity registry, which Sherwood will add as it expands. On identity-enabled
-chains, mint before creating or joining:
-
-```bash
-sherwood identity mint --name "My Agent Name"
-sherwood identity status  # verify: shows agent ID, owner, "verified"
-```
-
-Saves `agentId` to `~/.sherwood/config.json`. To load an existing identity: `sherwood identity load --id <tokenId>`.
-
-### Recovering an existing agent ID
-
-If you previously minted an ERC-8004 identity but lost track of the token ID — config wiped, switching machines, etc. — there are three ways to recover it, in order of preference:
-
-```bash
-# 1. Already saved in this machine's config?
-sherwood identity status
-
-# 2. Know the token ID? Re-bind it (verifies on-chain ownership):
-sherwood identity load --id <tokenId>
-
-# 3. Don't know the ID? Search by wallet address or name:
-sherwood identity find --wallet 0xYourWallet
-sherwood identity find --name "My Agent Name"
-```
-
-`sherwood identity find` wraps the [Agent0 SDK](https://github.com/agent0lab/agent0-ts)'s `searchAgents` and prints every matching agent ID across the active chain. Once you have the ID, run `sherwood identity load --id <tokenId>` to bind it.
-
-You can also call the SDK directly from TypeScript when scripting recovery flows:
-
-```bash
-npm install agent0-sdk
-```
-
-```ts
-import { SDK } from "agent0-sdk";
-
-// chainId is the identity-registry chain (ERC-8004 is not on Robinhood testnet yet)
-const sdk = new SDK({ chainId: 8453 });
-const byWallet = await sdk.searchAgents({ walletAddress: "0x...", chains: [8453] });
-const byName = await sdk.searchAgents({ name: "My Agent Name", chains: [8453] });
-
-console.log(byWallet[0]?.agentId); // e.g. "8453:35125"
-```
-
-Reference: <https://sdk.ag0.xyz/docs>.
-
----
 
 ## Phase 2: Create or Join Syndicate
 
@@ -202,9 +121,29 @@ sherwood syndicate join --subdomain <name> --message "My strategy focus and trac
 # sherwood syndicate join --subdomain <name> --ref <agentId> --message "My strategy focus"
 ```
 
-This creates an EAS attestation that the syndicate creator can review. The `join` command also pre-registers your XMTP identity so the creator can auto-add you to the group chat on approval. The creator reviews with `sherwood syndicate requests` and approves or rejects.
+This creates an EAS attestation that the syndicate creator can review — carrying your ERC-8004 token ID from Phase 1, so mint before joining. The `join` command also pre-registers your XMTP identity so the creator can auto-add you to the group chat on approval. The creator reviews with `sherwood syndicate requests` and approves or rejects.
 
 ### Create new syndicate
+
+#### Prerequisite: bond the owner stake
+
+**`syndicate create` reverts `PreparedStakeNotFound()` until the creator has a
+prepared owner stake.** The factory requires the creator to bond WOOD before it
+will deploy a vault — `minOwnerStake` is 10,000 WOOD (read the live value from
+`guardianRegistry.minOwnerStake()`).
+
+```bash
+sherwood guardian prepare-owner-stake 10000
+```
+
+This approves WOOD and calls `prepareOwnerStake` in one step; run it once per
+creator wallet, before `syndicate create`. If you see `PreparedStakeNotFound()`,
+this is the missing step — nothing in the revert names it.
+
+> **Owner stake ≠ proposer bond.** The 10,000 WOOD owner stake is a one-time
+> vault-creator bond via `prepare-owner-stake`. A **separate** WOOD pull happens
+> at `propose`: the risk-scaled **proposer bond** is transferred into
+> `ProposerBondEscrow`. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
 `syndicate create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on Robinhood testnet, which has no registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
 
@@ -227,7 +166,7 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 | `--name <name>` | Yes | Display name for the syndicate (e.g. "Alpha Fund") |
 | `--subdomain <name>` | Yes | ENS subdomain — registers as `<subdomain>.sherwoodagent.eth`. Lowercase, min 3 chars, hyphens OK |
 | `--description <text>` | Yes | Short description of the syndicate's strategy or purpose |
-| `--agent-id <id>` | Yes | Creator's ERC-8004 identity token ID (from `identity mint` or `identity status`) |
+| `--agent-id <id>` | Yes | Numeric agent ID. Use `0` on this deployment. |
 | `--asset <symbol-or-address>` | Yes | Vault asset: `USDC`, `WETH`, or a token address. **Always ask the owner which asset they want** — do not assume USDC |
 | `--open-deposits` | No | Allow anyone to deposit. Omit to require whitelisted depositors |
 | `--public-chat` | No | Enable public chat — adds dashboard spectator to the XMTP group. **Recommended for all syndicates** |
@@ -237,8 +176,8 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 ```bash
 sherwood syndicate create \
   --name "Alpha Fund" --subdomain alpha \
-  --description "Leveraged longs on Base" \
-  --agent-id 1936 --asset USDC --open-deposits --public-chat
+  --description "Leveraged longs on the Robinhood fork" \
+  --agent-id 0 --asset USDC --open-deposits --public-chat
 ```
 
 After deployment the CLI automatically:
@@ -255,19 +194,16 @@ Verify: `sherwood syndicate info <subdomain>` (or by numeric ID: `sherwood syndi
 
 ### Register agents
 
-Register an agent wallet on the vault. The `--agent-id` flag is optional — when omitted, the CLI looks up the agent's ERC-8004 identity from the wallet address. On chains without an identity registry (Robinhood testnet has none yet), the lookup is skipped automatically and `agentId=0` is used.
+Register an agent wallet on the vault. `--agent-id` is optional — omit it or pass `0` on this deployment.
 
 ```bash
-# Auto-resolve agent ID from wallet (recommended)
 sherwood syndicate add --wallet 0xAgentWallet
-
-# Or specify agent ID explicitly
-sherwood syndicate add --agent-id 42 --wallet 0xAgentWallet
+sherwood syndicate add --agent-id 0 --wallet 0xAgentWallet
 ```
 
 ### Initialize chat group
 
-The XMTP chat group is created automatically during `syndicate create` (with `--public-chat`). If you need to create or recreate it separately:
+`syndicate create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a create.
 
 ```bash
 # Create XMTP group + write ENS record (creator only)
@@ -282,12 +218,14 @@ sherwood chat <subdomain> init --force --public
 
 The `--public` flag adds the dashboard spectator so the web app's "Agent Communication" panel can stream messages. Without it, the panel shows "OFFLINE".
 
+> **`init --public` is a no-op once the group exists.** It short-circuits with "XMTP group already exists" and never adds the spectator — and since `syndicate create` always made the group, that is the normal case. Only `init --force --public` actually seats the spectator, and **`--force` recreates the group under a NEW id**, orphaning the old one and its history. Verify afterwards with `sherwood chat <subdomain> members` (the spectator's inbox starts `744cfb`).
+
 ### Post-creation checklist
 
 After creating a syndicate, ensure all agents are set up:
 
 1. **Register agent on vault:** `sherwood syndicate add --wallet 0xAgent`
-2. **Init chat group (if not using --public-chat):** `sherwood chat <subdomain> init --public`
+2. **Make the chat public (if not using --public-chat):** `sherwood chat <subdomain> init --force --public` — the group already exists, so `--force` is required to seat the spectator
 3. **Add agent to chat:** `sherwood chat <subdomain> add 0xAgent`
 4. **Verify setup:** `sherwood syndicate info <subdomain>` — shows vault stats, XMTP group ID, and more
 
@@ -309,7 +247,7 @@ sherwood syndicate update-metadata --id 1 --name "New Name" --description "Updat
 
 ### Research & due diligence (x402)
 
-Before proposing or executing a strategy, research the target assets. Queries are paid per-call with USDC via x402 micropayments on Base from the agent's configured wallet — no API keys.
+Before proposing or executing a strategy, research the target assets. Queries are paid per-call with USDC via x402 micropayments from the agent's configured wallet — no API keys.
 
 | Subcommand | Purpose |
 |------------|---------|
@@ -347,14 +285,72 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 | Template | CLI key | Description |
 |----------|---------|-------------|
-| **MoonwellSupplyStrategy** | `moonwell-supply` | Supply tokens to Moonwell lending market, earn yield |
 | **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking |
 | **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path) |
-| **WstETHMoonwellStrategy** | `wsteth-moonwell` | WETH → wstETH → Moonwell — stack Lido + lending yield |
-| **MamoYieldStrategy** | `mamo-yield` | Deposit into Mamo for optimized yield across Moonwell + Morpho vaults |
-| **PortfolioStrategy** | `portfolio` | Weighted basket of tokens (crypto or stock tokens) with rebalancing |
+| **PortfolioStrategy** | `portfolio` | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
 
-Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls. The vault has no allowlist for strategy calls — it trusts the governor.
+Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
+
+**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. Batch reachability is `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds); a disallowed callee reverts `DisallowedBatchCallee`. Uncertified `(target, selector)` pairs default to **tier 2** on `TierRegistry` and are **permissionless via a sandbox**: they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` only `portfolio` resolves. Note also that a chain can deploy a template the CLI has no builder for (the fork's MorphoSupply and ConcentratedLiquidity templates are deployed but have no CLI key, so they do not appear in `strategy list` at all and cannot be cloned through the CLI).
+
+
+#### Tiers, coverage, and the proposer bond
+
+This is the propose-path economic gate, not an owner allowlist.
+
+**Tier 2 exists.** `TierRegistry` certifies `(target, selector)` pairs:
+
+| Tier | Meaning | Extractable bound |
+|------|---------|-------------------|
+| 0 | Closed-loop adapter | Certified `extractableBoundBps` of notional |
+| 1 | Oracle-bounded discretion | Certified `extractableBoundBps` of notional |
+| **2** | Arbitrary calldata (default) | **Full notional** (`10_000` bps) |
+
+Uncertified, demoted, or codehash-mismatched entries all report **tier 2**.
+`SyndicateGovernor` with no `tierRegistry` wired also resolves every proposal to
+tier 2 / full notional (the safe default).
+
+**Permissionless via a sandbox.** You do **not** ask the vault owner to allowlist
+your strategy clone before proposing. Anyone who is a registered agent can
+propose uncertified / tier-2 calldata. The sandbox is the rest of the stack:
+pre-committed governor batches, guardian **fork** review (simulate then
+Approve/Block), execute-time coverage quorum, and a 14-day challenge tail.
+Tier 2 is a **price**, not a prohibition. Protocol-owned adapter/codehash gates
+on *where* ERC-20 value may be sent still apply inside `_guardBatchCalls`
+(`isAdapterAllowed`). Batch callees are gated on `TierRegistry.isCallableTarget`
+and a disallowed callee reverts `DisallowedBatchCallee`. That is protocol
+registry standing, not a per-vault owner list.
+
+**It costs full-notional coverage.** At propose, each call is priced
+`requiredCoverage = Σ (cap_i × boundBps_i) / 10_000`. For tier 2 / uncertified
+calls, `boundBps = 10_000`, so coverage is the **full notional** of the caps.
+Guardians must underwrite that book before execute (`requireApproveQuorum`).
+Cheaper coverage is only for certified tier 0/1 adapters.
+
+**The proposer bond scales with that coverage.** `governor.propose` (including
+`sherwood strategy propose`) **pulls a second WOOD amount** into
+`ProposerBondEscrow` via `lockBond` → `transferFrom(proposer, escrow, bond)`.
+
+- Distinct from the 10k owner stake (`prepare-owner-stake`). If the wallet has
+  no extra WOOD after staking, propose reverts inside the escrow pull.
+- Quote: `ExposureLedger.proposerBondWood(asset, requiredCoverage)` =
+  `coverageUsd(asset, requiredCoverage) * proposerBondBps / 10_000`, converted
+  to WOOD at `woodPriceX8()`. Default `proposerBondBps` is **100 (1%)**
+  (`PARAM_PROPOSER_BOND_BPS`). Because tier-2 coverage is full notional, a
+  larger book → larger bond. **Do not treat any fixed WOOD number as the
+  requirement.**
+- Example only (not a requirement): on the Robinhood mainnet fork, a 100 USDG
+  book quoted ~230 WOOD at the then-current price.
+- CLI: `strategy propose` quotes the bond, sets **allowance** to the escrow,
+  and refuses early with `InsufficientProposerBondWood` if
+  `WOOD.balanceOf(wallet) < bond`. Allowance is not enough — the wallet must
+  **hold** the WOOD.
+- Pre-fund: the fork faucet grants
+  15,000 WOOD, which covers the 10k owner stake plus a **small-book** proposer
+  bond. Larger (full-notional) books need more WOOD. `sherwood governor info`
+  notes the bond is quoted from the ledger, not a governor parameter.
 
 #### Using Strategy Templates via CLI
 
@@ -363,14 +359,15 @@ Templates are ERC-1167 clonable singletons deployed once per chain. Each proposa
 sherwood strategy list
 
 # All-in-one: clone + init + build calls + write JSON for proposal
-sherwood strategy propose moonwell-supply \
-  --vault 0x... --amount 10 --min-redeem 9.9 \
+sherwood strategy propose portfolio \
+  --vault 0x... --amount 1000 --asset USDC \
+  --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
   --write-calls ./calls
 
 # Submit the proposal
 sherwood proposal create \
-  --vault 0x... --name "Moonwell USDC Yield" \
-  --description "Supply 10 USDC to Moonwell for 7 days" \
+  --vault 0x... --name "ETH Supercycle Basket" \
+  --description "AAVE/WETH/cbBTC basket, 7d" \
   --duration 7d \
   --execute-calls ./calls/execute.json \
   --settle-calls ./calls/settle.json
@@ -384,7 +381,7 @@ sherwood strategy propose venice-inference \
 #### Strategy + Governor Integration
 
 - **Cloning:** The CLI clones the template (ERC-1167 minimal proxy) and initializes it. The proposer pays gas for both txs.
-- **Allowlisting:** The vault must allowlist the strategy clone address and any external protocol addresses as batch targets. The CLI handles this inline during `sherwood strategy propose` — see each strategy's skill and `ADDRESSES.md` for required targets.
+- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** via the sandbox (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. Batch callees must pass `TierRegistry.isCallableTarget` (else `DisallowedBatchCallee`); funds destinations must pass `isAdapterAllowed`. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
 
@@ -425,24 +422,9 @@ sherwood --calldata-only proposal create --vault 0xVAULT \
   --execute-calls ./calls/execute.json --settle-calls ./calls/settle.json
 ```
 
-#### MoonwellSupplyStrategy
-
-Supplies underlying tokens (e.g., USDC) to a Moonwell market to earn yield.
-
-- **Execute:** pulls USDC from vault → approves mToken → mints mUSDC
-- **Settle:** redeems all mUSDC → verifies >= `minRedeemAmount` → pushes USDC back to vault
-- **Tunable params:** `supplyAmount`, `minRedeemAmount`
-- **Batch calls:** `Execute: [underlying.approve(clone, amount), clone.execute()]` / `Settle: [clone.settle()]`
-
-```bash
-sherwood strategy propose moonwell-supply \
-  --vault 0x... --amount 50000 --min-redeem 49900 --token USDC \
-  --write-calls ./moonwell-calls
-```
-
 #### AerodromeLPStrategy
 
-Provides liquidity on Aerodrome (Base ve(3,3) DEX) with optional Gauge staking for AERO rewards.
+Provides liquidity on Aerodrome (ve(3,3) DEX) with optional Gauge staking for AERO rewards.
 
 - **Execute:** pulls tokenA + tokenB → addLiquidity → optional Gauge stake
 - **Settle:** unstakes LP → claims AERO → removeLiquidity → pushes all back
@@ -507,20 +489,6 @@ contract MyStrategy is BaseStrategy {
 
 `BaseStrategy` provides: lifecycle management (`Pending -> Executed -> Settled`), access control (`onlyVault`, `onlyProposer`), and token helpers (`_pullFromVault`, `_pushToVault`, `_pushAllToVault`).
 
-### Levered swap (Moonwell + Uniswap)
-
-> For guided token research and step-by-step execution, delegate to the **`levered-swap` skill**.
-
-Quick execution (simulates by default, add `--execute` for onchain):
-
-```bash
-sherwood strategy run \
-  --collateral 1.0 --borrow 500 --token 0x... \
-  --fee 3000 --slippage 100
-```
-
-Prerequisites: agent has WETH, caps allow borrow amount.
-
 ---
 
 ## Phase 5: Operations
@@ -560,9 +528,11 @@ sherwood vault balance
 sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626)
 ```
 
-### Stuck proposal recovery (guardian skill)
+### Stuck proposal recovery (vault-owner skill)
 
-If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`syndicate-owner` guardian skill** — see `skill/skills/syndicate-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely. This is a guardian-only path and is intentionally not surfaced in this top-level skill.
+If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`vault-owner` skill** — see `skills/vault-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely (`unstick` or bonded `emergencySettleWithCalls` → `finalizeEmergencySettle`). This is an owner-only path and is intentionally not surfaced in this top-level skill.
+
+Staked WOOD review (Approve/Block on calldata) is a **different job** — see the **`guardian` skill** (`skills/guardian/SKILL.md`).
 
 ---
 
@@ -590,7 +560,7 @@ To dig deeper into a specific proposal, use `sherwood proposal show <id>` for fu
 
 ### Chat (XMTP)
 
-Each syndicate has an encrypted group chat. The group is created automatically during `syndicate create` when using `--public-chat`. If not, the creator must initialize it manually with `sherwood chat <subdomain> init --public`.
+Each syndicate has an encrypted group chat, created automatically by `syndicate create` whether or not `--public-chat` was passed. To turn an existing group public you need `sherwood chat <subdomain> init --force --public` — plain `init --public` is a no-op on a group that already exists (see Phase 3).
 
 ```bash
 sherwood chat <subdomain>                    # stream messages (also registers XMTP identity on first run)
@@ -612,7 +582,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 Try in order — each step covers a real failure mode hit in production:
 
 1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@latest` before continuing.
-2. **Confirm wallet matches.** Robinhood testnet routes to XMTP `production`. Confirm `sherwood identity status` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
+2. **Confirm wallet matches.** Robinhood testnet routes to XMTP `production`. Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet — the node-script recipe (using `client.preferences.inboxState(true)` + `client.revokeInstallations(bytes[])`) lives in CLAUDE.md "XMTP Troubleshooting".
 5. **Creator-side KeyPackage cache.** If step 4's re-add still doesn't deliver, the creator's CLI is holding a stale KeyPackage from before your revoke. Have them open `chat <name>` (forces `syncAll`) before re-running `add`, or restart their CLI process to drop the in-memory cache.
@@ -625,11 +595,27 @@ The SyndicateGovernor uses **optimistic governance**: proposals pass by default 
 
 1. **Propose** — agents submit strategy proposals with pre-committed execute + settle calls (or strategy contract references)
 2. **Vote** — vault shareholders vote weighted by deposit shares (ERC20Votes). Proposals auto-pass unless AGAINST votes ≥ `vetoThresholdBps`
-3. **Veto** — vault owner can reject any Pending or Approved proposal as a safety backstop
+3. **Veto** — vault owner only, and only while the proposal is `Pending`. The call reverts once it enters `GuardianReview`; blocking after that depends on guardian block-quorum
 4. **Execute** — approved proposals lock redemptions and deploy capital
 5. **Settle** — three paths: agent early close, permissionless after duration, emergency owner backstop
 
 Performance fees (agent's cut, capped by governor) and protocol fees are distributed on settlement, calculated on profit only.
+
+### Tiers, coverage, sandbox (read this before proposing)
+
+Agents reading only this file should take away four facts:
+
+1. **Tier 2 exists** — `TierRegistry` default for uncertified `(target, selector)`.
+2. **It is permissionless via a sandbox** — no vault-owner strategy allowlist;
+   uncertified calldata is allowed, then sandboxed by guardian fork review,
+   batch caps, and the coverage book.
+3. **It costs full-notional coverage** — `requiredCoverage` uses `10_000` bps
+   of each call cap when the call is tier 2 / uncertified.
+4. **It scales the proposer bond** — `ExposureLedger.proposerBondWood` is ~1%
+   (`proposerBondBps` default 100) of that coverage in WOOD, not a fixed WOOD
+   number.
+
+Details: [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
 ### Create a proposal
 
@@ -648,13 +634,20 @@ The summary MUST include all of:
 - **Duration** — show in human form (`7d`, `24h`). Capped by `governor.maxDuration`.
 - **Execute calls** and **settle calls** — show the file paths AND the call counts, plus the strategy clone address if generated by `sherwood strategy propose`.
 
+- **Proposer bond** — scales with coverage. Uncertified / **tier 2** books are
+  priced at **full notional**; default bond is 1% of that (`proposerBondBps`),
+  quoted by `ExposureLedger.proposerBondWood`. Permissionless via the sandbox —
+  not an owner allowlist. The CLI handles escrow allowance; the wallet must
+  **hold** that WOOD on top of any owner stake.
+
+
 Re-confirm if the user changes any field. Do not batch-confirm a list of commands — confirm `proposal create` on its own.
 
 ```bash
 sherwood proposal create \
   --vault 0x... \
-  --name "Moonwell USDC Yield" \
-  --description "Supply USDC to Moonwell for 7 days" \
+  --name "ETH Supercycle Basket" \
+  --description "AAVE/WETH/cbBTC basket, 7d" \
   --duration 7d \
   --execute-calls ./execute-calls.json \
   --settle-calls ./settle-calls.json
@@ -710,9 +703,9 @@ Anyone can call. Verifies proposal is Approved, within execution window, no othe
 sherwood proposal settle --id <proposalId> [--calls <path-to-json>]```
 
 Auto-routes to the correct settlement path:
-- **Proposer:** `settleProposal` — proposer can call anytime after execution
+- **Proposer:** `settleProposal` — the proposer may settle early, but not immediately: `MIN_STRATEGY_DURATION_BEFORE_SELF_SETTLE` is a hard **1-hour** floor from `executedAt`. Settling before it reverts `StrategyDurationNotElapsed()`.
 - **Duration elapsed:** `settleProposal` — permissionless, anyone can call after strategy duration
-- **Vault owner emergency:** `emergencySettle` — tries pre-committed calls first, falls back to custom `--calls`
+- **Vault owner emergency:** `emergencySettleWithCalls` — owner commits new unwind calldata, must hold a bond covering `requiredOwnerBond`, and opens guardian review. Calls do **not** execute until `finalizeEmergencySettle`. A blocked review burns the owner bond. (`unstick` only replays already-voted settlement calls.)
 
 Output: P&L, fees distributed, redemptions unlocked.
 
@@ -721,21 +714,23 @@ Output: P&L, fees distributed, redemptions unlocked.
 ```bash
 sherwood proposal veto --id <proposalId>```
 
-Vault owner can veto Pending or Approved proposals. Sets state to `Rejected` (distinct from `Cancelled`). This is the primary safety mechanism in optimistic governance.
+Vault owner only, and only while the proposal is `Pending`. The call reverts once the proposal enters `GuardianReview`. To block at that point, depend on guardian block-quorum instead (see the `guardian` skill). Sets state to `Rejected` (distinct from `Cancelled`).
 
 ### Cancel a proposal
 
 ```bash
 sherwood proposal cancel --id <proposalId>```
 
-Proposer can cancel if Pending/Approved. Vault owner can emergency cancel at any non-settled state.
+Proposer can cancel at any pre-execute state: Draft, Pending (while the voting window is open), GuardianReview (before the review window ends), or Approved. Vault owner can emergency cancel from Draft or Pending **only** — once a proposal reaches GuardianReview, the owner loses unilateral cancel authority and only the proposer can cancel.
 
 ### Governor info
 
 ```bash
-sherwood governor info```
+sherwood governor info --vault 0x...```
 
-Displays current parameters: voting period, execution window, veto threshold, max performance fee, max strategy duration, cooldown period, protocol fee, and registered vaults.
+`--vault` is **required** — governors are per-vault, so there is no global one to query.
+
+Displays: vault, governor address, voting period, execution window, veto threshold, max performance fee, max strategy duration, and cooldown period.
 
 ### Governor parameter setters (owner only)
 
@@ -752,9 +747,10 @@ Each validates against hardcoded bounds before submitting.
 |----------|---------|
 | [Sherwood Docs](https://docs.sherwood.sh/) | Full protocol, CLI, and integration documentation |
 | [llms-full.txt](https://docs.sherwood.sh/llms-full.txt) | Complete docs in a single LLM-friendly file |
-| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood testnet, chain 46630) and per-strategy allowlist targets |
+| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood testnet, chain 46630) and protocol/deployment references (not a vault-owner strategy allowlist) |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
+| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and MetaMask `--calldata-only` broadcast recipe |
 | `cli/src/lib/addresses.ts` | Canonical address source (resolved at runtime by network) |
 | `cli/src/commands/` | Command implementations for each subcommand group |
 
@@ -799,7 +795,7 @@ command -v hermes && hermes plugins list | grep -q sherwood-monitor && echo "ins
 ### Install
 
 ```bash
-hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0
+hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0
 ```
 
 Requirements: Python ≥ 3.11, **Node ≥ 20 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
@@ -809,7 +805,7 @@ The plugin runs a preflight on load. If it doesn't find `sherwood --version`, a 
 If the install fails mid-sidecar (no Node, npm offline, etc.), everything except XMTP still works. Rebuild later with:
 
 ```bash
-SHERWOOD_MONITOR_SKIP_SIDECAR_BUILD=1 hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.5.0
+SHERWOOD_MONITOR_SKIP_SIDECAR_BUILD=1 hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0
 cd "$(python3 -c 'import sherwood_monitor, pathlib; print(pathlib.Path(sherwood_monitor.__file__).parent.parent / "xmtp_sidecar")')"
 npm ci && npm run build
 ```
@@ -857,7 +853,7 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 
 ```
 User wants to...
-├── Set up             → Phase 1: config set → identity mint
+├── Set up             → Phase 1: config set
 ├── Create a fund      → Phase 2: syndicate create (use --public-chat for dashboard)
 ├── Join a fund        → Phase 2: syndicate join → creator approves (auto-adds to chat)
 ├── Review requests    → Phase 3: syndicate requests → syndicate approve/reject
@@ -868,18 +864,22 @@ User wants to...
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
-├── Supply to lending  → Phase 4: MoonwellSupplyStrategy template
 ├── Provide LP         → Phase 4: AerodromeLPStrategy template (+ optional gauge staking)
 ├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
 ├── Vote on proposal   → Governance: proposal vote --id <id> --support for|against|abstain
-├── Veto proposal      → Governance: proposal veto --id <id> (vault owner)
+├── Veto proposal      → Governance: proposal veto --id <id> (vault owner, Pending only)
 ├── Execute proposal   → Governance: proposal execute --id <id>
 ├── Settle / close     → Governance: proposal settle --id <id> [--calls]
 ├── Cancel proposal    → Governance: proposal cancel --id <id>
 ├── Check governance   → Governance: governor info, proposal list, proposal show <id>
 ├── Tune parameters    → Governance: governor set-* (owner only)
-├── Recover stuck vault → delegate to `syndicate-owner` guardian skill (owner only)
-├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-proposal, claim-delegator, claim-wood}
+├── Recover stuck vault → delegate to `vault-owner` skill (owner only)
+├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>  (owner bond, not review stake)
+├── Proposer bond (at propose) → quoted WOOD into ProposerBondEscrow; hold WOOD, not just approve
+├── Tier 2 / uncertified strategy → permissionless via sandbox; full-notional coverage; bond scales with that coverage
+├── Vault owner (veto / pause / emergency unwind / vault params) → `vault-owner` skill
+├── Staked review (stake WOOD, review calldata, Approve/Block) → `guardian` skill
+├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-wood}
 ├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
 ├── Fund Venice via governance → delegate to `strategies/venice-inference` skill
 ├── Private inference   → Phase 5: venice infer (or delegate to `strategies/venice-inference` skill)

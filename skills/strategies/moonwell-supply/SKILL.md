@@ -40,16 +40,23 @@ sherwood identity show
 sherwood vault info --vault <vault-address>
 ```
 
-### Step 2: Add allowlist targets
+### Step 2: Confirm batch callees
 
-The vault must allowlist the protocol addresses used by the strategy. Do this before creating a proposal.
+There is **no vault-side target list** and no CLI command that adds one.
+Reachability is `TierRegistry.isCallableTarget` (callee axis) plus
+`isAdapterAllowed` (funds). A disallowed batch callee reverts
+`DisallowedBatchCallee`. The vault `asset()` is the sole callee exemption.
 
-```bash
-# Required for Moonwell Supply
-sherwood vault add-target --target 0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22  # Moonwell mUSDC
-sherwood vault add-target --target 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913  # USDC
-# Strategy clone address — add after cloning (Step 3 prints it)
-```
+For Moonwell Supply, a typical execute/settle batch names:
+
+| Role | Address |
+|------|---------|
+| Moonwell mUSDC | `0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22` |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Strategy clone | printed by `sherwood strategy propose` (Step 3) |
+
+Confirm these have registry standing before proposing. Class-certified strategy
+clones inherit callee standing from their template class.
 
 ### Step 3: Clone + init + build calls (all-in-one)
 
@@ -63,9 +70,6 @@ sherwood strategy propose moonwell-supply \
   --min-redeem 99.5 \
   --token USDC \
   --write-calls ./moonwell-calls
-
-# Add the clone address to vault allowlist
-sherwood vault add-target --target <clone-address>
 
 # Submit the proposal
 sherwood proposal create \
@@ -176,7 +180,7 @@ Pending → execute() → Executed → settle() → Settled
 
 ## Governor Integration
 
-- **Allowlisting:** The vault must allowlist the strategy clone address and the mToken (e.g., mUSDC) and underlying (e.g., USDC) as batch targets via `sherwood vault add-target`. Without this, `executeGovernorBatch` will revert.
+- **Batch callees:** There is no vault-side target list. The strategy clone, mToken (e.g., mUSDC), and underlying (e.g., USDC) must pass `TierRegistry.isCallableTarget` when they appear as governor-batch `target`s (vault `asset()` is exempt). A disallowed callee reverts `DisallowedBatchCallee`. Approve spenders and transfer recipients must pass `isAdapterAllowed`.
 - **Gas costs:** The proposer (agent) pays gas for clone deployment + initialization. The governor pays gas for proposal execution and settlement (called by proposer or anyone after duration).
 - **updateParams():** Callable directly by the proposer while strategy is in Executed state. No governance proposal needed — it's a direct transaction on the strategy clone.
 - **No post-settlement claim:** Unlike Venice, Moonwell redemption is instant. Settlement returns USDC to vault in a single transaction.
@@ -190,10 +194,14 @@ Pending → execute() → Executed → settle() → Settled
 | Moonwell mWETH | `0x628ff693426583D9a7FB391E54366292F509D457` |
 | Moonwell Comptroller | `0xfBb21d0380beE3312B33c4353c8936a0F13EF26C` |
 
-## Required Allowlist Targets
+## Required batch callees
 
-```bash
-sherwood vault add-target --target 0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22  # Moonwell mUSDC
-sherwood vault add-target --target 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913  # USDC
-sherwood vault add-target --target <strategy-clone-address>                      # Your strategy contract
-```
+These addresses typically appear in the governor batch or as funds destinations.
+They need `TierRegistry` standing (`isCallableTarget` for callees,
+`isAdapterAllowed` for spenders/recipients) — not a vault-side target list.
+
+| Role | Address |
+|------|---------|
+| Moonwell mUSDC | `0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22` |
+| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Strategy clone | printed by `sherwood strategy propose` |

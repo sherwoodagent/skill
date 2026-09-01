@@ -15,17 +15,19 @@ StrategyFactory keyless deploy. Source of truth: `contracts/chains/46630.json`.
 
 | Contract | Address |
 |----------|---------|
-| SyndicateFactory | `0xB9E71Fb33075328d6e94eCFFf8a8629D6d057cce` |
-| GovernorBeacon | `0x11B726c49E0bAc95bEafF8d648cf3030Dc11B73a` |
-| ProtocolConfig | `0xEe6DfE03353CEf1d80F38FbDdD30ce5Fb0531929` |
-| SyndicateVaultImpl | `0x189160156d470B9ce8A55206DE19Ea60D2638ec6` |
-| BatchExecutorLib | `0xd83dc3A79Bb41a02Ca7aC812c0f52212C1BdBC1B` |
-| GuardianRegistry | `0x57f0fa384d0d7e2F234535d1235440312866872B` |
-| StakedWood (sWOOD) | `0x15F48A9f24c8ECaa8f03c28Ecd1a3b4784CdCb3c` |
+| SyndicateFactory | `0xa91AA45AFF32f52b6357044B02a16EBA775feC0b` |
+| GovernorBeacon | `0x3D46Ec018cd5893b685b4dfdc3921A4Eb64E11d1` |
+| ProtocolConfig | `0xC104Eb6a522d6718cA28F344B2373B29d57FF2E0` |
+| SyndicateVaultImpl | `0xC57e12d6e2d8Ed49316F0b69c51893CcA44151F7` |
+| BatchExecutorLib | `0xF3b8db5aa41c7Ce92478A0Fa9C55a6460533eb86` |
+| GuardianRegistry | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
+| StakedWood (sWOOD) | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
+| TierRegistry | `0x99b8068Dc0F6093466964D581f72d947e3e380DB` |
+| CallSandboxImpl | `0xf09f6AF7DeBB964eD731376C9Af389F2Ce3d872A` |
 | WOOD token (fixture) | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
 | PriceRouter | `0xDd302ffcfA08071780eC1A2f12BccFB9ba6b6731` |
 | PortfolioStrategy (template) | `0x67420Cc504d70a42Adfd8867d878afe0978C7d10` |
-| StrategyFactory | `0xE1D082ef1CE17f9C6a46e97928337267BFF0C309` |
+| StrategyFactory | `0xb683Bb8EEcBc2419BC3801df6FeA88f96657e670` |
 | UniswapSwapAdapter (Synthra-backed) | `0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490` |
 
 There is **no singleton `SyndicateGovernor`**. Since PR #421 each vault has its own
@@ -92,12 +94,23 @@ on-venue holdings via `IStrategy.positions()` and the vault prices them through 
 governance-owned `PriceRouter`. Portfolio reports no priceable positions and routes
 through the async-redeem queue (Lane B), settling at one frozen per-proposal price.
 
-## Allowlist Targets — Portfolio Strategy
+## Batch callees — Portfolio Strategy
 
-```bash
-sherwood vault add-target --target 0x7943e237c7F95DA44E0301572D358911207852Fa  # WETH (vault asset)
-sherwood vault add-target --target 0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490  # UniswapSwapAdapter (Synthra)
-sherwood vault add-target --target 0x3Ce954107b1A675826B33bF23060Dd655e3758fE  # Synthra Router
-sherwood vault add-target --target <stock-token-addresses>                       # e.g. TSLA / AMZN / AMD
-sherwood vault add-target --target <strategy-clone-address>                       # Your strategy contract
-```
+There is **no vault-side target list**. The vault does not maintain an on-chain
+batch-target set. Reachability is `TierRegistry.isCallableTarget` (callee axis)
+plus `isAdapterAllowed` (funds). A disallowed batch callee reverts
+`DisallowedBatchCallee`.
+
+The vault `asset()` is the sole callee exemption. Everything else a governor
+batch calls must pass `isCallableTarget`. Approve spenders and transfer
+recipients must pass `isAdapterAllowed`.
+
+Typical Portfolio addresses on Robinhood testnet:
+
+| Role | Address |
+|------|---------|
+| WETH (vault asset) | `0x7943e237c7F95DA44E0301572D358911207852Fa` |
+| UniswapSwapAdapter (Synthra) | `0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490` |
+| Synthra Router | `0x3Ce954107b1A675826B33bF23060Dd655e3758fE` |
+| Stock tokens | e.g. TSLA / AMZN / AMD (see Tokens above) |
+| Strategy clone | printed by `sherwood strategy propose` |

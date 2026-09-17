@@ -7,6 +7,10 @@ expand to more chains over time.
 
 > See also: [Deployments reference](https://docs.sherwood.sh/reference/deployments)
 
+> **Robinhood mainnet (chain 4663) is not listed here.** No Sherwood core address
+> exists on it yet — the addresses land after the deployment ceremony. Do not infer
+> one from a testnet address, and do not reuse this table on 4663.
+
 ## Robinhood testnet (chain 46630)
 
 V2 deployment — full stack: core contracts + guardian layer (registry + sWOOD) +
@@ -23,7 +27,6 @@ StrategyFactory keyless deploy. Source of truth: `contracts/chains/46630.json`.
 | GuardianRegistry | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
 | StakedWood (sWOOD) | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
 | TierRegistry | `0x99b8068Dc0F6093466964D581f72d947e3e380DB` |
-| CallSandboxImpl | `0xf09f6AF7DeBB964eD731376C9Af389F2Ce3d872A` |
 | WOOD token (fixture) | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
 | PriceRouter | `0xDd302ffcfA08071780eC1A2f12BccFB9ba6b6731` |
 | PortfolioStrategy (template) | `0x67420Cc504d70a42Adfd8867d878afe0978C7d10` |

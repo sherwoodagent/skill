@@ -1,12 +1,12 @@
 ---
 name: network-guardian
-description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal. A clean simulation is never sufficient to Approve; incomplete evidence is a Block. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
+description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage). A clean simulation is never sufficient to Approve; incomplete evidence is a Block. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.0'
+  version: '0.2.0'
 ---
 
 # Network Guardian (Sherwood)
@@ -179,9 +179,9 @@ Incomplete intake, a degraded RPC, contradictory readings, or a clock you cannot
 
 ## What Approve actually commits you to
 
-Approve is **underwriting**, not a signal. `voteOnProposal` calls
-`ExposureLedger.recordApproval` and books coverage from your free stake against this
-strategy's extractable value.
+Approve is **underwriting**, not a signal. `voteOnProposal` forwards your `lockWood`
+declaration to `ExposureLedger.recordApproval`, which books it against your free stake
+and against this strategy's extractable value.
 
 - An over-exposed guardian is **not rejected** at vote time. The cap is enforced by
   booking **zero**. Your vote still lands, and the shortfall surfaces later.
@@ -207,23 +207,45 @@ value the coverage (unpriceable feed, settlement beyond the coverage horizon). A
 
 ## Casting the vote
 
-`voteOnProposal` takes **three** arguments. There is no `slashBps` parameter — severity
+`voteOnProposal` takes **four** arguments. There is no `slashBps` parameter — severity
 is derived at resolve time and is not voted on.
 
 ```solidity
-function voteOnProposal(address governor, uint256 proposalId, GuardianVoteType support)
+function voteOnProposal(address governor, uint256 proposalId, GuardianVoteType support, uint256 lockWood)
 // GuardianVoteType: 0 = None (rejected), 1 = Approve, 2 = Block
+// selector 0x4915ace5
 ```
 
+`lockWood` is the WOOD you **declare** as coverage for this proposal on an Approve. The
+`ExposureLedger` clamps it to `min(lockWood, kNumerator × yourStake − openExposure)` and
+never rejects the vote over it — over-declaring books less, it does not revert. It is
+ignored on a Block; pass `0`. Size it against `openExposure(you)` and the governor's
+`getRequiredCoverage(id)`, and read back what it was worth with
+`ExposureLedger.coverageUsdOf(governor, id, you)`.
+
+> **Pending (protocol PR #335).** An Approve whose `lockWood` is below
+> `min(need / 100, your whole free budget)` reverts `ApproveLockBelowFloor`. Treat it as
+> a **refusal to underwrite, not a transient failure**: raise the lock to a number you
+> are willing to lose, or vote Block. Do not retry the same value.
+
+**A Block is two transactions.** `openReview(governor, proposalId)` is permissionless
+from `voteEnd`, and `voteOnProposal` reverts `ReviewNotOpen` until it lands. A review
+nobody opened resolves **not-blocked**, so opening is part of blocking:
+
 ```bash
-# Block proposal 7 on this vault's governor.
+# 1. Open the review (skip only if getReviewState already reports opened).
+cast send $REGISTRY "openReview(address,uint256)" \
+  $GOVERNOR 7 \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+
+# 2. Block proposal 7 on this vault's governor (lockWood = 0 on a Block).
 cast send $REGISTRY \
-  "voteOnProposal(address,uint256,uint8)" \
-  $GOVERNOR 7 2 \
+  "voteOnProposal(address,uint256,uint8,uint256)" \
+  $GOVERNOR 7 2 0 \
   --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
-Encoding a four-argument form produces a reverting call — the selector does not exist.
+Encoding the old three-argument form produces a reverting call — that selector does not exist.
 
 Preconditions, each of which reverts if unmet: the governor is authorized in the
 registry; the review is `opened` and not `resolved`; `voteEnd ≤ now < reviewEnd`;

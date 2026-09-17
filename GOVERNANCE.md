@@ -11,7 +11,7 @@ The SyndicateGovernor contract enables on-chain proposal lifecycle:
 
 Protocol fees, the agent fee (agent's cut), and management fees are distributed on settlement from profit only. Fee distribution order: protocol fee → agent fee → management fee.
 
-The agent fee is a **vault-owner property**, not a per-proposal parameter. The vault owner sets one fee for the whole vault via `sherwood syndicate set-agent-fee --bps <bps>` (or on-chain `vault.setAgentFeeBps(bps)`). It defaults to **5% (500 bps)** at vault creation and is capped at **15% (1500 bps)** by the vault. When a proposal is created, the governor **snapshots** the vault's current `agentFeeBps` onto that proposal — immutable for that proposal, so a later owner change can't alter an already-created proposal. At settlement the governor uses that snapshot, clamped to its `maxPerformanceFeeBps`. `propose()` takes no fee argument.
+The agent fee is a **vault-owner property**, not a per-proposal parameter. The vault owner sets one fee for the whole vault via `sherwood syndicate set-agent-fee --bps <bps>` (or on-chain `vault.setAgentFeeBps(bps)`). It defaults to **20% (2000 bps)** at vault creation and is capped at **25% (2500 bps)** by the vault (`MAX_AGENT_FEE_BPS`). When a proposal is created, the governor **snapshots** the vault's current `agentFeeBps` onto that proposal — immutable for that proposal, so a later owner change can't alter an already-created proposal. At settlement the governor uses that snapshot, clamped to its `maxPerformanceFeeBps`. `propose()` takes no fee argument.
 
 ## Create a proposal
 
@@ -41,7 +41,7 @@ Execute calls run at proposal execution (open positions). Settlement calls run a
 
 If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://sherwood.sh/api/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
 
-> **No fee flag.** `propose` does not accept a fee. The agent's cut is the vault's `agentFeeBps`, set by the vault owner via `sherwood syndicate set-agent-fee --bps <bps>` (default 5%, max 15%). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time; at settlement it uses that snapshot, clamped to the governor's `maxPerformanceFeeBps`.
+> **No fee flag.** `propose` does not accept a fee. The agent's cut is the vault's `agentFeeBps`, set by the vault owner via `sherwood syndicate set-agent-fee --bps <bps>` (default 20%, max 25%). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time; at settlement it uses that snapshot, clamped to the governor's `maxPerformanceFeeBps`.
 
 ## Set the agent fee (vault owner)
 
@@ -51,7 +51,7 @@ The vault owner sets one performance fee for the whole vault. There is no per-pr
 sherwood syndicate set-agent-fee --bps 1500   # 15% of profit at settlement
 ```
 
-Defaults to 500 bps (5%) at vault creation; the vault caps it at 1500 bps (15%). Each proposal snapshots the vault's `agentFeeBps` at propose time; at settlement the governor uses that snapshot, clamped to `maxPerformanceFeeBps`. On-chain equivalent: `vault.setAgentFeeBps(bps)`.
+Defaults to 2000 bps (20%) at vault creation; the vault caps it at 2500 bps (25%). A factory-created vault's governor starts at `maxPerformanceFeeBps` 2000 bps (20%), so anything above that is clamped down at settlement until the owner raises it. Each proposal snapshots the vault's `agentFeeBps` at propose time; at settlement the governor uses that snapshot, clamped to `maxPerformanceFeeBps`. On-chain equivalent: `vault.setAgentFeeBps(bps)`.
 
 ## List proposals
 

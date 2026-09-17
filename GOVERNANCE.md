@@ -48,7 +48,7 @@ If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the h
 The vault owner sets one performance fee for the whole vault. There is no per-proposal fee.
 
 ```bash
-sherwood syndicate set-agent-fee --bps 1500   # 15% of profit at settlement
+sherwood syndicate set-agent-fee --bps 2000   # 20% of profit at settlement
 ```
 
 Defaults to 2000 bps (20%) at vault creation; the vault caps it at 2500 bps (25%). A factory-created vault's governor starts at `maxPerformanceFeeBps` 2000 bps (20%), so anything above that is clamped down at settlement until the owner raises it. Each proposal snapshots the vault's `agentFeeBps` at propose time; at settlement the governor uses that snapshot, clamped to `maxPerformanceFeeBps`. On-chain equivalent: `vault.setAgentFeeBps(bps)`.

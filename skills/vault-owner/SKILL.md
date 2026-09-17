@@ -267,7 +267,7 @@ The agent's performance fee is a **vault property**, not a per-proposal value. Y
 
 ```bash
 # Set the agent performance fee (default 2000 = 20%, vault cap 2500 = 25%)
-sherwood syndicate set-agent-fee --bps 1500
+sherwood syndicate set-agent-fee --bps 2000
 
 # On-chain equivalent
 cast send $VAULT_ADDRESS "setAgentFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL

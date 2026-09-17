@@ -7,6 +7,12 @@ expand to more chains over time.
 
 > See also: [Deployments reference](https://docs.sherwood.sh/reference/deployments)
 
+> **This table is chain 46630 only.** The CLI's default chain is the Robinhood
+> mainnet **fork, 9994663**, which is a separate deployment with different
+> addresses — take those from `chains/9994663.json` in
+> `sherwoodagent/sherwood-protocol`, never from this table. The econ-security stack
+> (ExposureLedger, ProposerBondEscrow) exists on the fork and **not** on 46630.
+
 > **Robinhood mainnet (chain 4663) is not listed here.** No Sherwood core address
 > exists on it yet — the addresses land after the deployment ceremony. Do not infer
 > one from a testnet address, and do not reuse this table on 4663.

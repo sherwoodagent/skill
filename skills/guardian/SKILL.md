@@ -32,21 +32,34 @@ Protocol pin: `b1c00335`. Live `voteOnProposal` is **4 arguments** (`governor`, 
 
 > **Per-vault governor.** There is no singleton `SyndicateGovernor`. Resolve the governor for the vault whose proposal you are reviewing: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor show --vault $VAULT_ADDRESS` prints the same address.
 
-Robinhood testnet (chain 46630) addresses — also in [ADDRESSES.md](../../ADDRESSES.md):
+Addresses differ per chain and have rotated more than once. Source of truth is
+`chains/{chainId}.json` in `sherwoodagent/sherwood-protocol`; the 46630 column is
+mirrored in [ADDRESSES.md](../../ADDRESSES.md).
 
-| Contract | Address |
-|----------|---------|
-| GuardianRegistry | `0x57f0fa384d0d7e2F234535d1235440312866872B` |
-| StakedWood (sWOOD) | `0x15F48A9f24c8ECaa8f03c28Ecd1a3b4784CdCb3c` |
-| WOOD | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
+| Contract | Robinhood fork (9994663) — chain of record | Robinhood testnet (46630) |
+|----------|--------------------------------------------|---------------------------|
+| GuardianRegistry | `0xdfEe38C4D7595c9c04AdBcaFE01E4Fd6FD6117f4` | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
+| StakedWood (sWOOD) | `0xD3037D28693cc7BB3DbF1E17B6e01C4ce628f6DF` | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
+| WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
+| ExposureLedger | `0x223e2Fd41aD6487333146fc3998d000E74CB1549` | **not deployed** |
 
-Export them when using `cast`:
+> **Staking against the wrong sWOOD sends WOOD to a contract that will not credit
+> you.** Before `stakeAsGuardian` or any vote, cross-check the pair — they point at
+> each other, so a stale entry is detectable. If either leg disagrees, stop.
+
+Export for the chain the proposal executes on (fork shown), then cross-check:
 
 ```bash
-export GUARDIAN_REGISTRY=0x57f0fa384d0d7e2F234535d1235440312866872B
-export SWOOD=0x15F48A9f24c8ECaa8f03c28Ecd1a3b4784CdCb3c
+export GUARDIAN_REGISTRY=0xdfEe38C4D7595c9c04AdBcaFE01E4Fd6FD6117f4
+export SWOOD=0xD3037D28693cc7BB3DbF1E17B6e01C4ce628f6DF
+cast call $GUARDIAN_REGISTRY "swood()(address)"    --rpc-url $RPC_URL   # == $SWOOD
+cast call $SWOOD "registry()(address)"             --rpc-url $RPC_URL   # == $GUARDIAN_REGISTRY
 export EXPOSURE_LEDGER=$(cast call $GUARDIAN_REGISTRY "exposureLedger()(address)" --rpc-url $RPC_URL)
 ```
+
+**On 46630 there is no ExposureLedger** — that export returns the zero address and
+the §5 coverage-sizing reads are unavailable. `lockWood` is still a required 4th
+argument there; it simply books nothing.
 
 ---
 

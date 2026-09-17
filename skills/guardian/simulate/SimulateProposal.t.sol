@@ -16,11 +16,22 @@ interface ISyndicateGovernor {
         uint256 value;
     }
 
-    /// @dev Snapshotted fee split carried on the proposal (agent / protocol / guardian).
-    struct FeeSplit {
+    /// @dev `IProtocolConfig.MgmtSplit` - THREE fields.
+    struct MgmtSplit {
         uint16 agentBps;
         uint16 protocolBps;
         uint16 guardianBps;
+    }
+
+    /// @dev `IProtocolConfig.PerfSplit` - FOUR fields. The trailing `ownerBps` is
+    ///      the one the mgmt split does not carry; both are static structs inlined
+    ///      into the proposal's ABI head, so decoding this one as a 3-field struct
+    ///      shifts every field after it by a word.
+    struct PerfSplit {
+        uint16 agentBps;
+        uint16 protocolBps;
+        uint16 guardianBps;
+        uint16 ownerBps;
     }
 
     /// @dev 28 fields, in ABI order. Decoding a shorter or reordered struct
@@ -51,8 +62,8 @@ interface ISyndicateGovernor {
         uint256 requiredCoverage;
         uint256 proposerBondWood;
         address proposerBondEscrow;
-        FeeSplit snapshotMgmtSplit;
-        FeeSplit snapshotPerfSplit;
+        MgmtSplit snapshotMgmtSplit;
+        PerfSplit snapshotPerfSplit;
         address proposerBondLedger;
         uint256 effectiveMaxCapital;
         uint256 votableSupply;

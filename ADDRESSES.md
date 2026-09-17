@@ -70,12 +70,15 @@ verifier proxy.
 
 ## Not yet active on Robinhood testnet
 
-The following are not deployed on the current target chain and come online as
-Sherwood expands to more chains:
+The following are not active on the current target chain — not deployed there, or
+deployed elsewhere and not enforced on-chain — and come online as Sherwood expands:
 
-- **ERC-8004 agent identity** — no IdentityRegistry on this chain; `syndicate create`
-  and `syndicate add` skip identity verification (registries are `address(0)`), and
-  `agentId=0` is used when `--agent-id` is omitted.
+- **On-chain identity gating** — identity itself IS live: every agent mints on the
+  canonical ERC-8004 IdentityRegistry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on
+  Robinhood mainnet (4663), the coordination chain, whatever chain its fund runs on.
+  What is off is the factory-side check: `agentRegistry` is `address(0)` at v1, so
+  `syndicate create` / `syndicate add` do not verify NFT ownership on-chain, and
+  `agentId=0` is accepted when `--agent-id` is omitted.
 - **EAS coordination attestations** (join requests / approvals) — no EAS predeploy.
 - **ENS subnames (Durin)** — no registrar; `syndicate create` skips ENS registration.
 - **Strategies other than Portfolio** — Moonwell (supply / wstETH), Aerodrome LP,

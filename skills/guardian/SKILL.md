@@ -1,19 +1,19 @@
 ---
 name: guardian
-description: Instructs an AI agent acting as a staked Sherwood network guardian — stake WOOD, review proposal calldata (execute + settle), and vote Approve or Block via GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments, no slashBps). A clean simulation is necessary but never sufficient to Approve. Triggers on staking WOOD, reviewing calldata, Approve/Block verdicts, coverage underwriting, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls.
+description: Instructs an AI agent acting as a staked Sherwood network guardian — stake WOOD, review proposal calldata (execute + settle), and vote Approve or Block via GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments, no slashBps) — or abstain, which emits nothing on-chain and is the correct action when you cannot underwrite or cannot finish intake. A clean simulation is necessary but never sufficient to Approve. Triggers on staking WOOD, reviewing calldata, Approve/Block verdicts, coverage underwriting, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, WebSearch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.9.0'
+  version: '0.10.0'
 ---
 
 # Staked Network Guardian
 
 You are an **independent reviewer** with **slashable WOOD** staked in sWOOD. You underwrite arbitrary proposal calldata. You are **not** the vault owner.
 
-Your job is only this: **stake WOOD, review calldata, vote Approve or Block.** That is the whole job.
+Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abstain.** That is the whole job. Abstain is a real third outcome, not a failure to act — see §2b.
 
 > **Not the vault-owner skill.** Veto, pause, unstick, `set-agent-fee`, and `emergencySettleWithCalls` are owner powers. They live in the **`vault-owner`** skill (`skills/vault-owner/SKILL.md`). Blocking as a staked guardian is not a veto. Silence is not an Approve.
 
@@ -21,7 +21,7 @@ Your job is only this: **stake WOOD, review calldata, vote Approve or Block.** T
 
 > **Runtime Compatibility:** This skill uses `AskUserQuestion` for interactive prompts. If `AskUserQuestion` is not available, collect parameters through natural language conversation instead.
 
-Protocol pin: `b1c00335`. Live `voteOnProposal` is **4 arguments** (`governor`, `proposalId`, `support`, `lockWood`). There is **no `slashBps` argument** — slash severity is a deterministic function of block-side decisiveness at `resolveReview`. `lockWood` is the WOOD you declare as coverage on an Approve (see §5).
+Protocol pin: `c9e3d8c6`. Live `voteOnProposal` is **4 arguments** (`governor`, `proposalId`, `support`, `lockWood`). There is **no `slashBps` argument** — slash severity is a deterministic function of block-side decisiveness at `resolveReview`. `lockWood` is the WOOD you declare as coverage on an Approve (see §5).
 
 ## Prerequisites
 
@@ -33,27 +33,32 @@ Protocol pin: `b1c00335`. Live `voteOnProposal` is **4 arguments** (`governor`, 
 > **Per-vault governor.** There is no singleton `SyndicateGovernor`. Resolve the governor for the vault whose proposal you are reviewing: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor show --vault $VAULT_ADDRESS` prints the same address.
 
 Addresses differ per chain and have rotated more than once. Source of truth is
-`chains/{chainId}.json` in `sherwoodagent/sherwood-protocol`; the 46630 column is
-mirrored in [ADDRESSES.md](../../ADDRESSES.md).
+`chains/{chainId}.json` in `sherwoodagent/sherwood-protocol`; both columns are
+mirrored in [ADDRESSES.md](../../ADDRESSES.md) — read it, do not trust a copy.
 
 | Contract | Robinhood fork (9994663) — chain of record | Robinhood testnet (46630) |
 |----------|--------------------------------------------|---------------------------|
-| GuardianRegistry | `0xdfEe38C4D7595c9c04AdBcaFE01E4Fd6FD6117f4` | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
-| StakedWood (sWOOD) | `0xD3037D28693cc7BB3DbF1E17B6e01C4ce628f6DF` | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
+| GuardianRegistry | `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72` | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
+| StakedWood (sWOOD) | `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203` | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
 | WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
-| ExposureLedger | `0x223e2Fd41aD6487333146fc3998d000E74CB1549` | **not deployed** |
+| ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` | **not deployed** |
 
-> **Staking against the wrong sWOOD sends WOOD to a contract that will not credit
-> you.** Before `stakeAsGuardian` or any vote, cross-check the pair — they point at
+> **Verify before you stake — more than one complete guardian deployment answers
+> normally.** The fork is re-minted and the testnet stack has rotated; an older 46630
+> stack still lives at registry `0x57f0fa38…` / sWOOD `0x15F48A9f…` (this file pointed
+> at it until 2026-09-01), and every read against it succeeds. Staking into the wrong
+> sWOOD makes you an active guardian on a network nobody proposes to: no proposals, no
+> fees, no slashing, and nothing about it looks broken. The registry and sWOOD point at
 > each other, so a stale entry is detectable. If either leg disagrees, stop.
 
 Export for the chain the proposal executes on (fork shown), then cross-check:
 
 ```bash
-export GUARDIAN_REGISTRY=0xdfEe38C4D7595c9c04AdBcaFE01E4Fd6FD6117f4
-export SWOOD=0xD3037D28693cc7BB3DbF1E17B6e01C4ce628f6DF
+export GUARDIAN_REGISTRY=0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72
+export SWOOD=0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203
 cast call $GUARDIAN_REGISTRY "swood()(address)"    --rpc-url $RPC_URL   # == $SWOOD
 cast call $SWOOD "registry()(address)"             --rpc-url $RPC_URL   # == $GUARDIAN_REGISTRY
+cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint64)" --rpc-url $RPC_URL # 86400 on the live stack; 600 is the old one
 export EXPOSURE_LEDGER=$(cast call $GUARDIAN_REGISTRY "exposureLedger()(address)" --rpc-url $RPC_URL)
 ```
 
@@ -94,10 +99,45 @@ At propose, each call is priced `requiredCoverage = Σ (cap_i × boundBps_i) / 1
 
 - Your WOOD is **slashable** on a wrong verdict. `resolveReview` slashes approvers when the review is Blocked; slash bps is computed on-chain, not passed in by you.
 - You state the size of that bet yourself: `voteOnProposal`'s 4th argument, `lockWood`. Size it before you vote (§5).
-- Fees, if any, are weighted on **coverage actually underwritten** (`getApproverCoverage`), not on parked stake. An Approve that books zero coverage still exposes you to slash.
+- Fees, if any, are weighted on **coverage actually underwritten** (`getApproverCoverage`), not on parked stake. Booking is all-or-nothing: an Approve that would book nothing reverts rather than seating you for free (§5).
 - Tier-2 / uncertified / arbitrary calldata is the expensive book. Simulation success does **not** bound extractable value.
 
-If you cannot underwrite the book, **Block**. Do not Approve to be helpful.
+If the book is larger than you are willing to underwrite, **abstain** — do not
+Approve to be helpful, and do not Block to look decisive. See below.
+
+---
+
+## 2b. Three outcomes, not two
+
+You have **Approve**, **Block**, and **abstain**. Abstain is not a failure state;
+it is the designed fail-safe, and it is the correct action in more cases than
+Block is.
+
+| Situation | Action |
+|---|---|
+| Intake complete, everything checks out, willing to underwrite | **Approve** |
+| Something is wrong with the proposal — drain-shaped, description mismatch, unverified target | **Block** |
+| Something is wrong with *your ability to judge it* — coverage larger than you will underwrite, evidence missing, window unplaceable in effective time | **abstain** |
+
+The distinction is about where the fault lies. Block is a positive claim that
+*this proposal is bad*. Blocking costs you nothing directly — blockers are not
+slashed — and that is precisely why it needs discipline rather than why it is
+safe: a Block can kill an honest proposal, and block-side decisiveness is what
+`resolveReview` computes **approver** slash severity from, so a Block cast
+because you could not see clearly helps burn the stake of guardians who could.
+Abstain claims nothing about the proposal, only that you cannot stand behind it.
+
+**Abstaining emits nothing on-chain.** There is no ABSTAIN event and no
+transaction — you simply do not vote. Three consequences worth holding onto:
+
+- An indexer cannot distinguish your abstain from your process being down. If
+  you abstain, nothing anywhere records that you considered the proposal.
+- Silence is therefore **not** an Approve and not a Block, but it is also not
+  visible as a decision. If you need the abstain to be legible, say so out of
+  band; the chain will not do it for you.
+- Coverage that exceeds your ceiling raises `COVERAGE_EXCEEDED`, which is an
+  **abstain**, not a Block. Blocking there would put a decisive stance behind a
+  limit that is yours, not the proposal's fault.
 
 ---
 
@@ -127,10 +167,20 @@ cast call $GUARDIAN_REGISTRY "reviewWindow(address,uint256)(uint64,uint64)" \
   $GOVERNOR_ADDRESS <PROPOSAL_ID> --rpc-url $RPC_URL   # voteEnd, reviewEnd
 ```
 
-**A Block is two transactions.** `openReview` is permissionless and callable from
-`voteEnd`; a review nobody opened resolves **not-blocked**, whatever the calldata was.
-`voteOnProposal` reverts `ReviewNotOpen` until someone opens it. So open it yourself,
-then vote — never assume another guardian did it:
+**A review that is never opened is not a review that gets skipped — it is a
+proposal that executes unreviewed.** The governor's own state resolution settles
+an unopened review inline as *not blocked*, whatever the calldata was, so the
+guardian layer contributes nothing and nothing anywhere reports a problem.
+`openReview` is permissionless precisely because it has to be somebody's job, and
+a voter that watches only for *opened* reviews structurally cannot be the thing
+that opens them.
+
+**So a Block is two transactions.** `openReview` is callable from `voteEnd`, and
+`voteOnProposal` reverts `ReviewNotOpen` until it lands. Open it yourself, then
+vote — never assume another guardian did it. If you are running a fleet, give
+opening to a dedicated keeper instead: a keeper holds no bond and cannot be
+slashed, so it can be run redundantly, and its only failure mode is missed
+liveness. Its absence is the quietest way for the whole layer to stop working.
 
 ```bash
 # 1. open (permissionless, from voteEnd) — skip only if getReviewState says opened
@@ -186,17 +236,22 @@ Risk codes from `proposal simulate`:
 
 1. **Proposal metadata** — fetch the metadata URI and read the human description in full.
 2. **Every call** in both the **execute** and the **settle** call sets — target, selector, decoded arguments, attached value.
-3. **Reachability on this chain** — `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds). A disallowed callee reverts `DisallowedBatchCallee`. There is **no vault-side target list**. Chain **9994663** is the current fork of record; **never** copy a Base (8453) address book onto it.
+3. **Reachability on this chain** — there is **no vault-side target list**, and the batch rule differs by chain, so resolve the address book from the chain the proposal actually executes on. On the **9994663** fork (chain of record) every non-asset batch target must be a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless); one that is not reverts `NotARegisteredStrategy`, and on the vault `asset()` only `transferFrom(from != vault)` is refused. On **46630** the older allowlist stack is still deployed: `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds), with a disallowed callee reverting `DisallowedBatchCallee`. Testnet 46630 and the 9994663 vnet are different books, and neither takes a Base (8453) one — **never** carry an address across chains.
 4. **Economics** — performance fee snapshot, strategy duration, total notional, and the **coverage book** you would be underwriting (full notional for tier 2).
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
-- Any target is **unlabeled / unverified** on this chain, or fails `isCallableTarget`.
+- Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule for that chain (§4 intake item 3).
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
 - The **settle** path **cannot return the vault deposit asset** — missing settle, different token, or a return path that depends on an unverified contract.
 - **Undisclosed value movement** — any transfer, approval, or ETH/token flow not explained by the description, **even if `simulate` passes**.
-- You cannot size the coverage book, or you are not willing to underwrite it.
-- Intake is incomplete, ambiguous, or you could not verify something. **Default is Block.**
+- You **could** size the intake and what you found is wrong — the calls, the
+  targets, or the value trace. **Never Approve to be helpful.**
+
+Everything above is a claim about the *proposal*. Where the obstacle is instead
+about *you* — you cannot size the coverage book, are unwilling to underwrite it,
+or intake is incomplete because evidence is missing rather than because the
+proposal is evasive — **abstain** (§2b). Never Approve in either case.
 
 ### Approve ONLY if ALL of these hold
 
@@ -224,10 +279,14 @@ cast send $GUARDIAN_REGISTRY \
 
 **`lockWood` — the coverage you declare.** It is the WOOD you put behind *this*
 proposal on an **Approve**. It is ignored on a Block (a blocker underwrites nothing);
-pass `0`. The `ExposureLedger` **clamps, never rejects**: it books
-`min(lockWood, kNumerator × yourStake − openExposure)`, so declaring more than your
-free budget simply books less — it does not revert the vote, and the shortfall
-surfaces at execute when `requireApproveQuorum` scales the proposal down.
+pass `0`.
+
+**Over-declaring clamps; under-declaring reverts.** The `ExposureLedger` books
+`lock = min(lockWood, free)`, where `free = kNumerator × yourStake − openExposure`
+(floored at zero) — so declaring more than your free budget simply books less. It
+does not revert, and the shortfall surfaces at execute when `requireApproveQuorum`
+finds the coverage book unfilled. Declaring *too little*, however, is refused
+outright — see the floor below.
 
 Size it before you vote:
 
@@ -239,15 +298,32 @@ cast call $EXPOSURE_LEDGER "coverageUsdOf(address,uint256,address)(uint256)" \
   $GOVERNOR_ADDRESS <PROPOSAL_ID> <YOUR_ADDRESS> --rpc-url $RPC_URL
 ```
 
-> **Pending (protocol PR #335).** An Approve whose `lockWood` is below
-> `min(need / 100, your whole free budget)` reverts `ApproveLockBelowFloor`. That is a
-> **refusal to underwrite, not a transient failure** — do not retry the same number and
-> do not treat it as an RPC hiccup. Either raise the lock to something you are willing
-> to lose, or vote **Block**.
+> **The slot floor is live** (`ExposureLedger.recordApproval`, `src/ExposureLedger.sol:767-777`).
+> A slot in the bounded approver array cannot be bought for a lock that carries nothing,
+> so an Approve reverts `ApproveLockBelowFloor` unless the **USD value of the lock it
+> actually books** is at least `floorUsd`, where:
+>
+> - `floorUsd = min(shareUsd, budgetUsd)`
+> - `shareUsd = ceil(needUsd / APPROVER_SLOTS)` — `APPROVER_SLOTS` is **100**, and
+>   `needUsd = coverageUsd(vault asset, requiredCoverage)`, i.e. your share of the
+>   proposal's requirement if a hundred guardians each carried one;
+> - `budgetUsd` is your **whole** cap `kNumerator × guardianStake` valued the same way —
+>   note the cap, not the free budget;
+> - every WOOD amount is valued as `min(amount, your slashable stake now) × woodPriceX8 / 1e8`,
+>   so a starved or inflated WOOD/USD feed can refuse a slot but never enlarge one.
+>
+> It also reverts when the booked lock is zero (no free budget left) or when `budgetUsd`
+> is zero. In short: put up your share of the need, or your entire budget if that is
+> smaller — anything less buys no slot. This is a **refusal to underwrite, not a
+> transient failure**: do not retry the same number and do not treat it as an RPC
+> hiccup. Either raise the lock to something you are willing to lose, or vote **Block**.
 
 - On **Approve**, you are staking slashable WOOD on the intake conditions above being true, and underwriting the coverage book for `lockWood`.
 - On **Block**, you do **not** pick a slash rate. Severity is computed at `resolveReview`.
-- If you cannot finish intake before `reviewEnd`: **Block**. A wrongly blocked honest proposal can be resubmitted; a slashed stake and drained LPs cannot.
+- If you cannot finish intake before `reviewEnd`: **Block if what you saw so far
+  looks wrong, abstain if you simply ran out of road.** A wrongly blocked honest
+  proposal can be resubmitted; a slashed stake and drained LPs cannot. Never let
+  a deadline turn into an Approve.
 
 ```bash
 # After the window, anyone may resolve (slashes if blocked)
@@ -259,25 +335,32 @@ cast send $GUARDIAN_REGISTRY "resolveReview(address,uint256)" \
 ### Decision tree
 
 ```
+Review registered but not opened?
+|   +-- open it, or it settles as NOT BLOCKED and executes unreviewed
+|
 Proposal in GuardianReview (2)
 |
 +-- Review opened? --> No: openReview(governor, id) first (tx 1 of 2)
 |
 +-- Fetch metadata + execute/settle calls
-|   +-- Cannot complete intake --> Block
+|   +-- Evidence missing / ran out of window --> ABSTAIN
 |
 +-- Simulate (necessary, not sufficient)
 |   +-- CRITICAL risk or failed sim --> Block
 |
 +-- Coverage book sized? (pick lockWood)
-|   +-- No / unwilling to underwrite --> Block
+|   +-- Cannot size it, or above your ceiling --> ABSTAIN
 |
 +-- Description matches decoded calls, every target labeled
 |   on THIS chain, settle returns the vault asset, value
 |   trace agrees?
-|   +-- No  --> Block
+|   +-- No  --> Block      (the proposal is wrong)
 |   +-- Yes --> Approve
 ```
+
+Block and abstain are not interchangeable. Block is a claim about the proposal
+and feeds slash severity; abstain is a claim about your own footing and emits
+nothing.
 
 ---
 
@@ -297,11 +380,69 @@ Do **not** call `emergencySettleWithCalls`, `unstick`, `finalizeEmergencySettle`
 
 ## 7. Known-safe targets (this chain only)
 
-Verify targets against known protocol addresses **for the chain the proposal executes on**. Addresses differ across chains. Batch callees still have to pass `TierRegistry.isCallableTarget`.
+Verify targets against known protocol addresses **for the chain the proposal executes on**. Addresses differ across chains. Batch callees still have to pass that chain's reachability rule (§4 intake item 3).
 
-See [ADDRESSES.md](../../ADDRESSES.md) for Robinhood testnet. Strategy template clones are valid only after you verify the implementation on **this** chain.
+See [ADDRESSES.md](../../ADDRESSES.md) for both the 9994663 fork and Robinhood testnet. Strategy template clones are valid only after you verify the implementation on **this** chain.
 
 Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template.
+
+---
+
+## 8. Running this for real
+
+Findings from operating a live guardian fleet. Each one presents as something
+other than its cause, which is why they are written down.
+
+**A short review window may be unvotable on a forked chain.** A Tenderly vnet's
+next block jumps forward by the wall-clock drift since the last explicit
+`evm_setNextBlockTimestamp` — ~2200s observed. `eth_call` executes at `latest`
+and passes; `cast send` and `simulateContract` estimate against the **next**
+block and revert `ReviewNotOpen`. So a window shorter than the drift can never
+be voted in, and the two ways of asking "is this open?" disagree. If you are
+standing up a fork for testing, raise `reviewPeriod` above the drift. This is
+also why a 600-second `reviewPeriod` should make you check which deployment you
+are pointed at.
+
+**In a container, `forge` needs the system CA store.** `forge` is Rust and reads
+`/etc/ssl/certs`; Node bundles its own. A `node:*` image has that directory
+empty, so the agent talks to an HTTPS RPC happily over viem while
+`forge test --fork-url https://…` cannot reach it at all — and forge then emits
+no decoded logs, so the failure arrives as an unparseable run with nothing to
+point at. `apt-get install -y ca-certificates` at image build time, and run
+`forge build` in the build so it fails there rather than on first review.
+
+**Judge gas-capped recovery calls by state, not status.** `{gas: X}` is a cap,
+not a grant, and the 63/64 rule bounds it by the transaction's own limit. A
+best-effort sweep that swallows its own failures makes `eth_estimateGas`
+converge on the do-nothing path: the tx succeeds, costs little, emits nothing,
+and recovers nothing. Pass an explicit `--gas-limit` sized to the internal cap
+and confirm the effect from balances or events.
+
+**A proposal can pin its vault after it is decided.** `_openProposalCount` is
+decremented lazily, so `propose` keeps reverting `VaultHasOpenProposal` until
+`resolveProposalState(pid)` flushes the transition — and an Approved but
+unexecuted proposal is not terminal, so it needs `cancelProposal`. Order that
+works: warp past `reviewEnd` → `resolveReview` → `resolveProposalState` →
+`cancelProposal` if the slot is still held.
+
+### If you are running more than one guardian
+
+**Posture is not dissent.** A `defend`-mode guardian runs the same judge as
+everyone else; on a proposal the rules read as clean it Approves, and declining
+to sign is an *abstain*. It does not Block where others Approve. Only policy
+produces genuine divergence: which warnings a guardian tolerates, and how much
+it will underwrite. Without at least one of those differing, a fleet of M
+guardians is M copies of one opinion, and a single judge bug moves all M votes
+the same way.
+
+**A per-proposal coverage ceiling is an abstain trigger, not a sizing input.**
+It does not reduce what a guardian books — it makes the guardian sit out
+anything larger. A ceiling well below capacity quietly lowers participation
+rather than lowering exposure.
+
+**An unfunded voter is a silent non-voter.** Below a workable gas balance an
+identity simply stops voting, and abstains emit nothing, so the fleet looks
+quorate right up until it is not. Monitor gas per identity, not just liveness.
 
 ---
 

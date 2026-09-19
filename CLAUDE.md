@@ -31,6 +31,8 @@ After a CLI release lands on `main` of `sherwoodagent/sherwood` and is published
 
 After a release lands on `main` of `sherwoodagent/sherwood-hermes-plugin` and a git tag (e.g. `v0.5.0`) exists. Pull the version from `plugin.yaml` in that repo.
 
-## Single-chain: Robinhood testnet (chain 46630)
+## Chains: the Robinhood mainnet fork (9994663) and Robinhood testnet (46630)
 
-Sherwood currently deploys on **Robinhood testnet (chain 46630) only** — the initial deployment target, not a permanent single-chain product (multi-chain expected later). The CLI targets it by default and exposes **no `--chain` flag and no `ENABLE_TESTNET`**. Keep `SKILL.md` / `ADDRESSES.md` presenting exactly this one chain. Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet / Robinhood mainnet (4663) as deployment targets, or reintroduce a `--chain` flag, without an explicit decision in the PR. Frame it as "currently deploys on Robinhood testnet", never "Base/HyperEVM support removed".
+Sherwood deploys on **two Robinhood chains** and no others. The CLI's `DEFAULT_NETWORK` is the **Robinhood mainnet fork — a Tenderly vnet, chain 9994663** (the chain of record, running the latest in-audit build); `--chain robinhood-testnet` selects **Robinhood testnet, chain 46630**. Keep `SKILL.md` / `ADDRESSES.md` presenting exactly these two, with the fork first.
+
+Robinhood **mainnet (4663)** is a coordination chain only: the canonical ERC-8004 IdentityRegistry lives there, and no Sherwood core contract does — never list it as a deployment target. Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed".

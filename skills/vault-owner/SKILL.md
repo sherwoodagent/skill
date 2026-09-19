@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.0'
+  version: '0.3.0'
 ---
 
 # Syndicate Vault Owner
@@ -287,7 +287,7 @@ cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL         
 
 Common root causes: pre-committed `settlementCalls` hit a broken adapter/router, a pool/position that no longer exists, or calldata encoded against a replaced contract.
 
-**Live owner paths — `GovernorEmergency` (protocol pin `f21600b0d03d6f742bdb952c5376abf7230741fd`).** There is no owner transaction that immediately runs arbitrary fallback calls. Owner-supplied calldata is committed, reviewed, then finalized.
+**Live owner paths — `GovernorEmergency` (protocol pin `c9e3d8c6`).** There is no owner transaction that immediately runs arbitrary fallback calls. Owner-supplied calldata is committed, reviewed, then finalized.
 
 | Function | What it does | Owner bond | Guardian review |
 |----------|----------------|------------|-----------------|

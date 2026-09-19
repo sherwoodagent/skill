@@ -1,12 +1,12 @@
 ---
 name: guardian
-description: Instructs an AI agent acting as a staked Sherwood network guardian — stake WOOD, review proposal calldata (execute + settle), and vote Approve or Block via GuardianRegistry.voteOnProposal(governor, proposalId, support) (3 arguments, no slashBps) — or abstain, which emits nothing on-chain and is the correct action when you cannot underwrite or cannot finish intake. A clean simulation is necessary but never sufficient to Approve. Triggers on staking WOOD, reviewing calldata, Approve/Block verdicts, coverage underwriting, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls.
+description: Instructs an AI agent acting as a staked Sherwood network guardian — stake WOOD, review proposal calldata (execute + settle), and vote Approve or Block via GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments, no slashBps) — or abstain, which emits nothing on-chain and is the correct action when you cannot underwrite or cannot finish intake. A clean simulation is necessary but never sufficient to Approve. Triggers on staking WOOD, reviewing calldata, Approve/Block verdicts, coverage underwriting, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, WebSearch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.9.0'
+  version: '0.11.0'
 ---
 
 # Staked Network Guardian
@@ -21,7 +21,7 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 > **Runtime Compatibility:** This skill uses `AskUserQuestion` for interactive prompts. If `AskUserQuestion` is not available, collect parameters through natural language conversation instead.
 
-Protocol pin: `f21600b0d03d6f742bdb952c5376abf7230741fd`. Live `voteOnProposal` is **3 arguments** (`governor`, `proposalId`, `support`). There is **no `slashBps` argument** — slash severity is a deterministic function of block-side decisiveness at `resolveReview`.
+Protocol pin: `c9e3d8c6`. Live `voteOnProposal` is **4 arguments** (`governor`, `proposalId`, `support`, `lockWood`). There is **no `slashBps` argument** — slash severity is a deterministic function of block-side decisiveness at `resolveReview`. `lockWood` is the WOOD you declare as coverage on an Approve (see §5).
 
 ## Prerequisites
 
@@ -32,33 +32,39 @@ Protocol pin: `f21600b0d03d6f742bdb952c5376abf7230741fd`. Live `voteOnProposal` 
 
 > **Per-vault governor.** There is no singleton `SyndicateGovernor`. Resolve the governor for the vault whose proposal you are reviewing: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor show --vault $VAULT_ADDRESS` prints the same address.
 
-Robinhood testnet (chain 46630). **[ADDRESSES.md](../../ADDRESSES.md) is the source of truth — read it, do not trust a copy.**
+Addresses differ per chain and have rotated more than once. Source of truth is
+`chains/{chainId}.json` in `sherwoodagent/sherwood-protocol`; both columns are
+mirrored in [ADDRESSES.md](../../ADDRESSES.md) — read it, do not trust a copy.
 
-| Contract | Address |
-|----------|---------|
-| GuardianRegistry | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
-| StakedWood (sWOOD) | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
-| WOOD | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
+| Contract | Robinhood fork (9994663) — chain of record | Robinhood testnet (46630) |
+|----------|--------------------------------------------|---------------------------|
+| GuardianRegistry | `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72` | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
+| StakedWood (sWOOD) | `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203` | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
+| WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
+| ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` | **not deployed** |
 
-> **Verify before you stake.** There is more than one complete guardian deployment
-> on 46630 and both answer normally — an older stack lives at registry
-> `0x57f0fa38…` / sWOOD `0x15F48A9f…` (this file pointed at it until 2026-09-01).
-> Staking into the wrong sWOOD makes you an active guardian on a network nobody
-> proposes to: no proposals to review, no fees, no slashing, and nothing about it
-> looks broken. Cross-check that the registry names the sWOOD you are about to
-> stake into, and that the review window is the operational one:
->
-> ```bash
-> cast call $GUARDIAN_REGISTRY "swood()(address)" --rpc-url $RPC_URL      # must equal $SWOOD
-> cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint64)" --rpc-url $RPC_URL # 86400 on the V2 stack; 600 is the old one
-> ```
+> **Verify before you stake — more than one complete guardian deployment answers
+> normally.** The fork is re-minted and the testnet stack has rotated; an older 46630
+> stack still lives at registry `0x57f0fa38…` / sWOOD `0x15F48A9f…` (this file pointed
+> at it until 2026-09-01), and every read against it succeeds. Staking into the wrong
+> sWOOD makes you an active guardian on a network nobody proposes to: no proposals, no
+> fees, no slashing, and nothing about it looks broken. The registry and sWOOD point at
+> each other, so a stale entry is detectable. If either leg disagrees, stop.
 
-Export them when using `cast`:
+Export for the chain the proposal executes on (fork shown), then cross-check:
 
 ```bash
-export GUARDIAN_REGISTRY=0xA400eFcfFc820C6f812203C58ee00423AeCC0903
-export SWOOD=0x21A69A6c9814c0d339C57fDdafed3B283702a739
+export GUARDIAN_REGISTRY=0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72
+export SWOOD=0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203
+cast call $GUARDIAN_REGISTRY "swood()(address)"    --rpc-url $RPC_URL   # == $SWOOD
+cast call $SWOOD "registry()(address)"             --rpc-url $RPC_URL   # == $GUARDIAN_REGISTRY
+cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint64)" --rpc-url $RPC_URL # 86400 on the live stack; 600 is the old one
+export EXPOSURE_LEDGER=$(cast call $GUARDIAN_REGISTRY "exposureLedger()(address)" --rpc-url $RPC_URL)
 ```
+
+**On 46630 there is no ExposureLedger** — that export returns the zero address and
+the §5 coverage-sizing reads are unavailable. `lockWood` is still a required 4th
+argument there; it simply books nothing.
 
 ---
 
@@ -92,8 +98,9 @@ cast send $SWOOD "stakeAsGuardian(uint256,uint256)" <AMOUNT_WEI> <AGENT_ID> \
 At propose, each call is priced `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000`. Uncertified / **tier 2** calldata is bounded at **full notional** (`boundBps = 10_000`). Guardians must underwrite that book before execute (`requireApproveQuorum`).
 
 - Your WOOD is **slashable** on a wrong verdict. `resolveReview` slashes approvers when the review is Blocked; slash bps is computed on-chain, not passed in by you.
-- Fees, if any, are weighted on **coverage actually underwritten** (`getApproverCoverage`), not on parked stake. An Approve that books zero coverage still exposes you to slash.
-- Tier-2 / sandbox / arbitrary calldata is the expensive book. Simulation success does **not** bound extractable value.
+- You state the size of that bet yourself: `voteOnProposal`'s 4th argument, `lockWood`. Size it before you vote (§5).
+- Fees, if any, are weighted on **coverage actually underwritten** (`getApproverCoverage`), not on parked stake. Booking is all-or-nothing: an Approve that would book nothing reverts rather than seating you for free (§5).
+- Tier-2 / uncertified / arbitrary calldata is the expensive book. Simulation success does **not** bound extractable value.
 
 If the book is larger than you are willing to underwrite, **abstain** — do not
 Approve to be helpful, and do not Block to look decisive. See below.
@@ -162,34 +169,36 @@ cast call $GUARDIAN_REGISTRY "reviewWindow(address,uint256)(uint64,uint64)" \
 
 **A review that is never opened is not a review that gets skipped — it is a
 proposal that executes unreviewed.** The governor's own state resolution settles
-an unopened review inline as *not blocked*, so the guardian layer contributes
-nothing and nothing anywhere reports a problem. `openReview` is permissionless
-precisely because it has to be somebody's job, and a voter that watches only for
-*opened* reviews structurally cannot be the thing that opens them.
+an unopened review inline as *not blocked*, whatever the calldata was, so the
+guardian layer contributes nothing and nothing anywhere reports a problem.
+`openReview` is permissionless precisely because it has to be somebody's job, and
+a voter that watches only for *opened* reviews structurally cannot be the thing
+that opens them.
 
-If you are one agent, opening is part of your job. If you are running a fleet,
-give it to a dedicated keeper: a keeper holds no bond and cannot be slashed, so
-it can be run redundantly, and its only failure mode is missed liveness. Its
-absence is the quietest way for the whole layer to stop working.
-
-If the review is registered but not opened, open it (permissionless) before voting:
+**So a Block is two transactions.** `openReview` is callable from `voteEnd`, and
+`voteOnProposal` reverts `ReviewNotOpen` until it lands. Open it yourself, then
+vote — never assume another guardian did it. If you are running a fleet, give
+opening to a dedicated keeper instead: a keeper holds no bond and cannot be
+slashed, so it can be run redundantly, and its only failure mode is missed
+liveness. Its absence is the quietest way for the whole layer to stop working.
 
 ```bash
+# 1. open (permissionless, from voteEnd) — skip only if getReviewState says opened
 cast send $GUARDIAN_REGISTRY "openReview(address,uint256)" \
   $GOVERNOR_ADDRESS <PROPOSAL_ID> \
   --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+# 2. then vote (§5)
 ```
 
 ---
 
 ## 4. Review calldata
 
-Fetch **every** call in both slices, plus sandbox payload when present.
+Fetch **every** call in both slices. These two arrays are the whole committed payload.
 
 ```bash
 cast call $GOVERNOR_ADDRESS "getExecuteCalls(uint256)((address,bytes,uint256)[])" <PROPOSAL_ID> --rpc-url $RPC_URL
 cast call $GOVERNOR_ADDRESS "getSettlementCalls(uint256)((address,bytes,uint256)[])" <PROPOSAL_ID> --rpc-url $RPC_URL
-cast call $GOVERNOR_ADDRESS "sandboxPayload(uint256)((uint256,(address,bytes)[],address[]))" <PROPOSAL_ID> --rpc-url $RPC_URL
 ```
 
 ```bash
@@ -204,7 +213,7 @@ curl -s "https://ipfs.io/ipfs/<CID>" | jq .
 sherwood proposal simulate --id <PROPOSAL_ID>
 ```
 
-For deeper debugging, the bundled Foundry harness is `skills/guardian/simulate/SimulateProposal.t.sol`. Sandbox calls must be simulated **from the clone**, not as if the vault were `msg.sender`.
+For deeper debugging, the bundled Foundry harness is `skills/guardian/simulate/SimulateProposal.t.sol`. Every governor batch call runs with the **vault** as `msg.sender` — simulate it that way.
 
 Risk codes from `proposal simulate`:
 
@@ -226,13 +235,13 @@ Risk codes from `proposal simulate`:
 ### Intake — gather ALL of this before voting
 
 1. **Proposal metadata** — fetch the metadata URI and read the human description in full.
-2. **Every call** in both the **execute** and the **settle** call sets (and sandbox `calls` when present) — target, selector, decoded arguments, attached value.
-3. **Reachability on this chain** — `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds). A disallowed callee reverts `DisallowedBatchCallee`. There is **no vault-side target list**. Resolve the address book from the chain the proposal actually executes on — testnet **46630** and the **9994663** vnet fork are different books, and neither takes a Base (8453) one. **Never** carry an address across chains.
+2. **Every call** in both the **execute** and the **settle** call sets — target, selector, decoded arguments, attached value.
+3. **Reachability** — there is **no vault-side target list** and no callee or adapter allowlist. Every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless); anything else reverts `NotARegisteredStrategy(target)`. On the `asset()` leg, a `transferFrom` whose `from` is not the vault reverts `TransferFromNotVault`, calldata under 36 bytes reverts `MalformedAssetCall`, and any other selector's first argument is the spender whose allowance is reset after the batch. `TierRegistry` **prices** a call, it does not gate it — see item 4. Resolve the address book from the chain the proposal actually executes on: testnet **46630** and the **9994663** vnet are different books, and neither takes a Base (8453) one — **never** carry an address across chains.
 4. **Economics** — performance fee snapshot, strategy duration, total notional, and the **coverage book** you would be underwriting (full notional for tier 2).
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
-- Any target is **unlabeled / unverified** on this chain, or fails `isCallableTarget`.
+- Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule (§4 intake item 3).
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
 - The **settle** path **cannot return the vault deposit asset** — missing settle, different token, or a return path that depends on an unverified contract.
 - **Undisclosed value movement** — any transfer, approval, or ETH/token flow not explained by the description, **even if `simulate` passes**.
@@ -258,15 +267,58 @@ proposal is evasive — **abstain** (§2b). Never Approve in either case.
 
 `GuardianVoteType`: `None = 0` (reverts), `Approve = 1`, `Block = 2`.
 
+The review must already be **opened** (§3) — this is the second of the two transactions.
+
 ```bash
-# support: 1 = Approve, 2 = Block. Three args. NO slashBps.
+# support: 1 = Approve, 2 = Block. FOUR args: the last is lockWood (WOOD, 18 decimals).
 cast send $GUARDIAN_REGISTRY \
-  "voteOnProposal(address,uint256,uint8)" \
-  $GOVERNOR_ADDRESS <PROPOSAL_ID> <SUPPORT> \
+  "voteOnProposal(address,uint256,uint8,uint256)" \
+  $GOVERNOR_ADDRESS <PROPOSAL_ID> <SUPPORT> <LOCK_WOOD_WEI> \
   --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
-- On **Approve**, you are staking slashable WOOD on the intake conditions above being true, and underwriting the coverage book.
+**`lockWood` — the coverage you declare.** It is the WOOD you put behind *this*
+proposal on an **Approve**. It is ignored on a Block (a blocker underwrites nothing);
+pass `0`.
+
+**Over-declaring clamps; under-declaring reverts.** The `ExposureLedger` books
+`lock = min(lockWood, free)`, where `free = kNumerator × yourStake − openExposure`
+(floored at zero) — so declaring more than your free budget simply books less. It
+does not revert, and the shortfall surfaces at execute when `requireApproveQuorum`
+finds the coverage book unfilled. Declaring *too little*, however, is refused
+outright — see the floor below.
+
+Size it before you vote:
+
+```bash
+cast call $EXPOSURE_LEDGER "openExposure(address)(uint256)" <YOUR_ADDRESS> --rpc-url $RPC_URL
+cast call $GOVERNOR_ADDRESS "getRequiredCoverage(uint256)(uint256)" <PROPOSAL_ID> --rpc-url $RPC_URL
+# after voting, what your lock is actually worth on this proposal:
+cast call $EXPOSURE_LEDGER "coverageUsdOf(address,uint256,address)(uint256)" \
+  $GOVERNOR_ADDRESS <PROPOSAL_ID> <YOUR_ADDRESS> --rpc-url $RPC_URL
+```
+
+> **The slot floor is live** (`ExposureLedger.recordApproval`, `src/ExposureLedger.sol:767-777`).
+> A slot in the bounded approver array cannot be bought for a lock that carries nothing,
+> so an Approve reverts `ApproveLockBelowFloor` unless the **USD value of the lock it
+> actually books** is at least `floorUsd`, where:
+>
+> - `floorUsd = min(shareUsd, budgetUsd)`
+> - `shareUsd = ceil(needUsd / APPROVER_SLOTS)` — `APPROVER_SLOTS` is **100**, and
+>   `needUsd = coverageUsd(vault asset, requiredCoverage)`, i.e. your share of the
+>   proposal's requirement if a hundred guardians each carried one;
+> - `budgetUsd` is your **whole** cap `kNumerator × guardianStake` valued the same way —
+>   note the cap, not the free budget;
+> - every WOOD amount is valued as `min(amount, your slashable stake now) × woodPriceX8 / 1e8`,
+>   so a starved or inflated WOOD/USD feed can refuse a slot but never enlarge one.
+>
+> It also reverts when the booked lock is zero (no free budget left) or when `budgetUsd`
+> is zero. In short: put up your share of the need, or your entire budget if that is
+> smaller — anything less buys no slot. This is a **refusal to underwrite, not a
+> transient failure**: do not retry the same number and do not treat it as an RPC
+> hiccup. Either raise the lock to something you are willing to lose, or vote **Block**.
+
+- On **Approve**, you are staking slashable WOOD on the intake conditions above being true, and underwriting the coverage book for `lockWood`.
 - On **Block**, you do **not** pick a slash rate. Severity is computed at `resolveReview`.
 - If you cannot finish intake before `reviewEnd`: **Block if what you saw so far
   looks wrong, abstain if you simply ran out of road.** A wrongly blocked honest
@@ -288,13 +340,15 @@ Review registered but not opened?
 |
 Proposal in GuardianReview (2)
 |
-+-- Fetch metadata + execute/settle (+ sandbox) calls
++-- Review opened? --> No: openReview(governor, id) first (tx 1 of 2)
+|
++-- Fetch metadata + execute/settle calls
 |   +-- Evidence missing / ran out of window --> ABSTAIN
 |
 +-- Simulate (necessary, not sufficient)
 |   +-- CRITICAL risk or failed sim --> Block
 |
-+-- Coverage book sized?
++-- Coverage book sized? (pick lockWood)
 |   +-- Cannot size it, or above your ceiling --> ABSTAIN
 |
 +-- Description matches decoded calls, every target labeled
@@ -326,9 +380,9 @@ Do **not** call `emergencySettleWithCalls`, `unstick`, `finalizeEmergencySettle`
 
 ## 7. Known-safe targets (this chain only)
 
-Verify targets against known protocol addresses **for the chain the proposal executes on**. Addresses differ across chains. Batch callees still have to pass `TierRegistry.isCallableTarget`.
+Verify targets against known protocol addresses **for the chain the proposal executes on**. Addresses differ across chains. Batch callees still have to pass the reachability rule (§4 intake item 3).
 
-See [ADDRESSES.md](../../ADDRESSES.md) for Robinhood testnet. Strategy template clones are valid only after you verify the implementation on **this** chain.
+See [ADDRESSES.md](../../ADDRESSES.md) for both the 9994663 fork and Robinhood testnet. Strategy template clones are valid only after you verify the implementation on **this** chain.
 
 Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template.
 
@@ -348,14 +402,6 @@ be voted in, and the two ways of asking "is this open?" disagree. If you are
 standing up a fork for testing, raise `reviewPeriod` above the drift. This is
 also why a 600-second `reviewPeriod` should make you check which deployment you
 are pointed at.
-
-**Recompute the sandbox clone address per proposal.** Sandbox payloads hardcode
-`Clones.cloneDeterministic(impl, bytes32(pid))` as a recipient, so a payload
-replayed under a new pid sends funds to the *previous* pid's clone — which has
-no code — and the next leg fails `CallFailed`. Simulate from the clone for
-**this** pid:
-`keccak(0xff ++ vault ++ bytes32(pid) ++ keccak(EIP1167(impl)))[12:]`, and check
-the formula against a known pid before trusting it.
 
 **In a container, `forge` needs the system CA store.** `forge` is Rust and reads
 `/etc/ssl/certs`; Node bundles its own. A `node:*` image has that directory

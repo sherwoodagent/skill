@@ -1,12 +1,12 @@
 ---
 name: network-guardian
-description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
+description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.0'
+  version: '0.4.0'
 ---
 
 # Network Guardian (Sherwood)
@@ -149,9 +149,12 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
    **execute** call set and the **settle** call set. An undecodable call is a Block.
 4. **Capital at risk** — vault asset, idle assets, proposed notional, fee snapshots,
    strategy duration against the governor's bounds.
-5. **Allowlist for this chain only** — factory, templates, swap adapter, routers,
-   oracles, asset tokens, resolved as above. Plus the tier of each `(target, selector)`
-   in `TierRegistry`, since the tier is what priced the coverage.
+5. **Target standing, for this chain only** — factory, templates, swap adapter, routers,
+   oracles, asset tokens, resolved as above. There is no callee or adapter allowlist:
+   every batch target is either the vault `asset()` or a strategy registered on
+   `StrategyFactory`, and anything else reverts `NotARegisteredStrategy(target)`. Then
+   read the tier of each `(target, selector)` in `TierRegistry` — the tier does not gate
+   the call, it is what **priced** the coverage.
 6. **Coverage and bond** — the governor's `getRequiredCoverage(proposalId)`, coverage already
    booked, and the proposer's bond. Then **simulate**:
    ```bash
@@ -227,12 +230,14 @@ resting state when you cannot see.
 
 ## What Approve actually commits you to
 
-Approve is **underwriting**, not a signal. `voteOnProposal` calls
-`ExposureLedger.recordApproval` and books coverage from your free stake against this
-strategy's extractable value.
+Approve is **underwriting**, not a signal. `voteOnProposal` forwards your `lockWood`
+declaration to `ExposureLedger.recordApproval`, which books it against your free stake
+and against this strategy's extractable value.
 
-- An over-exposed guardian is **not rejected** at vote time. The cap is enforced by
-  booking **zero**. Your vote still lands, and the shortfall surfaces later.
+- Booking is **all or nothing**. A fully-exposed guardian is not quietly seated with a
+  zero lock — `recordApproval` reverts `ApproveLockBelowFloor`, so the ledger never
+  carries an approver it holds nothing for. A *partial* book does land, and that
+  shortfall surfaces later.
 - At execute, `requireApproveQuorum` is a **measurement**, not a pass/fail gate. A
   partial book scales the proposal down:
   `effectiveMaxCapital = floor(maxCapital × coverageRaised / coverageRequired)`, and the
@@ -250,28 +255,59 @@ cast call $REGISTRY "getApproverCoverage(address,uint256)(address[],uint256[],bo
 ```
 
 `getApproverCoverage`'s third return is `priced` — **false** means the ledger could not
-value the coverage (unpriceable feed, settlement beyond the coverage horizon). A false
-`priced` is a degraded reading, so by the default rule it is a Block, not a zero.
+value the coverage (unpriceable feed, settlement beyond the coverage horizon). That is a
+degraded reading about your own footing, not a finding about the proposal, so by the
+default rule it is an **abstain** — and note that an Approve would not have landed
+anyway: an unreadable coverage input reverts the vote (`CoverageInputsUnreadable`,
+or `StalePrice` / `FeedNotConfigured` bubbling with their own reason).
 
 ## Casting the vote
 
-`voteOnProposal` takes **three** arguments. There is no `slashBps` parameter — severity
+`voteOnProposal` takes **four** arguments. There is no `slashBps` parameter — severity
 is derived at resolve time and is not voted on.
 
 ```solidity
-function voteOnProposal(address governor, uint256 proposalId, GuardianVoteType support)
+function voteOnProposal(address governor, uint256 proposalId, GuardianVoteType support, uint256 lockWood)
 // GuardianVoteType: 0 = None (rejected), 1 = Approve, 2 = Block
+// selector 0x4915ace5
 ```
 
+`lockWood` is the WOOD you **declare** as coverage for this proposal on an Approve. The
+`ExposureLedger` clamps it to `min(lockWood, kNumerator × yourStake − openExposure)`, so
+over-declaring books less rather than reverting — but under-declaring *does* revert, at
+the slot floor below. It is ignored on a Block; pass `0`. Size it against `openExposure(you)` and the governor's
+`getRequiredCoverage(id)`, and read back what it was worth with
+`ExposureLedger.coverageUsdOf(governor, id, you)`.
+
+> **The slot floor is live.** Over-declaring clamps, but under-declaring is refused:
+> an Approve reverts `ApproveLockBelowFloor` unless the USD value of the lock it books
+> is at least `min(ceil(needUsd / 100), budgetUsd)` — your share of the proposal's
+> requirement across the 100 approver slots, or your **whole** cap
+> `kNumerator × guardianStake` when that is smaller. WOOD is valued at
+> `min(amount, your slashable stake now)` times the WOOD/USD price, so a bad feed can
+> refuse a slot but never enlarge one; a zero booked lock or a zero budget reverts too.
+> Treat it as a **refusal to underwrite, not a transient failure**: raise the lock to a
+> number you are willing to lose, or vote Block. Do not retry the same value.
+> Full statement and the source line: the `guardian` skill, §5.
+
+**A Block is two transactions.** `openReview(governor, proposalId)` is permissionless
+from `voteEnd`, and `voteOnProposal` reverts `ReviewNotOpen` until it lands. A review
+nobody opened resolves **not-blocked**, so opening is part of blocking:
+
 ```bash
-# Block proposal 7 on this vault's governor.
+# 1. Open the review (skip only if getReviewState already reports opened).
+cast send $REGISTRY "openReview(address,uint256)" \
+  $GOVERNOR 7 \
+  --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+
+# 2. Block proposal 7 on this vault's governor (lockWood = 0 on a Block).
 cast send $REGISTRY \
-  "voteOnProposal(address,uint256,uint8)" \
-  $GOVERNOR 7 2 \
+  "voteOnProposal(address,uint256,uint8,uint256)" \
+  $GOVERNOR 7 2 0 \
   --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
-Encoding a four-argument form produces a reverting call — the selector does not exist.
+Encoding the old three-argument form produces a reverting call — that selector does not exist.
 
 Preconditions, each of which reverts if unmet: the governor is authorized in the
 registry; the review is `opened` and not `resolved`; `voteEnd ≤ now < reviewEnd`;

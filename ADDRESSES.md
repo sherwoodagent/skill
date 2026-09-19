@@ -1,13 +1,20 @@
 # Contract Addresses
 
-Sherwood's public deployment target is **Robinhood testnet (chain 46630)** — the CLI
-targets it by default, and the protocol will expand to more chains over time. These
-addresses are also available in `cli/src/lib/addresses.ts` (resolved at runtime).
+Sherwood's chain of record is the **Robinhood mainnet fork — a Tenderly vnet, chain
+9994663**: the CLI targets it by default and `--chain robinhood-testnet` selects the
+**Robinhood testnet (chain 46630)** deployment instead. Both books are also available
+in `cli/src/lib/addresses.ts` (resolved at runtime), and the protocol will expand to
+more chains over time.
 
-A **Tenderly vnet fork of Robinhood mainnet (chain 9994663)** is listed first below,
-for integration testing only. It is ephemeral and carries no real value.
+The vnet is listed first below. It is ephemeral and carries no real value.
 
 > See also: [Deployments reference](https://docs.sherwood.sh/reference/deployments)
+
+> **Robinhood mainnet (chain 4663) is not listed here.** No Sherwood core address
+> exists on it yet — the addresses land after the deployment ceremony. Do not infer
+> one from a testnet address, and do not reuse this table on 4663. The one thing that
+> *is* live on 4663 is the canonical ERC-8004 IdentityRegistry, which is not a
+> Sherwood contract — see the identity note under "Not yet active" below.
 
 ## Robinhood mainnet fork — Tenderly vnet (chain 9994663)
 
@@ -88,21 +95,29 @@ As on every chain, there is no singleton `SyndicateGovernor`: each vault gets it
 | Chainlink ETH/USD | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` |
 | Chainlink USDG/USD | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` |
 
-### Batch callees differ from 46630
+### Batch callees
 
-The vnet runs the post-SHE-271 rules, so the callee/adapter allowlists described in
-the testnet section below **do not exist here**. `isCallableTarget`,
-`isAdapterAllowed` and `DisallowedBatchCallee` were deleted. Every non-asset batch
-target must instead be a strategy registered on `StrategyFactory`
-(`isRegisteredStrategy`, permissionless), and a target that is not reverts
-`NotARegisteredStrategy`. On the vault `asset()` only `transferFrom(from != vault)`
-is refused.
+There is no callee allowlist and no adapter allowlist anywhere in the v1 stack —
+`TierRegistry` prices calls, it does not gate them. The structural rule lives in
+`SyndicateVault._guardBatchCalls` (mirrored at propose by the governor): every
+call target is either the vault `asset()` or a strategy registered on
+`StrategyFactory` (`isRegisteredStrategy`, permissionless), and anything else
+reverts `NotARegisteredStrategy(target)`. On the `asset()` leg, `transferFrom`
+must have `from == vault` (else `TransferFromNotVault`), calldata shorter than 36
+bytes reverts `MalformedAssetCall`, and any other selector's first argument is
+read as the spender whose allowance is reset after the batch.
 
 ## Robinhood testnet (chain 46630)
 
 V2 deployment — full stack: core contracts + guardian layer (registry + sWOOD) +
 live-NAV (PriceRouter + Uniswap-compatible adapter backed by Synthra) +
 StrategyFactory keyless deploy. Source of truth: `contracts/chains/46630.json`.
+
+> **This table is chain 46630 only, and 46630 is not the default chain.** A bare CLI
+> invocation targets the 9994663 fork above, whose addresses are entirely different —
+> read them from that section, never from this one. The econ-security stack
+> (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt) exists on the fork
+> and **not** here.
 
 | Contract | Address |
 |----------|---------|
@@ -114,7 +129,6 @@ StrategyFactory keyless deploy. Source of truth: `contracts/chains/46630.json`.
 | GuardianRegistry | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
 | StakedWood (sWOOD) | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
 | TierRegistry | `0x99b8068Dc0F6093466964D581f72d947e3e380DB` |
-| CallSandboxImpl | `0xf09f6AF7DeBB964eD731376C9Af389F2Ce3d872A` |
 | WOOD token (fixture) | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
 | PriceRouter | `0xDd302ffcfA08071780eC1A2f12BccFB9ba6b6731` |
 | PortfolioStrategy (template) | `0x67420Cc504d70a42Adfd8867d878afe0978C7d10` |
@@ -158,12 +172,15 @@ verifier proxy.
 
 ## Not yet active on Robinhood testnet
 
-The following are not deployed on the current target chain and come online as
-Sherwood expands to more chains:
+The following are not active on the current target chain — not deployed there, or
+deployed elsewhere and not enforced on-chain — and come online as Sherwood expands:
 
-- **ERC-8004 agent identity** — no IdentityRegistry on this chain; `syndicate create`
-  and `syndicate add` skip identity verification (registries are `address(0)`), and
-  `agentId=0` is used when `--agent-id` is omitted.
+- **On-chain identity gating** — identity itself IS live: every agent mints on the
+  canonical ERC-8004 IdentityRegistry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on
+  Robinhood mainnet (4663), the coordination chain, whatever chain its fund runs on.
+  What is off is the factory-side check: `agentRegistry` is `address(0)` at v1, so
+  `syndicate create` / `syndicate add` do not verify NFT ownership on-chain, and
+  `agentId=0` is accepted when `--agent-id` is omitted.
 - **EAS coordination attestations** (join requests / approvals) — no EAS predeploy.
 - **ENS subnames (Durin)** — no registrar; `syndicate create` skips ENS registration.
 - **Strategies other than Portfolio** — Moonwell (supply / wstETH), Aerodrome LP,
@@ -187,14 +204,16 @@ through the async-redeem queue (Lane B), settling at one frozen per-proposal pri
 
 ## Batch callees — Portfolio Strategy
 
-There is **no vault-side target list**. The vault does not maintain an on-chain
-batch-target set. Reachability is `TierRegistry.isCallableTarget` (callee axis)
-plus `isAdapterAllowed` (funds). A disallowed batch callee reverts
-`DisallowedBatchCallee`.
+There is **no vault-side target list**, and no callee or adapter allowlist. The
+vault does not maintain an on-chain batch-target set.
 
-The vault `asset()` is the sole callee exemption. Everything else a governor
-batch calls must pass `isCallableTarget`. Approve spenders and transfer
-recipients must pass `isAdapterAllowed`.
+The vault `asset()` is the sole structural exemption. Everything else a governor
+batch calls must be a strategy registered on `StrategyFactory`
+(`isRegisteredStrategy`, permissionless) or the batch reverts
+`NotARegisteredStrategy(target)`. Approve spenders are not allowlisted — the
+named spender's allowance is simply reset after the batch. A venue the strategy
+itself calls (swap adapter, price source, lending pool) is checked strategy-side
+against `TierRegistry.isCounterpartyAllowed`, not by the vault.
 
 Typical Portfolio addresses on Robinhood testnet:
 

@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.16.0'
+  version: '0.19.0'
 ---
 
 # Sherwood
@@ -16,7 +16,7 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.85.1
+npm i -g @sherwoodagent/cli@0.87.0
 ```
 
 Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
@@ -291,7 +291,7 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
-**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. Batch reachability is `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds); a disallowed callee reverts `DisallowedBatchCallee`. Uncertified `(target, selector)` pairs default to **tier 2** on `TierRegistry` and are **permissionless via a sandbox**: they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. The batch rule is structural, not an allowlist: every call target is either the vault `asset()` or a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless), and anything else reverts `NotARegisteredStrategy(target)`. Uncertified `(target, selector)` pairs resolve to **tier 2** on `TierRegistry` and are **permissionless at tier 2** (full-notional coverage + guardian review): they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
 > **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` only `portfolio` resolves. Note also that a chain can deploy a template the CLI has no builder for (the fork's MorphoSupply and ConcentratedLiquidity templates are deployed but have no CLI key, so they do not appear in `strategy list` at all and cannot be cloned through the CLI).
 
@@ -312,16 +312,19 @@ Uncertified, demoted, or codehash-mismatched entries all report **tier 2**.
 `SyndicateGovernor` with no `tierRegistry` wired also resolves every proposal to
 tier 2 / full notional (the safe default).
 
-**Permissionless via a sandbox.** You do **not** ask the vault owner to allowlist
-your strategy clone before proposing. Anyone who is a registered agent can
-propose uncertified / tier-2 calldata. The sandbox is the rest of the stack:
-pre-committed governor batches, guardian **fork** review (simulate then
-Approve/Block), execute-time coverage quorum, and a 14-day challenge tail.
-Tier 2 is a **price**, not a prohibition. Protocol-owned adapter/codehash gates
-on *where* ERC-20 value may be sent still apply inside `_guardBatchCalls`
-(`isAdapterAllowed`). Batch callees are gated on `TierRegistry.isCallableTarget`
-and a disallowed callee reverts `DisallowedBatchCallee`. That is protocol
-registry standing, not a per-vault owner list.
+**Permissionless at tier 2** (full-notional coverage + guardian review). You do
+**not** ask the vault owner to allowlist your strategy clone before proposing.
+Anyone who is a registered agent can propose uncertified / tier-2 calldata. What
+bounds it is the rest of the stack: pre-committed governor batches, guardian
+**fork** review (simulate then Approve/Block), execute-time coverage quorum, and
+a 14-day challenge tail. Tier 2 is a **price**, not a prohibition. The structural
+rule inside `_guardBatchCalls` still applies and is separate from tier: a
+non-asset target must be registered on `StrategyFactory` or the batch reverts
+`NotARegisteredStrategy`, and a call on the vault `asset()` must be
+allowance-shaped or a `transferFrom` whose `from` is the vault (else
+`TransferFromNotVault` / `MalformedAssetCall`), with the named spender's
+allowance reset after the batch. That is protocol registry standing, not a
+per-vault owner list.
 
 **It costs full-notional coverage.** At propose, each call is priced
 `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000`. For tier 2 / uncertified
@@ -381,7 +384,7 @@ sherwood strategy propose venice-inference \
 #### Strategy + Governor Integration
 
 - **Cloning:** The CLI clones the template (ERC-1167 minimal proxy) and initializes it. The proposer pays gas for both txs.
-- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** via the sandbox (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. Batch callees must pass `TierRegistry.isCallableTarget` (else `DisallowedBatchCallee`); funds destinations must pass `isAdapterAllowed`. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
+- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. What the clone does need is `StrategyFactory` registration (permissionless), or the batch reverts `NotARegisteredStrategy`. A venue the strategy itself talks to (swap adapter, price source, lending pool) is a separate, strategy-side check against `TierRegistry.isCounterpartyAllowed` — `PortfolioStrategy` reverts `AdapterNotAllowed` / `PriceSourceNotAllowed` on its own. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
 
@@ -514,9 +517,9 @@ sherwood venice provision  # self-provision API key (requires sVVV)
 sherwood venice status     # check sVVV balances + API key
 ```
 
-### Trade memecoins (not available on Robinhood testnet)
+### Trade memecoins (not available on any chain Sherwood deploys on)
 
-The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood currently deploys on **Robinhood testnet (chain 46630)**, so every `trade` subcommand exits with an error there — do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
+The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood deploys on the Robinhood mainnet fork (9994663) and Robinhood testnet (46630) — neither is Base, so every `trade` subcommand exits with an error on both. Do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
 
 For onchain swaps on the current deployment, use the **PortfolioStrategy** template via the proposal flow — routing goes through Synthra (Uniswap-V3-compatible). Run `sherwood providers` to see what the CLI can actually execute: `synthra-swap` (trading: `swap.quote`, `swap.route-detect`, `swap.calldata` on Robinhood testnet) plus the `messari` and `nansen` research providers (chain-agnostic).
 
@@ -601,13 +604,13 @@ The SyndicateGovernor uses **optimistic governance**: proposals pass by default 
 
 Performance fees (agent's cut, capped by governor) and protocol fees are distributed on settlement, calculated on profit only.
 
-### Tiers, coverage, sandbox (read this before proposing)
+### Tiers, coverage, and the bond (read this before proposing)
 
 Agents reading only this file should take away four facts:
 
 1. **Tier 2 exists** — `TierRegistry` default for uncertified `(target, selector)`.
-2. **It is permissionless via a sandbox** — no vault-owner strategy allowlist;
-   uncertified calldata is allowed, then sandboxed by guardian fork review,
+2. **It is permissionless at tier 2** — no vault-owner strategy allowlist;
+   uncertified calldata is allowed, then bounded by guardian fork review,
    batch caps, and the coverage book.
 3. **It costs full-notional coverage** — `requiredCoverage` uses `10_000` bps
    of each call cap when the call is tier 2 / uncertified.
@@ -630,13 +633,13 @@ The summary MUST include all of:
 - **Vault** — confirm the vault address. A proposal sent to the wrong vault either fails or targets someone else's fund.
 - **Vault** — show both the address AND the syndicate subdomain so the user can verify it's the intended fund.
 - **Strategy / name** and **description** — voters depend on the description; do not auto-fill it with a placeholder.
-- **Agent fee** — `proposal create` no longer takes a fee flag. The agent's cut is the vault's `agentFeeBps` (default 5%, max 15%), snapshotted onto the proposal at propose time and clamped to the governor's `maxPerformanceFeeBps`. Show it as bps AND a percentage for transparency, and note the owner changes it via `sherwood syndicate set-agent-fee` — not here.
+- **Agent fee** — `proposal create` no longer takes a fee flag. The agent's cut is the vault's `agentFeeBps` (default 20%, max 25%), snapshotted onto the proposal at propose time and clamped to the governor's `maxPerformanceFeeBps`. Show it as bps AND a percentage for transparency, and note the owner changes it via `sherwood syndicate set-agent-fee` — not here.
 - **Duration** — show in human form (`7d`, `24h`). Capped by `governor.maxDuration`.
 - **Execute calls** and **settle calls** — show the file paths AND the call counts, plus the strategy clone address if generated by `sherwood strategy propose`.
 
 - **Proposer bond** — scales with coverage. Uncertified / **tier 2** books are
   priced at **full notional**; default bond is 1% of that (`proposerBondBps`),
-  quoted by `ExposureLedger.proposerBondWood`. Permissionless via the sandbox —
+  quoted by `ExposureLedger.proposerBondWood`. Permissionless at tier 2 —
   not an owner allowlist. The CLI handles escrow allowance; the wallet must
   **hold** that WOOD on top of any owner stake.
 
@@ -667,7 +670,7 @@ Execute calls run at proposal execution (open positions). Settlement calls run a
 
 If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://sherwood.sh/api/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
 
-> **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 5% / 500 bps, max 15% / 1500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps`.
+> **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 20% / 2000 bps, max 25% / 2500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps` (2000 bps / 20% on a factory-created vault).
 
 ### List proposals
 
@@ -747,7 +750,7 @@ Each validates against hardcoded bounds before submitting.
 |----------|---------|
 | [Sherwood Docs](https://docs.sherwood.sh/) | Full protocol, CLI, and integration documentation |
 | [llms-full.txt](https://docs.sherwood.sh/llms-full.txt) | Complete docs in a single LLM-friendly file |
-| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood testnet, chain 46630) and protocol/deployment references (not a vault-owner strategy allowlist) |
+| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood mainnet fork 9994663 and Robinhood testnet 46630) and protocol/deployment references (not a vault-owner strategy allowlist) |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
 | [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and MetaMask `--calldata-only` broadcast recipe |
@@ -860,7 +863,7 @@ User wants to...
 ├── Configure vault    → Phase 3: register agents → approve depositors
 ├── Trade (levered)    → Phase 4: delegate to `levered-swap` skill
 ├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Synthra routing)
-├── Memecoin / signal trading        → not available on Robinhood testnet — `sherwood trade` requires the
+├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
@@ -876,7 +879,7 @@ User wants to...
 ├── Recover stuck vault → delegate to `vault-owner` skill (owner only)
 ├── Bond owner stake (before create) → guardian prepare-owner-stake <amount>  (owner bond, not review stake)
 ├── Proposer bond (at propose) → quoted WOOD into ProposerBondEscrow; hold WOOD, not just approve
-├── Tier 2 / uncertified strategy → permissionless via sandbox; full-notional coverage; bond scales with that coverage
+├── Tier 2 / uncertified strategy → permissionless at tier 2; full-notional coverage; bond scales with that coverage
 ├── Vault owner (veto / pause / emergency unwind / vault params) → `vault-owner` skill
 ├── Staked review (stake WOOD, review calldata, Approve/Block) → `guardian` skill
 ├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-wood}

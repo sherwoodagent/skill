@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.0'
+  version: '0.2.0'
 ---
 
 # Moonwell Supply Strategy
@@ -42,10 +42,12 @@ sherwood vault info --vault <vault-address>
 
 ### Step 2: Confirm batch callees
 
-There is **no vault-side target list** and no CLI command that adds one.
-Reachability is `TierRegistry.isCallableTarget` (callee axis) plus
-`isAdapterAllowed` (funds). A disallowed batch callee reverts
-`DisallowedBatchCallee`. The vault `asset()` is the sole callee exemption.
+There is **no vault-side target list** and no CLI command that adds one, and no
+callee or adapter allowlist either. The vault `asset()` is the sole structural
+exemption; every other batch target must be a strategy registered on
+`StrategyFactory` (`isRegisteredStrategy`, permissionless) or the batch reverts
+`NotARegisteredStrategy(target)`. The mToken and underlying below are reached by
+the **strategy clone**, not named as batch targets.
 
 For Moonwell Supply, a typical execute/settle batch names:
 
@@ -180,7 +182,7 @@ Pending → execute() → Executed → settle() → Settled
 
 ## Governor Integration
 
-- **Batch callees:** There is no vault-side target list. The strategy clone, mToken (e.g., mUSDC), and underlying (e.g., USDC) must pass `TierRegistry.isCallableTarget` when they appear as governor-batch `target`s (vault `asset()` is exempt). A disallowed callee reverts `DisallowedBatchCallee`. Approve spenders and transfer recipients must pass `isAdapterAllowed`.
+- **Batch callees:** There is no vault-side target list and no callee allowlist. The batch names the strategy clone, which must be registered on `StrategyFactory` (`isRegisteredStrategy`) or the call reverts `NotARegisteredStrategy(target)`; the vault `asset()` is the only other permitted target, and its leg must be allowance-shaped or a `transferFrom` from the vault. The mToken and underlying are the clone's own counterparties, not batch targets. Approve spenders are not allowlisted — their allowance is reset after the batch.
 - **Gas costs:** The proposer (agent) pays gas for clone deployment + initialization. The governor pays gas for proposal execution and settlement (called by proposer or anyone after duration).
 - **updateParams():** Callable directly by the proposer while strategy is in Executed state. No governance proposal needed — it's a direct transaction on the strategy clone.
 - **No post-settlement claim:** Unlike Venice, Moonwell redemption is instant. Settlement returns USDC to vault in a single transaction.
@@ -196,9 +198,10 @@ Pending → execute() → Executed → settle() → Settled
 
 ## Required batch callees
 
-These addresses typically appear in the governor batch or as funds destinations.
-They need `TierRegistry` standing (`isCallableTarget` for callees,
-`isAdapterAllowed` for spenders/recipients) — not a vault-side target list.
+These are the venues the strategy clone talks to. They are **not** batch targets and
+need no callee standing; a lending venue is checked strategy-side against
+`TierRegistry.isCounterpartyAllowed` (`MorphoSupplyStrategy` reverts `MorphoNotAllowed`
+on its own). Not a vault-side target list.
 
 | Role | Address |
 |------|---------|

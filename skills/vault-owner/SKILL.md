@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.0'
+  version: '0.3.0'
 ---
 
 # Syndicate Vault Owner
@@ -266,8 +266,8 @@ As vault owner, you have these emergency powers:
 The agent's performance fee is a **vault property**, not a per-proposal value. You set one fee for the whole vault; proposals do not carry a fee.
 
 ```bash
-# Set the agent performance fee (default 500 = 5%, vault cap 1500 = 15%)
-sherwood syndicate set-agent-fee --bps 1500
+# Set the agent performance fee (default 2000 = 20%, vault cap 2500 = 25%)
+sherwood syndicate set-agent-fee --bps 2000
 
 # On-chain equivalent
 cast send $VAULT_ADDRESS "setAgentFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
@@ -287,7 +287,7 @@ cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL         
 
 Common root causes: pre-committed `settlementCalls` hit a broken adapter/router, a pool/position that no longer exists, or calldata encoded against a replaced contract.
 
-**Live owner paths — `GovernorEmergency` (protocol pin `f21600b0d03d6f742bdb952c5376abf7230741fd`).** There is no owner transaction that immediately runs arbitrary fallback calls. Owner-supplied calldata is committed, reviewed, then finalized.
+**Live owner paths — `GovernorEmergency` (protocol pin `c9e3d8c6`).** There is no owner transaction that immediately runs arbitrary fallback calls. Owner-supplied calldata is committed, reviewed, then finalized.
 
 | Function | What it does | Owner bond | Guardian review |
 |----------|----------------|------------|-----------------|
@@ -422,19 +422,19 @@ Emergency unwind only applies to `Executed` after duration. Other states use the
 ### Governor parameter changes (owner only)
 
 ```bash
-# Adjust voting period (min: 1 hour, max: 30 days)
+# Adjust voting period (min: per-deployment immutable MIN_VOTING_PERIOD, max: 3 days)
 cast send $GOVERNOR_ADDRESS "setVotingPeriod(uint256)" <seconds> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
-# Adjust veto threshold (min: 1000 = 10%, max: 10000 = 100%)
+# Adjust veto threshold (min: 2000 = 20%, max: 8000 = 80%)
 cast send $GOVERNOR_ADDRESS "setVetoThresholdBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
-# Adjust max performance fee (cap: 1500 = 15%)
+# Adjust max performance fee (cap: 2500 = 25%, MAX_PERFORMANCE_FEE_CAP)
 cast send $GOVERNOR_ADDRESS "setMaxPerformanceFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
-# Adjust max strategy duration (min: 1 hour, max: 365 days)
+# Adjust max strategy duration (min: 1 hour, max: 30 days)
 cast send $GOVERNOR_ADDRESS "setMaxStrategyDuration(uint256)" <seconds> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
-# Adjust cooldown between proposals (min: 1 hour, max: 30 days)
+# Adjust cooldown between proposals (min: per-deployment immutable MIN_COOLDOWN_PERIOD, max: 30 days)
 cast send $GOVERNOR_ADDRESS "setCooldownPeriod(uint256)" <seconds> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 
 # Adjust execution window (min: 1 hour, max: 7 days)
@@ -532,14 +532,17 @@ struct Call {
 
 ### Governor parameter bounds
 
+Read the live values off the governor — the two floors below are per-deployment
+immutables (`MIN_VOTING_PERIOD()`, `MIN_COOLDOWN_PERIOD()`), not constants.
+
 | Parameter | Min | Max |
 |-----------|-----|-----|
-| Voting period | 1 hour | 30 days |
+| Voting period | `MIN_VOTING_PERIOD()` (24 h on mainnet impls) | 3 days |
 | Execution window | 1 hour | 7 days |
-| Veto threshold | 1000 bps (10%) | 10000 bps (100%) |
-| Max performance fee | — | 1500 bps (15%) |
-| Strategy duration | 1 hour | 365 days |
-| Cooldown period | 1 hour | 30 days |
+| Veto threshold | 2000 bps (20%) | 8000 bps (80%) |
+| Max performance fee | — | 2500 bps (25%) |
+| Strategy duration | 1 hour | 30 days |
+| Cooldown period | `MIN_COOLDOWN_PERIOD()` (1 h on mainnet impls) | 30 days |
 
 ---
 

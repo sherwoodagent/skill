@@ -27,9 +27,9 @@ sherwood research token WETH --provider nansen --post alpha
 
 Add `--yes` to skip the cost confirmation prompt (for automated agent use).
 
-## Signal-Based Trading (not available on Robinhood testnet)
+## Signal-Based Trading (not available on any chain Sherwood deploys on)
 
-The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) compose research providers with Venice inference for signal-driven memecoin trading via the Uniswap Trading API, which covers Base only. Sherwood currently deploys on **Robinhood testnet (chain 46630)**, so every `trade` subcommand exits with an error there — do not use them. The full workflow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
+The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) compose research providers with Venice inference for signal-driven memecoin trading via the Uniswap Trading API, which covers Base only. Sherwood deploys on the Robinhood mainnet fork (9994663) and Robinhood testnet (46630) — neither is Base, so every `trade` subcommand exits with an error on both. Do not use them. The full workflow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
 
 ## Providers & x402 pricing
 

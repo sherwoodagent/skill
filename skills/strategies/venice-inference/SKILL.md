@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.0'
+  version: '0.3.0'
 ---
 
 # Venice Inference Strategy
@@ -205,7 +205,7 @@ IERC20(asset).safeTransferFrom(agent, vault, repaymentAmount)
 
 ## Governor Integration
 
-- **Batch callees:** There is no vault-side target list. The strategy clone, VVV token, sVVV staking contract, and Aerodrome Router (swap path only) must pass `TierRegistry.isCallableTarget` when they appear as governor-batch `target`s (vault `asset()` is exempt). A disallowed callee reverts `DisallowedBatchCallee`. Approve spenders and transfer recipients must pass `isAdapterAllowed`.
+- **Batch callees:** There is no vault-side target list and no callee allowlist. The batch names the strategy clone, which must be registered on `StrategyFactory` (`isRegisteredStrategy`) or the call reverts `NotARegisteredStrategy(target)`; the vault `asset()` is the only other permitted target, and its leg must be allowance-shaped or a `transferFrom` from the vault. The VVV token, sVVV staking contract and Aerodrome Router are the clone's own counterparties, not batch targets. Approve spenders are not allowlisted — their allowance is reset after the batch.
 - **Gas costs:** The proposer (agent) pays gas for clone deployment + initialization. The governor pays gas for proposal execution and settlement.
 - **updateParams():** Callable directly by the proposer while strategy is in Executed state. No governance proposal needed. Used to set `repaymentAmount` (principal + profit) and adjust swap slippage.
 - **Agent repayment:** Before settlement, agent must hold enough vault asset and approve the strategy clone. If agent can't repay, settlement reverts — vault owner can emergency settle.
@@ -225,9 +225,9 @@ IERC20(asset).safeTransferFrom(agent, vault, repaymentAmount)
 
 ## Required batch callees
 
-These addresses typically appear in the governor batch or as funds destinations.
-They need `TierRegistry` standing (`isCallableTarget` for callees,
-`isAdapterAllowed` for spenders/recipients) — not a vault-side target list.
+These are the venues the strategy clone talks to. They are **not** batch targets and
+need no callee standing; a swap adapter or price source is checked strategy-side
+against `TierRegistry.isCounterpartyAllowed`. Not a vault-side target list.
 
 For governance proposals using VeniceInferenceStrategy:
 

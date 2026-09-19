@@ -14,7 +14,10 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `NotCreator` | Wallet isn't the syndicate creator | Use the creator wallet |
-| `DisallowedBatchCallee` | Batch `target` is not `TierRegistry.isCallableTarget` (and is not the vault `asset()`) | There is no vault-side target list. Confirm callee standing on `TierRegistry.isCallableTarget`. Funds destinations are a separate axis (`isAdapterAllowed`). |
+| `NotARegisteredStrategy(target)` | Batch `target` is neither the vault `asset()` nor a strategy registered on `StrategyFactory` | There is no vault-side target list and no callee allowlist. Register the clone: `StrategyFactory.isRegisteredStrategy(target)` must be true (registration is permissionless). |
+| `TransferFromNotVault(from)` | A `transferFrom` on the vault `asset()` whose `from` is not the vault | The asset leg may only pull from the vault itself. Rebuild the call with `from = vault`. |
+| `MalformedAssetCall(selector)` | A call on the vault `asset()` with fewer than 36 bytes of calldata | The asset leg must name a first argument (spender or `from`). Encode the full call. |
+| `Tier2CallCapExceedsCeiling(i)` | Call `i` resolves to tier 2 and its declared `caps[i]` exceeds `totalAssets() * tier2CallCapBps() / 10_000` | Lower that call's cap, or certify the `(target, selector)` pair on `TierRegistry` to leave tier 2. |
 | `DepositorNotApproved` | LP not whitelisted | `sherwood syndicate approve-depositor --depositor 0x...` |
 
 ## Execution Errors
@@ -22,7 +25,9 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `CapExceeded` | Batch exceeds vault caps | Lower amounts or update caps |
-| `Simulation failed` | Batch would revert on-chain | Check caps, `isCallableTarget` / `DisallowedBatchCallee`, `isAdapterAllowed`, token balances |
+| `TierRegressed` | A `(target, selector)` pair was demoted on `TierRegistry` between propose and execute, so the live tier exceeds the proposal's envelope | Re-propose at the current tier; the envelope is snapshotted at propose and cannot be widened. |
+| `CoverageRegressed` | Live required coverage now exceeds what the proposal snapshotted | Re-propose. Coverage is re-resolved at execute and may only shrink. |
+| `Simulation failed` | Batch would revert on-chain | Check caps, `StrategyFactory.isRegisteredStrategy` on every non-asset target, the asset-leg shape, and token balances |
 | `ERC721InvalidReceiver` | Vault can't receive NFTs | Vault includes ERC721Holder — redeploy if on old version |
 | `Could not read decimals` | Invalid token address | Verify address is a valid ERC20 on Base |
 | `IPFS upload failed` | Hosted Sherwood pinning API unreachable or errored | Non-fatal — CLI falls back to inline `data:` metadata; check network or set `SHERWOOD_API_URL` |

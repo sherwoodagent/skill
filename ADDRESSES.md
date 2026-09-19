@@ -95,15 +95,17 @@ As on every chain, there is no singleton `SyndicateGovernor`: each vault gets it
 | Chainlink ETH/USD | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` |
 | Chainlink USDG/USD | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` |
 
-### Batch callees differ from 46630
+### Batch callees
 
-The vnet runs the post-SHE-271 rules, so the callee/adapter allowlists described in
-the testnet section below **do not exist here**. `isCallableTarget`,
-`isAdapterAllowed` and `DisallowedBatchCallee` were deleted. Every non-asset batch
-target must instead be a strategy registered on `StrategyFactory`
-(`isRegisteredStrategy`, permissionless), and a target that is not reverts
-`NotARegisteredStrategy`. On the vault `asset()` only `transferFrom(from != vault)`
-is refused.
+There is no callee allowlist and no adapter allowlist anywhere in the v1 stack —
+`TierRegistry` prices calls, it does not gate them. The structural rule lives in
+`SyndicateVault._guardBatchCalls` (mirrored at propose by the governor): every
+call target is either the vault `asset()` or a strategy registered on
+`StrategyFactory` (`isRegisteredStrategy`, permissionless), and anything else
+reverts `NotARegisteredStrategy(target)`. On the `asset()` leg, `transferFrom`
+must have `from == vault` (else `TransferFromNotVault`), calldata shorter than 36
+bytes reverts `MalformedAssetCall`, and any other selector's first argument is
+read as the spender whose allowance is reset after the batch.
 
 ## Robinhood testnet (chain 46630)
 
@@ -202,14 +204,16 @@ through the async-redeem queue (Lane B), settling at one frozen per-proposal pri
 
 ## Batch callees — Portfolio Strategy
 
-There is **no vault-side target list**. The vault does not maintain an on-chain
-batch-target set. Reachability is `TierRegistry.isCallableTarget` (callee axis)
-plus `isAdapterAllowed` (funds). A disallowed batch callee reverts
-`DisallowedBatchCallee`.
+There is **no vault-side target list**, and no callee or adapter allowlist. The
+vault does not maintain an on-chain batch-target set.
 
-The vault `asset()` is the sole callee exemption. Everything else a governor
-batch calls must pass `isCallableTarget`. Approve spenders and transfer
-recipients must pass `isAdapterAllowed`.
+The vault `asset()` is the sole structural exemption. Everything else a governor
+batch calls must be a strategy registered on `StrategyFactory`
+(`isRegisteredStrategy`, permissionless) or the batch reverts
+`NotARegisteredStrategy(target)`. Approve spenders are not allowlisted — the
+named spender's allowance is simply reset after the batch. A venue the strategy
+itself calls (swap adapter, price source, lending pool) is checked strategy-side
+against `TierRegistry.isCounterpartyAllowed`, not by the vault.
 
 Typical Portfolio addresses on Robinhood testnet:
 

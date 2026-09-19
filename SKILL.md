@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.18.0'
+  version: '0.19.0'
 ---
 
 # Sherwood
@@ -291,7 +291,7 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
-**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. Batch reachability is `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds); a disallowed callee reverts `DisallowedBatchCallee`. Uncertified `(target, selector)` pairs default to **tier 2** on `TierRegistry` and are **permissionless at tier 2** (full-notional coverage + guardian review): they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. The batch rule is structural, not an allowlist: every call target is either the vault `asset()` or a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless), and anything else reverts `NotARegisteredStrategy(target)`. Uncertified `(target, selector)` pairs resolve to **tier 2** on `TierRegistry` and are **permissionless at tier 2** (full-notional coverage + guardian review): they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
 > **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` only `portfolio` resolves. Note also that a chain can deploy a template the CLI has no builder for (the fork's MorphoSupply and ConcentratedLiquidity templates are deployed but have no CLI key, so they do not appear in `strategy list` at all and cannot be cloned through the CLI).
 
@@ -317,11 +317,14 @@ tier 2 / full notional (the safe default).
 Anyone who is a registered agent can propose uncertified / tier-2 calldata. What
 bounds it is the rest of the stack: pre-committed governor batches, guardian
 **fork** review (simulate then Approve/Block), execute-time coverage quorum, and
-a 14-day challenge tail. Tier 2 is a **price**, not a prohibition. Protocol-owned adapter/codehash gates
-on *where* ERC-20 value may be sent still apply inside `_guardBatchCalls`
-(`isAdapterAllowed`). Batch callees are gated on `TierRegistry.isCallableTarget`
-and a disallowed callee reverts `DisallowedBatchCallee`. That is protocol
-registry standing, not a per-vault owner list.
+a 14-day challenge tail. Tier 2 is a **price**, not a prohibition. The structural
+rule inside `_guardBatchCalls` still applies and is separate from tier: a
+non-asset target must be registered on `StrategyFactory` or the batch reverts
+`NotARegisteredStrategy`, and a call on the vault `asset()` must be
+allowance-shaped or a `transferFrom` whose `from` is the vault (else
+`TransferFromNotVault` / `MalformedAssetCall`), with the named spender's
+allowance reset after the batch. That is protocol registry standing, not a
+per-vault owner list.
 
 **It costs full-notional coverage.** At propose, each call is priced
 `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000`. For tier 2 / uncertified
@@ -381,7 +384,7 @@ sherwood strategy propose venice-inference \
 #### Strategy + Governor Integration
 
 - **Cloning:** The CLI clones the template (ERC-1167 minimal proxy) and initializes it. The proposer pays gas for both txs.
-- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. Batch callees must pass `TierRegistry.isCallableTarget` (else `DisallowedBatchCallee`); funds destinations must pass `isAdapterAllowed`. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
+- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. What the clone does need is `StrategyFactory` registration (permissionless), or the batch reverts `NotARegisteredStrategy`. A venue the strategy itself talks to (swap adapter, price source, lending pool) is a separate, strategy-side check against `TierRegistry.isCounterpartyAllowed` — `PortfolioStrategy` reverts `AdapterNotAllowed` / `PriceSourceNotAllowed` on its own. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
 

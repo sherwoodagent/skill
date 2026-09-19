@@ -1,12 +1,12 @@
 ---
 name: network-guardian
-description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/allowlist intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
+description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, AskUserQuestion
 model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.3.0'
+  version: '0.4.0'
 ---
 
 # Network Guardian (Sherwood)
@@ -149,9 +149,12 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
    **execute** call set and the **settle** call set. An undecodable call is a Block.
 4. **Capital at risk** — vault asset, idle assets, proposed notional, fee snapshots,
    strategy duration against the governor's bounds.
-5. **Allowlist for this chain only** — factory, templates, swap adapter, routers,
-   oracles, asset tokens, resolved as above. Plus the tier of each `(target, selector)`
-   in `TierRegistry`, since the tier is what priced the coverage.
+5. **Target standing, for this chain only** — factory, templates, swap adapter, routers,
+   oracles, asset tokens, resolved as above. There is no callee or adapter allowlist:
+   every batch target is either the vault `asset()` or a strategy registered on
+   `StrategyFactory`, and anything else reverts `NotARegisteredStrategy(target)`. Then
+   read the tier of each `(target, selector)` in `TierRegistry` — the tier does not gate
+   the call, it is what **priced** the coverage.
 6. **Coverage and bond** — the governor's `getRequiredCoverage(proposalId)`, coverage already
    booked, and the proposer's bond. Then **simulate**:
    ```bash

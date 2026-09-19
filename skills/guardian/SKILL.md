@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.10.0'
+  version: '0.11.0'
 ---
 
 # Staked Network Guardian
@@ -236,12 +236,12 @@ Risk codes from `proposal simulate`:
 
 1. **Proposal metadata** — fetch the metadata URI and read the human description in full.
 2. **Every call** in both the **execute** and the **settle** call sets — target, selector, decoded arguments, attached value.
-3. **Reachability on this chain** — there is **no vault-side target list**, and the batch rule differs by chain, so resolve the address book from the chain the proposal actually executes on. On the **9994663** fork (chain of record) every non-asset batch target must be a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless); one that is not reverts `NotARegisteredStrategy`, and on the vault `asset()` only `transferFrom(from != vault)` is refused. On **46630** the older allowlist stack is still deployed: `TierRegistry.isCallableTarget` (callee axis) plus `isAdapterAllowed` (funds), with a disallowed callee reverting `DisallowedBatchCallee`. Testnet 46630 and the 9994663 vnet are different books, and neither takes a Base (8453) one — **never** carry an address across chains.
+3. **Reachability** — there is **no vault-side target list** and no callee or adapter allowlist. Every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless); anything else reverts `NotARegisteredStrategy(target)`. On the `asset()` leg, a `transferFrom` whose `from` is not the vault reverts `TransferFromNotVault`, calldata under 36 bytes reverts `MalformedAssetCall`, and any other selector's first argument is the spender whose allowance is reset after the batch. `TierRegistry` **prices** a call, it does not gate it — see item 4. Resolve the address book from the chain the proposal actually executes on: testnet **46630** and the **9994663** vnet are different books, and neither takes a Base (8453) one — **never** carry an address across chains.
 4. **Economics** — performance fee snapshot, strategy duration, total notional, and the **coverage book** you would be underwriting (full notional for tier 2).
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
-- Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule for that chain (§4 intake item 3).
+- Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule (§4 intake item 3).
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
 - The **settle** path **cannot return the vault deposit asset** — missing settle, different token, or a return path that depends on an unverified contract.
 - **Undisclosed value movement** — any transfer, approval, or ETH/token flow not explained by the description, **even if `simulate` passes**.
@@ -380,7 +380,7 @@ Do **not** call `emergencySettleWithCalls`, `unstick`, `finalizeEmergencySettle`
 
 ## 7. Known-safe targets (this chain only)
 
-Verify targets against known protocol addresses **for the chain the proposal executes on**. Addresses differ across chains. Batch callees still have to pass that chain's reachability rule (§4 intake item 3).
+Verify targets against known protocol addresses **for the chain the proposal executes on**. Addresses differ across chains. Batch callees still have to pass the reachability rule (§4 intake item 3).
 
 See [ADDRESSES.md](../../ADDRESSES.md) for both the 9994663 fork and Robinhood testnet. Strategy template clones are valid only after you verify the implementation on **this** chain.
 

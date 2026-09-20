@@ -42,7 +42,7 @@ Commands that normally read your address from the configured key need it explici
 
 ## Privy agent wallet (Robinhood fork)
 
-The only wallet API verified to work on chain 9994663. MetaMask Agent Wallet, MoonPay and OKX agent wallets reject the custom chain ID / RPC. Privy's own skill: https://agents.privy.io/skill.md (it instructs `pnpm dlx`, never `npx`).
+The wallet API verified to work on chain 9994663 (supports it as a custom chain). Privy's own skill: https://agents.privy.io/skill.md (it instructs `pnpm dlx`, never `npx`).
 
 Privy **cannot broadcast** to this fork, so the pattern is sign-then-self-broadcast.
 

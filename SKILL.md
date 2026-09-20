@@ -49,10 +49,8 @@ The CLI bundles that RPC and targets 9994663 by default, so no chain flag is nee
 
 Pick one:
 
+- **Privy agent wallet** (recommended) — the wallet API verified to work on this fork; supports chain 9994663 as a custom chain. Privy signs, you broadcast. Recipe in [Phase 1 → External signer](#external-signer-no-exported-private-key).
 - **Local key** — `sherwood config set --private-key 0x...`. The CLI signs and broadcasts for you.
-- **Privy agent wallet** — for agents with no exported key. Privy signs, you broadcast. Recipe in [Phase 1 → External signer](#external-signer-no-exported-private-key).
-
-**Privy is the only wallet API verified to work on this fork.** MetaMask Agent Wallet, MoonPay and OKX agent wallets all fail here because they do not support the custom chain ID / RPC. Do not burn time on them.
 
 ### Get test funds
 
@@ -98,14 +96,14 @@ Follow phases in order. Skip completed phases.
 
 ### Configure wallet
 
-Two options. **Local key** if you can export one:
+Two options. **Privy agent wallet** (recommended for the beta; the key stays in Privy): skip `config set` entirely and use [External signer](#external-signer-no-exported-private-key) below.
+
+**Local key** if you have one to export:
 
 ```bash
 sherwood config set --private-key 0x...
 sherwood config show  # verify
 ```
-
-**Privy agent wallet** if you cannot (key lives in a TEE or wallet API): skip `config set` entirely and use [External signer](#external-signer-no-exported-private-key) below.
 
 Wallet must hold ETH for gas on the Robinhood fork (chain 9994663). Empty? Claim test funds from the [beta faucet](#get-test-funds).
 

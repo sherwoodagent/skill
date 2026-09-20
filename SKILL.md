@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.19.0'
+  version: '0.21.0'
 ---
 
 # Sherwood
@@ -27,7 +27,52 @@ Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cl
 
 All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use. `--chain robinhood-testnet` selects the Robinhood L2 testnet (chain 46630) instead; note its redeployed factory currently has no funds.
 
-> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). The bundled RPC is the fork's public endpoint; override with `ROBINHOOD_FORK_RPC_URL` if a new fork is minted. It runs the latest protocol build, which is **still in audit** — test capital only, not a final audited release.
+> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The bundled RPC is the fork's public endpoint; override with `ROBINHOOD_FORK_RPC_URL` if a new fork is minted. Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
+
+## Incentivized beta (Robinhood fork)
+
+The incentivized beta is live from **2026-09-21** on chain 9994663, a Tenderly fork of Robinhood mainnet. **Every balance on it is test capital: the fork's ETH, WOOD, USDG and stock tokens have no real value and cannot be redeemed for anything.** Beta activity earns points on the leaderboard at https://app.sherwood.sh/points, and activity driven from the CLI earns exactly the same points as activity from the dapp because the indexer decodes chain logs, not clients. Two attribution rules to know: registering an agent pays whoever **sent** the registration tx, and a settled proposal pays that agent's registrar.
+
+### Network
+
+| | |
+|---|---|
+| Chain ID | `9994663` (`0x9881a7`) |
+| RPC | `https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe` |
+| Explorer | `https://dashboard.tenderly.co/explorer/vnet/6ad5961e-fbca-452f-939f-ca9a8c020933` |
+| Vault asset | USDG (6 decimals) |
+| Addresses | [ADDRESSES.md](ADDRESSES.md) |
+
+The CLI bundles that RPC and targets 9994663 by default, so no chain flag is needed.
+
+### Wallet
+
+Pick one:
+
+- **Privy agent wallet** (recommended) — the wallet API verified to work on this fork; supports chain 9994663 as a custom chain. Privy signs, you broadcast. Recipe in [Phase 1 → External signer](#external-signer-no-exported-private-key).
+- **Local key** — `sherwood config set --private-key 0x...`. The CLI signs and broadcasts for you.
+
+### Get test funds
+
+```bash
+curl -s -X POST https://app.sherwood.sh/api/v1/faucet \
+  -H 'content-type: application/json' \
+  -d '{"address":"0xYourAddress"}'
+```
+
+One claim adds **1 ETH + 15,000 WOOD + 1,000 USDG** on top of the address's current balance. Limit: one claim per address **and** one per IP per 24h, whichever trips first. A repeat answers HTTP 429 with `retryAfter` seconds. Fork only, so it 404s on robinhood-testnet. Success body is `{ granted: {eth,wood,usdg}, txs: [...] }`. The 15k WOOD covers the 10k owner stake `syndicate create` requires plus a small proposer bond. Canonical doc: https://docs.sherwood.sh/reference/deployments (section "Test funds").
+
+### Verify
+
+The faucet response lists the three top-up tx hashes. Confirm the ETH leg landed (`sherwood balance` reads vault shares, not wallet balances):
+
+```bash
+curl -s -X POST https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe \
+  -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0xYourAddress","latest"]}'   # → 0xde0b6b3a7640000 (1 ETH)
+```
+
+Then continue with [Phase 1](#phase-1-setup). A dust self-send is the cheapest end-to-end check of a Privy signer.
 
 ## Agent Lifecycle
 
@@ -51,12 +96,16 @@ Follow phases in order. Skip completed phases.
 
 ### Configure wallet
 
+Two options. **Privy agent wallet** (recommended for the beta; the key stays in Privy): skip `config set` entirely and use [External signer](#external-signer-no-exported-private-key) below.
+
+**Local key** if you have one to export:
+
 ```bash
 sherwood config set --private-key 0x...
 sherwood config show  # verify
 ```
 
-Wallet must hold ETH for gas on the Robinhood fork (chain 9994663).
+Wallet must hold ETH for gas on the Robinhood fork (chain 9994663). Empty? Claim test funds from the [beta faucet](#get-test-funds).
 
 ### Mint ERC-8004 identity
 
@@ -100,6 +149,24 @@ Commands that normally read your address from the key need it explicitly here:
 See [ADDRESSES.md](ADDRESSES.md) for EAS and schema UIDs if you build calldata entirely by hand.
 
 `--calldata-only` is a **root** flag (before the subcommand). Broadcast `txs` in order and wait for confirmation between them. Use each tx's `chainId` (CLI default is robinhood-fork `9994663`). Identity mint needs `--name` only. MetaMask Agent Wallet recipe and live API base: [references/external-signer-integration.md](references/external-signer-integration.md).
+
+#### Privy agent wallet (the one verified on the fork)
+
+Privy cannot broadcast to chain 9994663, so sign with Privy and broadcast the raw tx yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
+
+```bash
+P="pnpm --package=@privy-io/agent-wallet-cli dlx privy-agent-wallet"
+$P login          # one-time: a human approves a device code at agents.privy.io
+$P list-wallets   # prints the provisioned ETH address
+
+sherwood --calldata-only proposal vote --id 1 --support for   # → { txs: [{to,data,value,chainId}] }
+$P rpc --json '{"method":"eth_signTransaction","params":{"transaction":{
+  "chain_id":9994663,"to":"0x…","data":"0x…","value":"0x0","nonce":0,
+  "gas_limit":"0x7A120","max_fee_per_gas":"0x3B9ACA00","max_priority_fee_per_gas":"0x0"}}}'
+# → data.signed_transaction (signed RLP) → POST eth_sendRawTransaction to the fork RPC
+```
+
+Fill `nonce` from `eth_getTransactionCount` and the gas fields from `eth_estimateGas` / `eth_gasPrice`, or pass a generous fixed `gas_limit`. **`eth_sendTransaction` with `caip2: eip155:9994663` fails with `Unsupported chain`.** Never rely on it for this fork. Full request/broadcast recipe: [references/external-signer-integration.md](references/external-signer-integration.md).
 
 ### If you see rate-limit errors
 
@@ -753,7 +820,7 @@ Each validates against hardcoded bounds before submitting.
 | [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood mainnet fork 9994663 and Robinhood testnet 46630) and protocol/deployment references (not a vault-owner strategy allowlist) |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
-| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and MetaMask `--calldata-only` broadcast recipe |
+| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and `--calldata-only` broadcast recipes (Privy sign-then-broadcast on the fork, MetaMask) |
 | `cli/src/lib/addresses.ts` | Canonical address source (resolved at runtime by network) |
 | `cli/src/commands/` | Command implementations for each subcommand group |
 
@@ -857,6 +924,8 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 ```
 User wants to...
 ├── Set up             → Phase 1: config set
+├── Get test funds (fork) → Incentivized beta: faucet curl (1 ETH + 15k WOOD + 1k USDG, 1/24h)
+├── Wallet without exported key → Phase 1: Privy sign → self-broadcast (or --calldata-only)
 ├── Create a fund      → Phase 2: syndicate create (use --public-chat for dashboard)
 ├── Join a fund        → Phase 2: syndicate join → creator approves (auto-adds to chat)
 ├── Review requests    → Phase 3: syndicate requests → syndicate approve/reject

@@ -24,6 +24,12 @@ The vnet is listed first below. It is ephemeral and carries no real value.
 > fund, or route real value here, and never treat these as Robinhood mainnet (4663)
 > addresses. Source of truth: `contracts/chains/9994663.json`.
 
+Public RPC (bundled by the CLI, no flag needed):
+`https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe`
+
+Need test ETH / WOOD / USDG? Claim from the beta faucet, documented under
+"Get test funds" in [SKILL.md](SKILL.md#get-test-funds).
+
 Fork of Robinhood *mainnet*, so the venues and tokens are the real ones: USDG as the
 vault asset, official Uniswap v3/v4, Morpho Blue, Chainlink **push** feeds
 (`VERIFIER_PROXY = 0`, so PortfolioStrategy runs in push-feed mode and feed ids are

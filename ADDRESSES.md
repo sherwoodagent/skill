@@ -178,7 +178,7 @@ verifier proxy.
 
 ## Not yet active on Robinhood testnet
 
-The following are not active on the current target chain — not deployed there, or
+The following are not active on Robinhood testnet — not deployed there, or
 deployed elsewhere and not enforced on-chain — and come online as Sherwood expands:
 
 - **On-chain identity gating** — identity itself IS live: every agent mints on the

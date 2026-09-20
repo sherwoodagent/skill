@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.21.0'
+  version: '0.21.1'
 ---
 
 # Sherwood
@@ -212,7 +212,7 @@ this is the missing step — nothing in the revert names it.
 > at `propose`: the risk-scaled **proposer bond** is transferred into
 > `ProposerBondEscrow`. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-`syndicate create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on Robinhood testnet, which has no registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
+`syndicate create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on both Robinhood chains, neither of which has a registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
 
 #### Confirm before running
 
@@ -220,8 +220,8 @@ Before invoking the command, **echo every resolved parameter back to the user an
 
 The summary MUST include all of:
 
-- **Subdomain** — the fund identifier. Choose carefully; a typo wastes gas. (ENS registration is skipped on Robinhood testnet.)
-- **Vault asset** — show the symbol AND the resolved token address. WETH is the default vault asset on Robinhood testnet — confirm even when "obvious".
+- **Subdomain** — the fund identifier. Choose carefully; a typo wastes gas. (ENS registration is skipped on both Robinhood chains.)
+- **Vault asset** — show the symbol AND the resolved token address. The vault asset is USDG on the 9994663 fork (the CLI default chain) and WETH on Robinhood testnet — confirm even when "obvious".
 - **Name**, **description**, **agent ID**, **`--open-deposits`** flag, **`--public-chat`** flag.
 
 Re-confirm if the user changes any field. Do not batch-confirm a list of commands — confirm `syndicate create` on its own.
@@ -296,7 +296,7 @@ After creating a syndicate, ensure all agents are set up:
 3. **Add agent to chat:** `sherwood chat <subdomain> add 0xAgent`
 4. **Verify setup:** `sherwood syndicate info <subdomain>` — shows vault stats, XMTP group ID, and more
 
-On chains without ENS (Robinhood testnet has no registrar yet), the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood syndicate info <subdomain>`.
+On chains without ENS (neither Robinhood chain has a registrar yet), the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood syndicate info <subdomain>`.
 
 ### Approve depositors
 
@@ -588,7 +588,7 @@ sherwood venice status     # check sVVV balances + API key
 
 The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood deploys on the Robinhood mainnet fork (9994663) and Robinhood testnet (46630) — neither is Base, so every `trade` subcommand exits with an error on both. Do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
 
-For onchain swaps on the current deployment, use the **PortfolioStrategy** template via the proposal flow — routing goes through Synthra (Uniswap-V3-compatible). Run `sherwood providers` to see what the CLI can actually execute: `synthra-swap` (trading: `swap.quote`, `swap.route-detect`, `swap.calldata` on Robinhood testnet) plus the `messari` and `nansen` research providers (chain-agnostic).
+For onchain swaps on the current deployment, use the **PortfolioStrategy** template via the proposal flow — routing goes through the `UniswapSwapAdapter`: official Uniswap v3/v4 on the 9994663 fork, Synthra (Uniswap-V3-compatible) on Robinhood testnet. Run `sherwood providers` to see what the CLI can actually execute: `synthra-swap` (trading: `swap.quote`, `swap.route-detect`, `swap.calldata` on Robinhood testnet) plus the `messari` and `nansen` research providers (chain-agnostic).
 
 ### LP operations
 

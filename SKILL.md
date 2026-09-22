@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.21.1'
+  version: '0.22.0'
 ---
 
 # Sherwood
@@ -16,7 +16,7 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.87.0
+npm i -g @sherwoodagent/cli@0.89.0
 ```
 
 Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
@@ -355,12 +355,16 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 | **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking |
 | **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path) |
 | **PortfolioStrategy** | `portfolio` | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
+| **MorphoSupplyStrategy** | `morpho-supply` | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
+| **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
+| **LaunchpadStrategy** | `launchpad` | Launch a fund token on Sushi Launchpad V2 or StonkBrokers; holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design |
+| **LighterPerpStrategy** | `lighter-perp` | Agent-traded perps on Lighter (zkLighter), USDG vaults only. **Not deployed yet** |
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
 **Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. The batch rule is structural, not an allowlist: every call target is either the vault `asset()` or a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless), and anything else reverts `NotARegisteredStrategy(target)`. Uncertified `(target, selector)` pairs resolve to **tier 2** on `TierRegistry` and are **permissionless at tier 2** (full-notional coverage + guardian review): they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` only `portfolio` resolves. Note also that a chain can deploy a template the CLI has no builder for (the fork's MorphoSupply and ConcentratedLiquidity templates are deployed but have no CLI key, so they do not appear in `strategy list` at all and cannot be cloned through the CLI).
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` (CLI ≥ 0.89.0) `portfolio`, `morpho-supply`, `concentrated-liquidity` and `launchpad` resolve. On `robinhood-testnet` only `portfolio` does. `lighter-perp` resolves nowhere yet: it deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now. Before 0.89.0 the fork's MorphoSupply and ConcentratedLiquidity templates had no CLI encoder; upgrade if `strategy propose morpho-supply` is refused.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -542,6 +546,84 @@ sherwood strategy propose portfolio \
   --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
   --write-calls ./portfolio-calls
 ```
+
+#### MorphoSupplyStrategy
+
+Supplies the vault asset to exactly one Morpho Blue market. Deployed on `robinhood-fork`.
+
+- **Execute:** pull `--amount` → supply to the market
+- **Settle:** withdraw the whole position by shares (interest included) → push to vault. All-or-revert: an illiquid market reverts settlement, which is retried later
+- **Tunable params:** none (`updateParams` reverts `NoTunableParams`)
+- **Init checks** (the CLI runs them before any tx): Morpho allowlisted on the vault's TierRegistry (`MorphoNotAllowed`), market loan token == vault asset (`LoanAssetMismatch`), market exists (`MarketNotCreated`)
+
+```bash
+# USDG loan / spUSDG collateral market (91.5% LLTV) on the fork — fits a USDG vault
+sherwood strategy propose morpho-supply \
+  --vault 0x... \
+  --market-id 0x0309c02dabf0be02682af1a2bde9a457f4df0f0b6bc889cde3f948e5315e4114 \
+  --amount 1000 \
+  --name "USDG lending" --duration 7d
+```
+
+Flags: `--market-id <bytes32>` (required), `--amount <n>` (required), `--morpho <address>` (default: the network's `MORPHO_BLUE`).
+
+#### ConcentratedLiquidityStrategy
+
+A Uniswap V3 range position funded by borrowing the vault asset from Morpho against vault-asset (or ERC-4626 wrapper) collateral. Deployed on `robinhood-fork`.
+
+- **Execute:** pull `--collateral-amount` → post as Morpho collateral → borrow `--borrow-amount` → swap the declared fraction to the pool's other token → mint one position
+- **Rerange:** permissionless within the voted policy (trigger, min interval, max count ≤ 20); never touches the borrow
+- **Settle:** remove liquidity → collect → convert back → repay → withdraw collateral → push to vault. All-or-revert
+- **Tunable params:** settle slippage (tighten only) and settle deadline
+- **Allowlisting:** init checks every counterparty on the vault's TierRegistry, including the Morpho collateral token and the pool's other token. On the fork today spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) are **not** allowlisted, so a USDG/WETH proposal is refused with `CounterpartyNotAllowed` until the TierRegistry owner calls `setCounterpartyAllowed` for both. The preflight names each missing address. Tell the user this is a registry-owner action; do not retry.
+
+```bash
+sherwood strategy propose concentrated-liquidity \
+  --vault 0x... \
+  --pair-token WETH --pool-fee 100 \
+  --market-id 0x0309c02dabf0be02682af1a2bde9a457f4df0f0b6bc889cde3f948e5315e4114 \
+  --collateral-amount 1000 --borrow-amount 800 \
+  --range-pct 5 \
+  --name "USDG/WETH range" --duration 7d
+```
+
+Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--pool <address>`, or `--pair-token <token>` + `--pool-fee <fee>`), and a range (`--range-pct <pct>`, or `--tick-lower <tick>` + `--tick-upper <tick>`). Optional: `--expected-liquidity`, `--swap-fraction-bps`, `--swap-route`, `--twap-window` (default 1800, min 300), `--max-twap-deviation` (ticks, default 100, max 1000), `--mint-slippage-bps` (default 500), `--settle-slippage-bps` (default 500), `--settle-deadline`, `--rerange-half-width`, `--rerange-trigger-bps` (default 8000), `--rerange-min-interval` (default 3600), `--max-reranges` (default 3, max 20), `--rerange-slippage-bps` (default 500), `--rerange-swap-fraction-bps`, `--morpho`, `--position-manager`, `--uniswap-factory`. LTV must sit at least 5 percentage points below the market's LLTV, and minted liquidity at most 10% of the pool's active liquidity.
+
+#### LaunchpadStrategy
+
+Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) or **StonkBrokers** (`--venue stonk`) with vault capital, holds back a reserve, and lets share holders claim a pro-rata slice during a claim window. Deployed on `robinhood-fork`. Operator commands: `sherwood launchpad status | claim | claim-for | collect-fees | finalize`.
+
+- **A launch settles as a vault-asset LOSS of about `--asset-in`, by design on v1.** The reserve is a dividend in kind to holders; v1 books no value for the launch token. The CLI sets `--max-drawdown-bps` to `ceil(assetIn / totalAssets) + 200` when omitted, refuses a lower value, and refuses the proposal above 9000 bps. Say this to the user before proposing.
+- Creator fees go to the **vault**, pushed by the permissionless `sherwood launchpad collect-fees`
+- Sushi `--fee-mode holders` (DISTRIBUTE_TO_HOLDERS) is refused. WOOD is not a supported quote yet. Pons is out of scope
+
+```bash
+sherwood strategy propose launchpad \
+  --vault 0x... \
+  --venue sushi --quote USDG \
+  --asset-in 1000 --reserve 10% --min-tokens-out 120000000 \
+  --claim-window 7d \
+  --token-name "Robin Fund" --token-symbol ROBIN \
+  --name "Launch ROBIN" --duration 8d
+```
+
+> For the full Launchpad workflow (venue choice, sizing, claims, fees, settlement), delegate to the **`strategies/launchpad` skill**.
+
+#### LighterPerpStrategy
+
+Agent-traded perpetuals on Lighter (zkLighter). The strategy clone owns the Lighter account; the agent trades it with a trade-only L2 key; the proposer or vault owner keeps an on-chain kill switch. USDG vaults only.
+
+- **Not deployed yet.** Lighter deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now, so `strategy propose lighter-perp` cannot run on any chain today. Do not attempt it on the fork: the fork has no Lighter sequencer and withdrawals never mature there.
+- Exit is three steps: `sherwood lighter initiate-return` → `sherwood lighter queue-withdraw --all` → settle, with `sherwood lighter prepare-settle` (rotates the agent key to a burn key) before settle
+
+```bash
+sherwood lighter keygen
+sherwood strategy propose lighter-perp \
+  --vault 0x... --deposit 1000 --markets 0,1 \
+  --name "Perps book" --duration 7d
+```
+
+> For the full Lighter workflow and its hard rules, delegate to the **`strategies/lighter-perp` skill**.
 
 #### Writing Custom Strategies
 
@@ -937,6 +1019,11 @@ User wants to...
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
 ├── Provide LP         → Phase 4: AerodromeLPStrategy template (+ optional gauge staking)
+├── Lend / earn yield  → Phase 4: `morpho-supply` template (fork)
+├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (fork; registry must allowlist its tokens)
+├── Launch a fund token / "IPO" → delegate to `strategies/launchpad` skill (settles as a loss of ~asset-in)
+├── Claim launch reserve / collect launch fees → `sherwood launchpad claim | collect-fees` (see `strategies/launchpad`)
+├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (not deployed yet)
 ├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
 ├── Vote on proposal   → Governance: proposal vote --id <id> --support for|against|abstain
 ├── Veto proposal      → Governance: proposal veto --id <id> (vault owner, Pending only)

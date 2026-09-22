@@ -67,6 +67,12 @@ As on every chain, there is no singleton `SyndicateGovernor`: each vault gets it
 | PortfolioStrategy | `0xAA5872009c527cCb80343E41C52840CEdb095eb0` |
 | MorphoSupplyStrategy | `0x5B55E1Da361573CB0788e750038567D2569BE41d` |
 | ConcentratedLiquidityStrategy | `0xcba9C84F2d382729D1519c5F7f4a9AAaC075f8B5` |
+| LaunchpadStrategy | `0x4435Aae199907f60588902Bcd7c4363a13Bb2951` |
+| SushiLaunchAdapter | `0x20348e428050031647d671F0e24752C01D4b7379` |
+| StonkLaunchAdapter | `0x0D62944862996791a9BCE992872F9Fa8E3162B49` |
+
+The Launchpad template and adapters come from sherwood-strategies
+`deployments/9994663.json`. `LighterPerpStrategy` is not deployed on any chain yet.
 
 ### Tokens
 
@@ -98,6 +104,9 @@ As on every chain, there is no singleton `SyndicateGovernor`: each vault gets it
 | Uniswap V4 PoolManager | `0x8366a39cc670b4001a1121b8f6a443a643e40951` |
 | Uniswap V4 Quoter | `0x8dc178efb8111bb0973dd9d722ebeff267c98f94` |
 | Morpho Blue | `0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010` |
+| Sushi Launchpad V2 (proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
+| StonkBrokers lens (V2) | `0x25b5Df581f4b2Ed450203f375ad8A28b17F115B3` |
+| zkLighter proxy (mainnet 4663; the fork has no sequencer) | `0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d` |
 | Chainlink ETH/USD | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` |
 | Chainlink USDG/USD | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` |
 

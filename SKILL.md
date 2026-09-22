@@ -575,7 +575,7 @@ A Uniswap V3 range position funded by borrowing the vault asset from Morpho agai
 - **Rerange:** permissionless within the voted policy (trigger, min interval, max count ≤ 20); never touches the borrow
 - **Settle:** remove liquidity → collect → convert back → repay → withdraw collateral → push to vault. All-or-revert
 - **Tunable params:** settle slippage (tighten only) and settle deadline
-- **Allowlisting:** init checks every counterparty on the vault's TierRegistry, including the Morpho collateral token and the pool's other token. On the fork today spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) are **not** allowlisted, so a USDG/WETH proposal is refused with `CounterpartyNotAllowed` until the TierRegistry owner calls `setCounterpartyAllowed` for both. The preflight names each missing address. Tell the user this is a registry-owner action; do not retry.
+- **Allowlisting:** init checks every counterparty on the vault's TierRegistry, including the Morpho collateral token and the pool's other token. On the fork, spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) are allowlisted, so USDG/WETH with the spUSDG market works. Any other pool or market may be refused with `CounterpartyNotAllowed`; the preflight names each missing address. That is a registry-owner action: tell the user, do not retry.
 
 ```bash
 sherwood strategy propose concentrated-liquidity \

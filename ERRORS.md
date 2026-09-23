@@ -6,7 +6,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (Privy / MetaMask). `guardian prepare-owner-stake` has no keyless mode yet — send its two txs by hand (SKILL.md → Keyless gaps) |
+| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (Privy / MetaMask). (CLI ≥ 0.90.0 covers `guardian prepare-owner-stake` too) |
 | `Agent identity required` | No agentId saved | `sherwood identity mint --name "..."` |
 
 ## Permission Errors

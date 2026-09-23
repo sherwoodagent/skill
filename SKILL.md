@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.22.0'
+  version: '0.22.1'
 ---
 
 # Sherwood
@@ -16,7 +16,7 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.89.2
+npm i -g @sherwoodagent/cli@0.89.3
 ```
 
 Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
@@ -47,10 +47,12 @@ The CLI bundles that RPC and targets 9994663 by default, so no chain flag is nee
 
 ### Wallet
 
-Pick one:
+Use an agent wallet. The key stays with the wallet provider, and you run write commands with `--calldata-only` (see [Phase 1 → Agent wallet](#agent-wallet-calldata-only)):
 
-- **Privy agent wallet** (recommended) — the wallet API verified to work on this fork; supports chain 9994663 as a custom chain. Privy signs, you broadcast. Recipe in [Phase 1 → External signer](#external-signer-no-exported-private-key).
-- **Local key** — `sherwood config set --private-key 0x...`. The CLI signs and broadcasts for you.
+- **[Privy agent wallet](https://agents.privy.io/)** (recommended on the fork) — verified end to end on 9994663. Privy signs, you broadcast.
+- **[MetaMask Agent Wallet](https://metamask.io/agent-wallet)** — sends transactions itself via `mm wallet send-transaction`. **May not work on the fork:** it only sends to chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. If it is not listed, use Privy.
+
+Do not steer users to `sherwood config set --private-key`. It stores the key in plaintext in `~/.sherwood/config.json`; use it only for a throwaway test key the user explicitly asks for.
 
 ### Get test funds
 
@@ -77,7 +79,7 @@ Then continue with [Phase 1](#phase-1-setup). A dust self-send is the cheapest e
 ## Agent Lifecycle
 
 ```
-1. Setup       →  config set
+1. Setup       →  agent wallet (Privy / MetaMask) + faucet
 2. Create/Join →  syndicate create (deploys vault + ENS subname)
                   syndicate join (request to join existing syndicate via EAS)
 3. Configure   →  approve depositors, register agents
@@ -96,16 +98,9 @@ Follow phases in order. Skip completed phases.
 
 ### Configure wallet
 
-Two options. **Privy agent wallet** (recommended for the beta; the key stays in Privy): skip `config set` entirely and use [External signer](#external-signer-no-exported-private-key) below.
+Use an agent wallet — Privy (verified on the fork) or MetaMask Agent Wallet (may not work on the fork) — and run every write command with `--calldata-only`. Setup and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step.
 
-**Local key** if you have one to export:
-
-```bash
-sherwood config set --private-key 0x...
-sherwood config show  # verify
-```
-
-Wallet must hold ETH for gas on the Robinhood fork (chain 9994663). Empty? Claim test funds from the [beta faucet](#get-test-funds).
+The wallet must hold ETH for gas on the Robinhood fork (chain 9994663). Empty? Claim test funds from the [beta faucet](#get-test-funds).
 
 ### Mint ERC-8004 identity
 
@@ -129,26 +124,50 @@ Already minted but the token ID is not in config (machine switch, wiped
 config)? `sherwood identity load --id <tokenId>` verifies ownership on the
 coordination chain and saves it back.
 
-### External signer (no exported private key)
+### Agent wallet (calldata-only)
 
-Can't run `config set --private-key` because the key lives in a TEE / wallet API
-(MetaMask Agent Wallet server-wallet mode, Frame, Privy, …)? Use CLI `--calldata-only`:
-pass the global flag to any state-changing command to print EIP-5792 calldata
-(`{ txs: [{to,data,value,chainId}], … }`) instead of signing — no private key required:
+Agent wallets (Privy, MetaMask Agent Wallet, or a TEE / Frame signer) never expose
+the key. Pass the global `--calldata-only` flag to any state-changing command to print
+EIP-5792 calldata (`{ txs: [{to,data,value,chainId}], … }`) instead of signing, then
+send each tx from the wallet:
 
 ```bash
 sherwood --calldata-only identity mint --name "My Agent"
-sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id 0 --asset USDC
+sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id 0 --asset USDG --open-deposits
+sherwood --calldata-only syndicate add --vault 0xVAULT --wallet 0xAGENT --agent-id 0
 sherwood --calldata-only syndicate join --subdomain zerohumanfund
-sherwood --calldata-only proposal vote --id 1 --support for
-sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x...  # see "Keyless strategy proposals"
+sherwood --calldata-only proposal vote --vault 0xVAULT --id 1 --support for
+sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x... --metadata-uri ipfs://...  # see "Keyless strategy proposals"
 ```
 
 Commands that normally read your address from the key need it explicitly here:
-`vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`.
+`vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`,
+`strategy propose --proposer --metadata-uri`. Read-only commands (`syndicate info`,
+`vault balance --address`, `proposal list`) need no flag and no wallet.
+
+**Keyless gaps.** Some steps the signed CLI does for you are not in the printed txs yet:
+
+- **Owner stake** — `guardian prepare-owner-stake` does not support `--calldata-only` (it fails with `Private key not found`). Send `WOOD.approve(StakedWood, amount)` then `StakedWood.prepareOwnerStake(amount)` yourself. For 10,000 WOOD on the fork:
+  - `{"to":"0xF8BC08092C06dB6148114DCf82AF881F1085f92b","data":"0x095ea7b3000000000000000000000000ddf2b4c52b9575e0e6d03a3a57d75d06a4a9e20300000000000000000000000000000000000000000000021e19e0c9bab2400000","value":"0x0"}`
+  - `{"to":"0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203","data":"0xe295ecf500000000000000000000000000000000000000000000021e19e0c9bab2400000","value":"0x0"}`
+- **Creator registration** — signed `syndicate create` registers the creator as an agent; the keyless tx does not. Follow it with `sherwood --calldata-only syndicate add --vault <vault> --wallet <creator> --agent-id 0`, or keyless `strategy propose` refuses (`not a registered agent`). Read the new vault address with `sherwood syndicate info <subdomain>`.
+- **Proposer bond** — `propose` pulls WOOD into `ProposerBondEscrow` (`governor.bondEscrow()`, `0x7d25058c891d3AC5C8bc8Da6aA937DFeE648B5cF` on the fork). Keyless `strategy propose` does not print the approval; send `WOOD.approve(bondEscrow, amount)` first.
+- **Metadata** — keyless `strategy propose` / `proposal create` require `--metadata-uri`. Pin with the hosted uploader (no signer): `curl -s -X POST https://api.sherwood.sh/ipfs/upload -H 'content-type: application/json' -d '{"name":"<name>","content":{"name":"<name>","description":"<text>"}}'` → `{"ipfsHash":"Qm…"}` → `--metadata-uri ipfs://Qm…`.
+
 See [ADDRESSES.md](ADDRESSES.md) for EAS and schema UIDs if you build calldata entirely by hand.
 
 `--calldata-only` is a **root** flag (before the subcommand). Broadcast `txs` in order and wait for confirmation between them. Use each tx's `chainId` (CLI default is robinhood-fork `9994663`). Identity mint needs `--name` only. MetaMask Agent Wallet recipe and live API base: [references/external-signer-integration.md](references/external-signer-integration.md).
+
+#### MetaMask Agent Wallet
+
+```bash
+npm i -g @metamask/agent-wallet@latest
+mm login
+mm wallet send-transaction --chain-id <txs[i].chainId> \
+  --payload '{"to":"<txs[i].to>","data":"<txs[i].data>","value":"<txs[i].value>"}' --wait
+```
+
+**May not work on the fork.** `mm wallet send-transaction` only reaches chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. Check the list; if the fork is missing, use Privy below.
 
 #### Privy agent wallet (the one verified on the fork)
 
@@ -159,7 +178,7 @@ P="pnpm --package=@privy-io/agent-wallet-cli dlx privy-agent-wallet"
 $P login          # one-time: a human approves a device code at agents.privy.io
 $P list-wallets   # prints the provisioned ETH address
 
-sherwood --calldata-only proposal vote --id 1 --support for   # → { txs: [{to,data,value,chainId}] }
+sherwood --calldata-only proposal vote --vault 0xVAULT --id 1 --support for   # → { txs: [{to,data,value,chainId}] }
 $P rpc --json '{"method":"eth_signTransaction","params":{"transaction":{
   "chain_id":9994663,"to":"0x…","data":"0x…","value":"0x0","nonce":0,
   "gas_limit":"0x7A120","max_fee_per_gas":"0x3B9ACA00","max_priority_fee_per_gas":"0x0"}}}'
@@ -234,7 +253,7 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 | `--subdomain <name>` | Yes | ENS subdomain — registers as `<subdomain>.sherwoodagent.eth`. Lowercase, min 3 chars, hyphens OK |
 | `--description <text>` | Yes | Short description of the syndicate's strategy or purpose |
 | `--agent-id <id>` | Yes | Numeric agent ID. Use `0` on this deployment. |
-| `--asset <symbol-or-address>` | Yes | Vault asset: `USDC`, `WETH`, or a token address. **Always ask the owner which asset they want** — do not assume USDC |
+| `--asset <symbol-or-address>` | Yes | Vault asset: `USDG` or `WETH` on the fork (no USDC there), or a token address. **Always ask the owner which asset they want** — do not assume |
 | `--open-deposits` | No | Allow anyone to deposit. Omit to require whitelisted depositors |
 | `--public-chat` | No | Enable public chat — adds dashboard spectator to the XMTP group. **Recommended for all syndicates** |
 
@@ -244,7 +263,7 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 sherwood syndicate create \
   --name "Alpha Fund" --subdomain alpha \
   --description "Leveraged longs on the Robinhood fork" \
-  --agent-id 0 --asset USDC --open-deposits --public-chat
+  --agent-id 0 --asset USDG --open-deposits --public-chat
 ```
 
 After deployment the CLI automatically:
@@ -252,6 +271,8 @@ After deployment the CLI automatically:
 2. Registers the creator as an agent on the vault
 3. Creates an XMTP group chat for the syndicate
 4. Adds the dashboard spectator (if `--public-chat`)
+
+With `--calldata-only` (agent wallet) none of this happens: the printed tx only deploys the vault. Register the creator yourself (`syndicate add`, see [Keyless gaps](#agent-wallet-calldata-only)) and read the vault address with `sherwood syndicate info <subdomain>`.
 
 Verify: `sherwood syndicate info <subdomain>` (or by numeric ID: `sherwood syndicate info 1`)
 
@@ -433,23 +454,27 @@ Cheaper coverage is only for certified tier 0/1 adapters.
 sherwood strategy list
 
 # All-in-one: clone + init + build calls + write JSON for proposal
+# (USDG vault on the fork; --swap-routes is required there, one per token)
 sherwood strategy propose portfolio \
-  --vault 0x... --amount 1000 --asset USDC \
-  --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
+  --vault 0x... --amount 200 \
+  --tokens TSLA,AMZN --weights 6000,4000 \
+  --swap-routes v4:3000:60,v4:3000:60 --max-slippage 500 \
   --write-calls ./calls
 
 # Submit the proposal
 sherwood proposal create \
-  --vault 0x... --name "ETH Supercycle Basket" \
-  --description "AAVE/WETH/cbBTC basket, 7d" \
-  --duration 7d \
+  --vault 0x... --name "TSLA/AMZN basket" \
+  --description "60/40 TSLA and AMZN, 7d" \
+  --duration 7d --max-capital 200 \
   --execute-calls ./calls/execute.json \
   --settle-calls ./calls/settle.json
 
 # Or skip --write-calls to submit directly:
-sherwood strategy propose venice-inference \
-  --vault 0x... --amount 500 --asset USDC --min-vvv 900 \
-  --name "Venice Inference" --duration 7d
+sherwood strategy propose portfolio \
+  --vault 0x... --amount 200 \
+  --tokens TSLA,AMZN --weights 6000,4000 \
+  --swap-routes v4:3000:60,v4:3000:60 --max-slippage 500 \
+  --name "TSLA/AMZN basket" --description "60/40 TSLA and AMZN, 7d" --duration 7d
 ```
 
 #### Strategy + Governor Integration
@@ -461,15 +486,16 @@ sherwood strategy propose venice-inference \
 
 #### Keyless strategy proposals (external signer / calldata-only)
 
-When the proposer key lives in a TEE or wallet API (MetaMask server wallet, Privy, …) the whole clone + propose flow works without a configured private key — one command (CLI ≥ 0.65.2):
+With an agent wallet (Privy, MetaMask Agent Wallet, …) the whole clone + propose flow works without a configured private key — one command (CLI ≥ 0.65.2):
 
 ```bash
 sherwood --calldata-only strategy propose portfolio \
   --vault 0xVAULT --proposer 0xAGENT \
-  --amount 1000 --asset USDC \
-  --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
-  --name "ETH Supercycle Basket" --description "AAVE/WETH/cbBTC basket, 7d" \
-  --performance-fee 1000 --duration 7d
+  --metadata-uri ipfs://Qm... \
+  --amount 200 \
+  --tokens TSLA,AMZN --weights 6000,4000 \
+  --swap-routes v4:3000:60,v4:3000:60 --max-slippage 500 \
+  --duration 7d
 ```
 
 Emits one JSON payload containing two transactions plus the predicted `clone` and `salt`:
@@ -479,20 +505,23 @@ Emits one JSON payload containing two transactions plus the predicted `clone` an
 
 Broadcast **sequentially from the `--proposer` wallet**: send tx 1, wait for it to confirm, then send tx 2. If tx 1 reverts, do not send tx 2. The CLI preflights with read-only calls first: `--proposer` must be a registered agent on the vault (`syndicate approve` it first), the vault must not be paused, and the vault balance must cover `--amount`.
 
-**Metadata** is pinned to IPFS automatically via the hosted uploader (`https://www.sherwood.sh/api/ipfs/upload`, unauthenticated — no signer involved) when `--metadata-uri` is omitted; `--name` feeds the pinned JSON. Pass `--metadata-uri ipfs://…` to use a pre-pinned document instead.
+**Metadata** is required in keyless mode: `--metadata-uri` must be set (the CLI refuses without it), and `--name` / `--description` are ignored. Pin the document first with the hosted uploader (`https://api.sherwood.sh/ipfs/upload`, unauthenticated, no signer) — recipe under [Keyless gaps](#agent-wallet-calldata-only).
+
+**Proposer bond:** the printed txs do not include the WOOD approval to `ProposerBondEscrow`. Send `WOOD.approve(bondEscrow, amount)` before tx 2, or `propose` reverts inside the escrow pull.
 
 Two-step variant — when a local signing wallet handles the clone and only the propose comes from the external signer:
 
 ```bash
 # 1. Local wallet clones + inits, writes the call JSONs, prints the clone address
 sherwood strategy propose portfolio --vault 0xVAULT \
-  --amount 1000 --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
+  --amount 200 --tokens TSLA,AMZN --weights 6000,4000 \
+  --swap-routes v4:3000:60,v4:3000:60 \
   --write-calls ./calls
 
-# 2. Emit the propose calldata for the external signer (metadata auto-pins here too)
+# 2. Emit the propose calldata for the external signer (pin metadata first)
 sherwood --calldata-only proposal create --vault 0xVAULT \
-  --strategy 0xCLONE --name "ETH Supercycle Basket" --description "..." \
-  --performance-fee 1000 --duration 7d \
+  --strategy 0xCLONE --name "TSLA/AMZN basket" --description "..." \
+  --metadata-uri ipfs://Qm... --duration 7d --max-capital 200 \
   --execute-calls ./calls/execute.json --settle-calls ./calls/settle.json
 ```
 
@@ -533,17 +562,18 @@ sherwood strategy propose venice-inference \
 
 #### PortfolioStrategy
 
-Swaps the vault asset into a weighted basket of tokens via Uniswap V3 and unwinds back to the asset at settle. Swap routes are auto-detected per token (direct pool or via WETH).
+Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On the fork the basket is tokenized stocks bought with USDG through Uniswap v4, and **`--swap-routes` is required** (no default routes there): `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD. Elsewhere routes are auto-detected per token.
 
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
 - **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
-- **Flags:** `--tokens` takes registry symbols (USDC, WETH, cbBTC, AERO, AAVE, …) or raw `0x` addresses in any casing (normalized since CLI 0.65.2); `--weights` are bps and must sum to 10000
+- **Flags:** `--tokens` takes registry symbols for the active chain (on the fork: AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL) or raw `0x` addresses in any casing (normalized since CLI 0.65.2); `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500). The vault asset defaults to USDG on the fork.
 
 ```bash
 sherwood strategy propose portfolio \
-  --vault 0x... --amount 1000 --asset USDC \
-  --tokens AAVE,WETH,cbBTC --weights 4000,3000,3000 \
+  --vault 0x... --amount 200 \
+  --tokens TSLA,AMZN,AMD --weights 4000,3000,3000 \
+  --swap-routes v4:3000:60,v4:3000:60,v4:10000:200 \
   --write-calls ./portfolio-calls
 ```
 
@@ -798,9 +828,10 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 ```bash
 sherwood proposal create \
   --vault 0x... \
-  --name "ETH Supercycle Basket" \
-  --description "AAVE/WETH/cbBTC basket, 7d" \
+  --name "TSLA/AMZN basket" \
+  --description "60/40 TSLA and AMZN, 7d" \
   --duration 7d \
+  --max-capital 200 \
   --execute-calls ./execute-calls.json \
   --settle-calls ./settle-calls.json
 ```
@@ -811,13 +842,14 @@ sherwood proposal create \
 | `--name` | yes* | Strategy name (skipped if `--metadata-uri` provided) |
 | `--description` | yes* | Strategy rationale and risk summary (skipped if `--metadata-uri`) |
 | `--duration` | yes | Strategy duration. Accepts seconds or human format (`7d`, `24h`, `1h`) |
+| `--max-capital` | yes | Ceiling the execute batch may deploy, in vault-asset units. The CLI refuses without it |
 | `--execute-calls` | yes | Path to JSON file with execute Call[] array (open positions) |
 | `--settle-calls` | yes | Path to JSON file with settlement Call[] array (close positions) |
 | `--metadata-uri` | no | Override — skip IPFS upload and use this URI directly |
 
 Execute calls run at proposal execution (open positions). Settlement calls run at proposal settlement (close positions). Each file is a JSON array of `[{ target, data, value }]`.
 
-If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://sherwood.sh/api/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
+If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
 
 > **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 20% / 2000 bps, max 25% / 2500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps` (2000 bps / 20% on a factory-created vault).
 
@@ -1005,9 +1037,9 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 
 ```
 User wants to...
-├── Set up             → Phase 1: config set
+├── Set up             → Phase 1: agent wallet + faucet (no config set)
 ├── Get test funds (fork) → Incentivized beta: faucet curl (1 ETH + 15k WOOD + 1k USDG, 1/24h)
-├── Wallet without exported key → Phase 1: Privy sign → self-broadcast (or --calldata-only)
+├── Wallet setup → Phase 1: agent wallet (Privy on the fork; MetaMask may not work there) + --calldata-only
 ├── Create a fund      → Phase 2: syndicate create (use --public-chat for dashboard)
 ├── Join a fund        → Phase 2: syndicate join → creator approves (auto-adds to chat)
 ├── Review requests    → Phase 3: syndicate requests → syndicate approve/reject

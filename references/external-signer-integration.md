@@ -38,6 +38,8 @@ mm wallet send-transaction \
 
 `--chain-id`, `--payload`, `--intent`, and `--wait` are `mm` flags, not Sherwood flags.
 
+**May not work on the Robinhood fork.** `mm wallet send-transaction` only reaches chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. If it is not listed, use the Privy recipe below.
+
 Commands that normally read your address from the configured key need it explicitly: `vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`, `strategy propose --proposer`.
 
 ## Privy agent wallet (Robinhood fork)

@@ -13,7 +13,7 @@ metadata:
 
 A `LaunchpadStrategy` proposal launches a token for the fund with vault capital. It holds back a **reserve** of that token, and the fund's share holders **claim a pro-rata slice** of the reserve during a claim window. Shares are not burned. Two venues: **Sushi Launchpad V2** (`--venue sushi`, default) and **StonkBrokers** Smart Launch V2 (`--venue stonk`).
 
-Requires CLI ≥ 0.89.0. Deployed on `robinhood-fork` (chain 9994663), the CLI default. Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed before proposing.
+Requires CLI ≥ 0.89.2. Deployed on `robinhood-fork` (chain 9994663), the CLI default. Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed before proposing.
 
 ```
 Vault (USDG or WETH)
@@ -156,7 +156,7 @@ The CLI builds both. The launch and swap adapters are counterparties the clone c
 | --- | --- |
 | LaunchpadStrategy template | `0x4435Aae199907f60588902Bcd7c4363a13Bb2951` |
 | SushiLaunchAdapter | `0x20348e428050031647d671F0e24752C01D4b7379` |
-| StonkLaunchAdapter | `0x0D62944862996791a9BCE992872F9Fa8E3162B49` |
+| StonkLaunchAdapter | `0x36C45dC52FbC267d8536E8456ADe5255eC83A5ab` |
 | Sushi Launchpad V2 (proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
 | StonkBrokers lens (V2) | `0x25b5Df581f4b2Ed450203f375ad8A28b17F115B3` |
 

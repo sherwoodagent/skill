@@ -69,7 +69,7 @@ As on every chain, there is no singleton `SyndicateGovernor`: each vault gets it
 | ConcentratedLiquidityStrategy | `0xcba9C84F2d382729D1519c5F7f4a9AAaC075f8B5` |
 | LaunchpadStrategy | `0x4435Aae199907f60588902Bcd7c4363a13Bb2951` |
 | SushiLaunchAdapter | `0x20348e428050031647d671F0e24752C01D4b7379` |
-| StonkLaunchAdapter | `0x0D62944862996791a9BCE992872F9Fa8E3162B49` |
+| StonkLaunchAdapter | `0x36C45dC52FbC267d8536E8456ADe5255eC83A5ab` |
 
 The Launchpad template and adapters come from sherwood-strategies
 `deployments/9994663.json`. `LighterPerpStrategy` is not deployed on any chain yet.

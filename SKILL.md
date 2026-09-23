@@ -16,7 +16,7 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.89.3
+npm i -g @sherwoodagent/cli@0.90.0
 ```
 
 Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
@@ -145,14 +145,14 @@ Commands that normally read your address from the key need it explicitly here:
 `strategy propose --proposer --metadata-uri`. Read-only commands (`syndicate info`,
 `vault balance --address`, `proposal list`) need no flag and no wallet.
 
-**Keyless gaps.** Some steps the signed CLI does for you are not in the printed txs yet:
+**What keyless mode covers (CLI ≥ 0.90.0).** The printed txs include everything the signed CLI sends, with one exception:
 
-- **Owner stake** — `guardian prepare-owner-stake` does not support `--calldata-only` (it fails with `Private key not found`). Send `WOOD.approve(StakedWood, amount)` then `StakedWood.prepareOwnerStake(amount)` yourself. For 10,000 WOOD on the fork:
-  - `{"to":"0xF8BC08092C06dB6148114DCf82AF881F1085f92b","data":"0x095ea7b3000000000000000000000000ddf2b4c52b9575e0e6d03a3a57d75d06a4a9e20300000000000000000000000000000000000000000000021e19e0c9bab2400000","value":"0x0"}`
-  - `{"to":"0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203","data":"0xe295ecf500000000000000000000000000000000000000000000021e19e0c9bab2400000","value":"0x0"}`
-- **Creator registration** — signed `syndicate create` registers the creator as an agent; the keyless tx does not. Follow it with `sherwood --calldata-only syndicate add --vault <vault> --wallet <creator> --agent-id 0`, or keyless `strategy propose` refuses (`not a registered agent`). Read the new vault address with `sherwood syndicate info <subdomain>`.
-- **Proposer bond** — `propose` pulls WOOD into `ProposerBondEscrow` (`governor.bondEscrow()`, `0x7d25058c891d3AC5C8bc8Da6aA937DFeE648B5cF` on the fork). Keyless `strategy propose` does not print the approval; send `WOOD.approve(bondEscrow, amount)` first.
-- **Metadata** — keyless `strategy propose` / `proposal create` require `--metadata-uri`. Pin with the hosted uploader (no signer): `curl -s -X POST https://api.sherwood.sh/ipfs/upload -H 'content-type: application/json' -d '{"name":"<name>","content":{"name":"<name>","description":"<text>"}}'` → `{"ipfsHash":"Qm…"}` → `--metadata-uri ipfs://Qm…`.
+- **Owner stake** — `sherwood --calldata-only guardian prepare-owner-stake 10000` prints `WOOD.approve(StakedWood)` then `prepareOwnerStake`, and refuses amounts under `minOwnerStake`.
+- **Proposer bond** — keyless `strategy propose` / `proposal create` put the WOOD approval to the governor's `bondEscrow()` first when it is needed, and refuse (`InsufficientProposerBondWood`) when the proposer does not hold the quoted bond. `proposal create` takes an optional `--proposer` for that check.
+- **Metadata** — without `--metadata-uri`, both pin `--name` / `--description` through the hosted uploader (no signer needed).
+- **Creator registration (the exception)** — signed `syndicate create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood syndicate info <subdomain>` for the address, then `sherwood --calldata-only syndicate add --vault <vault> --wallet <creator> --agent-id 0`, or keyless `strategy propose` refuses (`not a registered agent`). The printed `note` names both commands.
+
+Under `--calldata-only`, stdout is only the JSON (progress lines go to stderr), so it pipes straight into a signer.
 
 See [ADDRESSES.md](ADDRESSES.md) for EAS and schema UIDs if you build calldata entirely by hand.
 
@@ -272,7 +272,7 @@ After deployment the CLI automatically:
 3. Creates an XMTP group chat for the syndicate
 4. Adds the dashboard spectator (if `--public-chat`)
 
-With `--calldata-only` (agent wallet) none of this happens: the printed tx only deploys the vault. Register the creator yourself (`syndicate add`, see [Keyless gaps](#agent-wallet-calldata-only)) and read the vault address with `sherwood syndicate info <subdomain>`.
+With `--calldata-only` (agent wallet) none of this happens: the printed tx only deploys the vault. Register the creator yourself (`syndicate add`, see [Agent wallet](#agent-wallet-calldata-only)) and read the vault address with `sherwood syndicate info <subdomain>`.
 
 Verify: `sherwood syndicate info <subdomain>` (or by numeric ID: `sherwood syndicate info 1`)
 
@@ -491,23 +491,24 @@ With an agent wallet (Privy, MetaMask Agent Wallet, …) the whole clone + propo
 ```bash
 sherwood --calldata-only strategy propose portfolio \
   --vault 0xVAULT --proposer 0xAGENT \
-  --metadata-uri ipfs://Qm... \
+  --name "TSLA/AMZN basket" --description "60/40 TSLA and AMZN, 7d" \
   --amount 200 \
   --tokens TSLA,AMZN --weights 6000,4000 \
   --swap-routes v4:3000:60,v4:3000:60 --max-slippage 500 \
   --duration 7d
 ```
 
-Emits one JSON payload containing two transactions plus the predicted `clone` and `salt`:
+Emits one JSON payload with the predicted `clone` and `salt` and these transactions:
 
-1. `StrategyFactory.cloneAndInitDeterministic` — deploys the strategy clone at a CREATE2 address pinned by (factory, template, vault, salt)
-2. `governor.propose(...)` — references that clone; the execute/settle batch calls are baked in
+1. `WOOD.approve(bondEscrow)` — only when the proposer's allowance to the bond escrow does not already cover it
+2. `StrategyFactory.cloneAndInitDeterministic` — deploys the strategy clone at a CREATE2 address pinned by (factory, template, vault, salt)
+3. `governor.propose(...)` — references that clone; the execute/settle batch calls are baked in
 
-Broadcast **sequentially from the `--proposer` wallet**: send tx 1, wait for it to confirm, then send tx 2. If tx 1 reverts, do not send tx 2. The CLI preflights with read-only calls first: `--proposer` must be a registered agent on the vault (`syndicate approve` it first), the vault must not be paused, and the vault balance must cover `--amount`.
+Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to confirm before the next. If the clone tx reverts, do not send `propose`. The CLI preflights with read-only calls first: `--proposer` must be a registered agent on the vault (`syndicate approve` it first), the vault must not be paused, and the vault balance must cover `--amount`.
 
-**Metadata** is required in keyless mode: `--metadata-uri` must be set (the CLI refuses without it), and `--name` / `--description` are ignored. Pin the document first with the hosted uploader (`https://api.sherwood.sh/ipfs/upload`, unauthenticated, no signer) — recipe under [Keyless gaps](#agent-wallet-calldata-only).
+**Metadata** pins from `--name` / `--description` through the hosted uploader (no signer); pass `--metadata-uri ipfs://…` to use a pre-pinned document instead.
 
-**Proposer bond:** the printed txs do not include the WOOD approval to `ProposerBondEscrow`. Send `WOOD.approve(bondEscrow, amount)` before tx 2, or `propose` reverts inside the escrow pull.
+**Proposer bond:** when the proposer has no allowance to the bond escrow yet, the first printed tx is `WOOD.approve(bondEscrow)`. Send it before the clone and propose txs.
 
 Two-step variant — when a local signing wallet handles the clone and only the propose comes from the external signer:
 

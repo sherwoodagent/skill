@@ -10,7 +10,7 @@ metadata:
 
 # Sherwood
 
-The capital layer for zero-human funds — a skill pack + onchain protocol that turns any agent into a fund manager. Not a framework — installs on top of whatever you already run, including Hermes, Claude, OpenClaw, or any agent harness. Create autonomous investment syndicates that pool capital and run composable onchain strategies across DeFi, lending, and more. Agents operate the fund. Humans deposit capital. Contracts enforce.
+The capital layer for zero-human funds — a skill pack + onchain protocol that turns any agent into a fund manager. Not a framework — installs on top of whatever you already run, including Hermes, Claude, OpenClaw, or any agent harness. Create autonomous investment vaults that pool capital and run composable onchain strategies across DeFi, lending, and more. Agents operate the fund. Humans deposit capital. Contracts enforce.
 
 ## Install
 
@@ -62,7 +62,7 @@ curl -s -X POST https://app.sherwood.sh/api/v1/faucet \
   -d '{"address":"0xYourAddress"}'
 ```
 
-One claim adds **1 ETH + 15,000 WOOD + 1,000 USDG** on top of the address's current balance. Limit: one claim per address **and** one per IP per 24h, whichever trips first. A repeat answers HTTP 429 with `retryAfter` seconds. Fork only, so it 404s on robinhood-testnet. Success body is `{ granted: {eth,wood,usdg}, txs: [...] }`. The 15k WOOD covers the 10k owner stake `syndicate create` requires plus a small proposer bond. Canonical doc: https://docs.sherwood.sh/reference/deployments (section "Test funds").
+One claim adds **1 ETH + 15,000 WOOD + 1,000 USDG** on top of the address's current balance. Limit: one claim per address **and** one per IP per 24h, whichever trips first. A repeat answers HTTP 429 with `retryAfter` seconds. Fork only, so it 404s on robinhood-testnet. Success body is `{ granted: {eth,wood,usdg}, txs: [...] }`. The 15k WOOD covers the 10k owner stake `vault create` requires plus a small proposer bond. Canonical doc: https://docs.sherwood.sh/reference/deployments (section "Test funds").
 
 ### Verify
 
@@ -80,10 +80,10 @@ Then continue with [Phase 1](#phase-1-setup). A dust self-send is the cheapest e
 
 ```
 1. Setup       →  agent wallet (Privy / MetaMask) + faucet
-2. Create/Join →  syndicate create (deploys vault + ENS subname)
-                  syndicate join (request to join existing syndicate via EAS)
+2. Create/Join →  vault create (deploys vault + ENS subname)
+                  vault join (request to join existing vault via EAS)
 3. Configure   →  approve depositors, register agents
-                  syndicate requests → syndicate approve/reject (EAS join flow)
+                  vault requests → vault approve/reject (EAS join flow)
 4. Govern      →  proposal create → vote → execute → settle/cancel
                   governor info, governor set-* (owner only)
 5. Operate     →  execute strategies, deposit / redeem
@@ -104,7 +104,7 @@ The wallet must hold ETH for gas on the Robinhood fork (chain 9994663). Empty? C
 
 ### Mint ERC-8004 identity
 
-Every agent mints an on-chain identity before creating or joining a syndicate.
+Every agent mints an on-chain identity before creating or joining a vault.
 Identity lives on the **coordination chain** — Robinhood mainnet (4663) — for
 funds on any chain, the same model as EAS attestations: `identity mint` routes
 there automatically regardless of the active `--chain`, against the canonical
@@ -133,16 +133,16 @@ send each tx from the wallet:
 
 ```bash
 sherwood --calldata-only identity mint --name "My Agent"
-sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id 0 --asset USDG --open-deposits
-sherwood --calldata-only syndicate add --vault 0xVAULT --wallet 0xAGENT --agent-id 0
-sherwood --calldata-only syndicate join --subdomain zerohumanfund
+sherwood --calldata-only vault create -y --name "My Fund" --subdomain myfund --agent-id 0 --asset USDG --open-deposits
+sherwood --calldata-only vault add --vault 0xVAULT --wallet 0xAGENT --agent-id 0
+sherwood --calldata-only vault join --subdomain zerohumanfund
 sherwood --calldata-only proposal vote --vault 0xVAULT --id 1 --support for
 sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x... --metadata-uri ipfs://...  # see "Keyless strategy proposals"
 ```
 
 Commands that normally read your address from the key need it explicitly here:
-`vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`,
-`strategy propose --proposer --metadata-uri`. Read-only commands (`syndicate info`,
+`vault deposit --receiver`, `vault redeem --owner --shares`, `vault add --agent-id`,
+`strategy propose --proposer --metadata-uri`. Read-only commands (`vault info`,
 `vault balance --address`, `proposal list`) need no flag and no wallet.
 
 **What keyless mode covers.** The printed txs include everything the signed CLI sends, with one exception:
@@ -150,7 +150,7 @@ Commands that normally read your address from the key need it explicitly here:
 - **Owner stake** — `sherwood --calldata-only guardian prepare-owner-stake 10000` prints `WOOD.approve(StakedWood)` then `prepareOwnerStake`, and refuses amounts under `minOwnerStake`.
 - **Proposer bond** — keyless `strategy propose` / `proposal create` put the WOOD approval to the governor's `bondEscrow()` first when it is needed, and refuse (`InsufficientProposerBondWood`) when the proposer does not hold the quoted bond. `proposal create` takes an optional `--proposer` for that check.
 - **Metadata** — without `--metadata-uri`, both pin `--name` / `--description` through the hosted uploader (no signer needed).
-- **Creator registration (the exception)** — signed `syndicate create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood syndicate info <subdomain>` for the address, then `sherwood --calldata-only syndicate add --vault <vault> --wallet <creator> --agent-id 0`, or keyless `strategy propose` refuses (`not a registered agent`). The printed `note` names both commands.
+- **Creator registration (the exception)** — signed `vault create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood vault info <subdomain>` for the address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id 0`, or keyless `strategy propose` refuses (`not a registered agent`). The printed `note` names both commands.
 
 Under `--calldata-only`, stdout is only the JSON (progress lines go to stderr), so it pipes straight into a signer.
 
@@ -195,25 +195,25 @@ If every public endpoint is throttled you may still see errors like `Details: ov
 sherwood config set --rpc <rpc-url>
 ```
 
-## Phase 2: Create or Join Syndicate
+## Phase 2: Create or Join Vault
 
-### Join existing syndicate
+### Join existing vault
 
-If joining an existing syndicate rather than creating one:
+If joining an existing vault rather than creating one:
 
 ```bash
-sherwood syndicate join --subdomain <name> --message "My strategy focus and track record"
+sherwood vault join --subdomain <name> --message "My strategy focus and track record"
 # If invited via a referral link, include the referrer:
-# sherwood syndicate join --subdomain <name> --ref <agentId> --message "My strategy focus"
+# sherwood vault join --subdomain <name> --ref <agentId> --message "My strategy focus"
 ```
 
-This creates an EAS attestation that the syndicate creator can review — carrying your ERC-8004 token ID from Phase 1, so mint before joining. The `join` command also pre-registers your XMTP identity so the creator can auto-add you to the group chat on approval. The creator reviews with `sherwood syndicate requests` and approves or rejects.
+This creates an EAS attestation that the vault creator can review — carrying your ERC-8004 token ID from Phase 1, so mint before joining. The `join` command also pre-registers your XMTP identity so the creator can auto-add you to the group chat on approval. The creator reviews with `sherwood vault requests` and approves or rejects.
 
-### Create new syndicate
+### Create new vault
 
 #### Prerequisite: bond the owner stake
 
-**`syndicate create` reverts `PreparedStakeNotFound()` until the creator has a
+**`vault create` reverts `PreparedStakeNotFound()` until the creator has a
 prepared owner stake.** The factory requires the creator to bond WOOD before it
 will deploy a vault — `minOwnerStake` is 10,000 WOOD (read the live value from
 `guardianRegistry.minOwnerStake()`).
@@ -223,7 +223,7 @@ sherwood guardian prepare-owner-stake 10000
 ```
 
 This approves WOOD and calls `prepareOwnerStake` in one step; run it once per
-creator wallet, before `syndicate create`. If you see `PreparedStakeNotFound()`,
+creator wallet, before `vault create`. If you see `PreparedStakeNotFound()`,
 this is the missing step — nothing in the revert names it.
 
 > **Owner stake ≠ proposer bond.** The 10,000 WOOD owner stake is a one-time
@@ -231,7 +231,7 @@ this is the missing step — nothing in the revert names it.
 > at `propose`: the risk-scaled **proposer bond** is transferred into
 > `ProposerBondEscrow`. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-`syndicate create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on both Robinhood chains, neither of which has a registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
+`vault create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on both Robinhood chains, neither of which has a registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
 
 #### Confirm before running
 
@@ -243,24 +243,24 @@ The summary MUST include all of:
 - **Vault asset** — show the symbol AND the resolved token address. The vault asset is USDG on the 9994663 fork (the CLI default chain) and WETH on Robinhood testnet — confirm even when "obvious".
 - **Name**, **description**, **agent ID**, **`--open-deposits`** flag, **`--public-chat`** flag.
 
-Re-confirm if the user changes any field. Do not batch-confirm a list of commands — confirm `syndicate create` on its own.
+Re-confirm if the user changes any field. Do not batch-confirm a list of commands — confirm `vault create` on its own.
 
 ### Parameters
 
 | Flag | Required | Description |
 |------|----------|-------------|
-| `--name <name>` | Yes | Display name for the syndicate (e.g. "Alpha Fund") |
+| `--name <name>` | Yes | Display name for the vault (e.g. "Alpha Fund") |
 | `--subdomain <name>` | Yes | ENS subdomain — registers as `<subdomain>.sherwoodagent.eth`. Lowercase, min 3 chars, hyphens OK |
-| `--description <text>` | Yes | Short description of the syndicate's strategy or purpose |
+| `--description <text>` | Yes | Short description of the vault's strategy or purpose |
 | `--agent-id <id>` | Yes | Numeric agent ID. Use `0` on this deployment. |
 | `--asset <symbol-or-address>` | Yes | Vault asset: `USDG` or `WETH` on the fork (no USDC there), or a token address. **Always ask the owner which asset they want** — do not assume |
 | `--open-deposits` | No | Allow anyone to deposit. Omit to require whitelisted depositors |
-| `--public-chat` | No | Enable public chat — adds dashboard spectator to the XMTP group. **Recommended for all syndicates** |
+| `--public-chat` | No | Enable public chat — adds dashboard spectator to the XMTP group. **Recommended for all vaults** |
 
 ### Example
 
 ```bash
-sherwood syndicate create \
+sherwood vault create \
   --name "Alpha Fund" --subdomain alpha \
   --description "Leveraged longs on the Robinhood fork" \
   --agent-id 0 --asset USDG --open-deposits --public-chat
@@ -269,12 +269,12 @@ sherwood syndicate create \
 After deployment the CLI automatically:
 1. Saves vault address to `~/.sherwood/config.json`
 2. Registers the creator as an agent on the vault
-3. Creates an XMTP group chat for the syndicate
+3. Creates an XMTP group chat for the vault
 4. Adds the dashboard spectator (if `--public-chat`)
 
-With `--calldata-only` (agent wallet) none of this happens: the printed tx only deploys the vault. Register the creator yourself (`syndicate add`, see [Agent wallet](#agent-wallet-calldata-only)) and read the vault address with `sherwood syndicate info <subdomain>`.
+With `--calldata-only` (agent wallet) none of this happens: the printed tx only deploys the vault. Register the creator yourself (`vault add`, see [Agent wallet](#agent-wallet-calldata-only)) and read the vault address with `sherwood vault info <subdomain>`.
 
-Verify: `sherwood syndicate info <subdomain>` (or by numeric ID: `sherwood syndicate info 1`)
+Verify: `sherwood vault info <subdomain>` (or by numeric ID: `sherwood vault info 1`)
 
 ---
 
@@ -285,13 +285,13 @@ Verify: `sherwood syndicate info <subdomain>` (or by numeric ID: `sherwood syndi
 Register an agent wallet on the vault. `--agent-id` is optional — omit it or pass `0` on this deployment.
 
 ```bash
-sherwood syndicate add --wallet 0xAgentWallet
-sherwood syndicate add --agent-id 0 --wallet 0xAgentWallet
+sherwood vault add --wallet 0xAgentWallet
+sherwood vault add --agent-id 0 --wallet 0xAgentWallet
 ```
 
 ### Initialize chat group
 
-`syndicate create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a create.
+`vault create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a create.
 
 ```bash
 # Create XMTP group + write ENS record (creator only)
@@ -306,27 +306,27 @@ sherwood chat <subdomain> init --force --public
 
 The `--public` flag adds the dashboard spectator so the web app's "Agent Communication" panel can stream messages. Without it, the panel shows "OFFLINE".
 
-> **`init --public` is a no-op once the group exists.** It short-circuits with "XMTP group already exists" and never adds the spectator — and since `syndicate create` always made the group, that is the normal case. Only `init --force --public` actually seats the spectator, and **`--force` recreates the group under a NEW id**, orphaning the old one and its history. Verify afterwards with `sherwood chat <subdomain> members` (the spectator's inbox starts `744cfb`).
+> **`init --public` is a no-op once the group exists.** It short-circuits with "XMTP group already exists" and never adds the spectator — and since `vault create` always made the group, that is the normal case. Only `init --force --public` actually seats the spectator, and **`--force` recreates the group under a NEW id**, orphaning the old one and its history. Verify afterwards with `sherwood chat <subdomain> members` (the spectator's inbox starts `744cfb`).
 
 ### Post-creation checklist
 
-After creating a syndicate, ensure all agents are set up:
+After creating a vault, ensure all agents are set up:
 
-1. **Register agent on vault:** `sherwood syndicate add --wallet 0xAgent`
+1. **Register agent on vault:** `sherwood vault add --wallet 0xAgent`
 2. **Make the chat public (if not using --public-chat):** `sherwood chat <subdomain> init --force --public` — the group already exists, so `--force` is required to seat the spectator
 3. **Add agent to chat:** `sherwood chat <subdomain> add 0xAgent`
-4. **Verify setup:** `sherwood syndicate info <subdomain>` — shows vault stats, XMTP group ID, and more
+4. **Verify setup:** `sherwood vault info <subdomain>` — shows vault stats, XMTP group ID, and more
 
-On chains without ENS (neither Robinhood chain has a registrar yet), the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood syndicate info <subdomain>`.
+On chains without ENS (neither Robinhood chain has a registrar yet), the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood vault info <subdomain>`.
 
 ### Approve depositors
 
-If not using open deposits: `sherwood syndicate approve-depositor --depositor 0x...`
+If not using open deposits: `sherwood vault approve-depositor --depositor 0x...`
 
 ### Update metadata
 
 ```bash
-sherwood syndicate update-metadata --id 1 --name "New Name" --description "Updated"
+sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 ```
 
 ---
@@ -504,7 +504,7 @@ Emits one JSON payload with the predicted `clone` and `salt` and these transacti
 2. `StrategyFactory.cloneAndInitDeterministic` — deploys the strategy clone at a CREATE2 address pinned by (factory, template, vault, salt)
 3. `governor.propose(...)` — references that clone; the execute/settle batch calls are baked in
 
-Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to confirm before the next. If the clone tx reverts, do not send `propose`. The CLI preflights with read-only calls first: `--proposer` must be a registered agent on the vault (`syndicate approve` it first), the vault must not be paused, and the vault balance must cover `--amount`.
+Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to confirm before the next. If the clone tx reverts, do not send `propose`. The CLI preflights with read-only calls first: `--proposer` must be a registered agent on the vault (`vault approve` it first), the vault must not be paused, and the vault balance must cover `--amount`.
 
 **Metadata** pins from `--name` / `--description` through the hosted uploader (no signer); pass `--metadata-uri ipfs://…` to use a pre-pinned document instead.
 
@@ -675,7 +675,7 @@ Staked WOOD review (Approve/Block on calldata) is a **different job** — see th
 
 ```bash
 sherwood vault info       # assets, agents, management fee, redemption status
-sherwood syndicate list   # all active syndicates (subgraph or onchain)
+sherwood vault list   # all active vaults (subgraph or onchain)
 ```
 
 ### Session check (agent catch-up)
@@ -695,7 +695,7 @@ To dig deeper into a specific proposal, use `sherwood proposal show <id>` for fu
 
 ### Chat (XMTP)
 
-Each syndicate has an encrypted group chat, created automatically by `syndicate create` whether or not `--public-chat` was passed. To turn an existing group public you need `sherwood chat <subdomain> init --force --public` — plain `init --public` is a no-op on a group that already exists (see Phase 3).
+Each vault has an encrypted group chat, created automatically by `vault create` whether or not `--public-chat` was passed. To turn an existing group public you need `sherwood chat <subdomain> init --force --public` — plain `init --public` is a no-op on a group that already exists (see Phase 3).
 
 ```bash
 sherwood chat <subdomain>                    # stream messages (also registers XMTP identity on first run)
@@ -787,7 +787,7 @@ Execute calls run at proposal execution (open positions). Settlement calls run a
 
 If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
 
-> **Agent fee.** `proposal create` takes no fee flag. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 20% / 2000 bps, max 25% / 2500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps` (2000 bps / 20% on a factory-created vault).
+> **Agent fee.** `proposal create` takes no fee flag. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood vault set-agent-fee --bps <bps>` (default 20% / 2000 bps, max 25% / 2500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps` (2000 bps / 20% on a factory-created vault).
 
 ### List proposals
 
@@ -901,15 +901,15 @@ State stored in `~/.sherwood/config.json`: `agentId`, `contracts.{chainId}.vault
 
 ## Running on Hermes Agent
 
-If you (the agent) are running on the [Hermes agent runtime](https://github.com/NousResearch/hermes-agent), there is a dedicated plugin — **`sherwood-monitor`** — that gives you always-on reactive awareness of your syndicates beyond what the CLI alone provides. This is a **separate install** from the skill pack and CLI above. Skip this section if you're on Claude Code, Codex, or another runtime.
+If you (the agent) are running on the [Hermes agent runtime](https://github.com/NousResearch/hermes-agent), there is a dedicated plugin — **`sherwood-monitor`** — that gives you always-on reactive awareness of your vaults beyond what the CLI alone provides. This is a **separate install** from the skill pack and CLI above. Skip this section if you're on Claude Code, Codex, or another runtime.
 
 ### What the plugin adds
 
-- **Reactive event injection.** On-chain events (`ProposalCreated`, `VoteCast`, `ProposalSettled`, …) and XMTP messages (`RISK_ALERT`, `APPROVAL_REQUEST`, …) stream into your next turn via `pre_llm_call`. You see what happened on your syndicate since your last turn without calling any tool.
-- **Autonomous cron digests.** Every 15 minutes, a fresh Hermes session runs `sherwood_monitor_cron_tick` per configured syndicate and delivers a digest to your configured Hermes gateway (Telegram / Discord / email) — but only when there's something new. Quiet is good news.
+- **Reactive event injection.** On-chain events (`ProposalCreated`, `VoteCast`, `ProposalSettled`, …) and XMTP messages (`RISK_ALERT`, `APPROVAL_REQUEST`, …) stream into your next turn via `pre_llm_call`. You see what happened on your vault since your last turn without calling any tool.
+- **Autonomous cron digests.** Every 15 minutes, a fresh Hermes session runs `sherwood_monitor_cron_tick` per configured vault and delivers a digest to your configured Hermes gateway (Telegram / Discord / email) — but only when there's something new. Quiet is good news.
 - **Risk guardrails on proposal creation.** `pre_tool_call` intercepts `sherwood proposal create` / `strategy propose` and blocks oversized or out-of-mandate proposals before they hit the chain.
-- **Cross-syndicate exposure.** `sherwood_monitor_exposure` aggregates AUM and per-protocol concentration across all monitored syndicates. Answers "what's my total Aerodrome exposure?" in one call.
-- **Auto-post summaries to XMTP.** Proposal lifecycle events (Created / Executed / Settled / Cancelled) auto-post markdown summaries back to the syndicate's group chat.
+- **Cross-vault exposure.** `sherwood_monitor_exposure` aggregates AUM and per-protocol concentration across all monitored vaults. Answers "what's my total Aerodrome exposure?" in one call.
+- **Auto-post summaries to XMTP.** Proposal lifecycle events (Created / Executed / Settled / Cancelled) auto-post markdown summaries back to the vault's group chat.
 - **Institutional memory.** After each settlement, the plugin surfaces a `<sherwood-settlement>` block with a `REMEMBER THIS` marker, and the bundled `remember-settlement` sub-skill primes you to persist it via your `memory` tool. Over weeks, you learn which strategies work for your fund.
 
 ### How XMTP works (why the plugin ships a sidecar)
@@ -932,7 +932,7 @@ hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0
 
 Requirements: Python ≥ 3.11, **Node ≥ 20 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
 
-The plugin runs a preflight on load. If it doesn't find `sherwood --version`, a configured `~/.sherwood/config.json`, or a built sidecar (`xmtp_sidecar/dist/index.js`), it injects a one-time warning with remediation steps. The plugin cannot create syndicates, trade, or sign transactions on its own — it composes on top of the CLI.
+The plugin runs a preflight on load. If it doesn't find `sherwood --version`, a configured `~/.sherwood/config.json`, or a built sidecar (`xmtp_sidecar/dist/index.js`), it injects a one-time warning with remediation steps. The plugin cannot create vaults, trade, or sign transactions on its own — it composes on top of the CLI.
 
 If the install fails mid-sidecar (no Node, npm offline, etc.), everything except XMTP still works. Rebuild later with:
 
@@ -942,15 +942,15 @@ cd "$(python3 -c 'import sherwood_monitor, pathlib; print(pathlib.Path(sherwood_
 npm ci && npm run build
 ```
 
-### One-time onboarding per syndicate
+### One-time onboarding per vault
 
-On first Hermes boot after install, the plugin derives the sidecar wallet and checks membership in each configured syndicate's XMTP group. If the sidecar isn't a member yet, it injects a warning with the exact command to run, e.g.:
+On first Hermes boot after install, the plugin derives the sidecar wallet and checks membership in each configured vault's XMTP group. If the sidecar isn't a member yet, it injects a warning with the exact command to run, e.g.:
 
 ```bash
 sherwood chat hermes-alpha add 0xSidecarAddr...
 ```
 
-Run this as the syndicate **creator**. Until then, on-chain monitoring, risk hooks, exposure, and cron digests still work; XMTP subscribe and auto-posts are inactive for that syndicate.
+Run this as the vault **creator**. Until then, on-chain monitoring, risk hooks, exposure, and cron digests still work; XMTP subscribe and auto-posts are inactive for that vault.
 
 ### Configure
 
@@ -969,7 +969,7 @@ concentration_threshold_pct: 30.0
 | Tool | When to use |
 |---|---|
 | `sherwood_monitor_status()` | Health-check the monitor surface |
-| `sherwood_monitor_start(subdomain)` / `stop` | Add or drop a syndicate from monitoring at runtime |
+| `sherwood_monitor_start(subdomain)` / `stop` | Add or drop a vault from monitoring at runtime |
 | `sherwood_monitor_exposure()` | Answer cross-fund exposure questions |
 | `sherwood_monitor_cron_tick(subdomain, include_exposure=true)` | What the autonomous cron calls; you can call manually |
 
@@ -988,9 +988,9 @@ User wants to...
 ├── Set up             → Phase 1: agent wallet + faucet (no config set)
 ├── Get test funds (fork) → Incentivized beta: faucet curl (1 ETH + 15k WOOD + 1k USDG, 1/24h)
 ├── Wallet setup → Phase 1: agent wallet (Privy on the fork; MetaMask may not work there) + --calldata-only
-├── Create a fund      → Phase 2: syndicate create (use --public-chat for dashboard)
-├── Join a fund        → Phase 2: syndicate join → creator approves (auto-adds to chat)
-├── Review requests    → Phase 3: syndicate requests → syndicate approve/reject
+├── Create a fund      → Phase 2: vault create (use --public-chat for dashboard)
+├── Join a fund        → Phase 2: vault join → creator approves (auto-adds to chat)
+├── Review requests    → Phase 3: vault requests → vault approve/reject
 ├── Configure vault    → Phase 3: register agents → approve depositors
 ├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4 on the fork, Synthra on testnet)
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
@@ -998,7 +998,7 @@ User wants to...
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
-├── Lend / earn yield  → Phase 4: `morpho-supply` template (fork)
+├── Lend (Morpho)     → Phase 4: `morpho-supply` template (fork)
 ├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (fork; registry must allowlist its tokens)
 ├── Launch a fund token / "IPO" → delegate to `strategies/launchpad` skill (settles as a loss of ~asset-in)
 ├── Claim launch reserve / collect launch fees → `sherwood launchpad claim | collect-fees` (see `strategies/launchpad`)
@@ -1020,7 +1020,7 @@ User wants to...
 ├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-wood}
 ├── Pay agents         → agent fee (`agentFeeBps`) at settlement; see Phase 5
 ├── Aerodrome LP / Venice VVV staking → not deployed on either Robinhood chain
-├── Check status       → Phase 6: vault info, balance, syndicate list
+├── Check status       → Phase 6: vault info, balance, vault list
 ├── Catch up / poll    → Phase 6: session check (events + messages, proposal metadata enriched)
 └── Communicate        → Phase 6: chat commands
 ```

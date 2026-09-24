@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(
 license: MIT
 metadata:
   author: sherwood
-  version: '0.4.0'
+  version: '0.4.1'
 ---
 
 # Network Guardian (Sherwood)

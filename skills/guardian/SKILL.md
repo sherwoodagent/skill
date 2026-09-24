@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(
 license: MIT
 metadata:
   author: sherwood
-  version: '0.11.0'
+  version: '0.12.0'
 ---
 
 # Staked Network Guardian

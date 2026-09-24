@@ -1,12 +1,11 @@
 ---
 name: network-guardian
-description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Triggers on guardian review, Approve/Block verdict, openReview/resolveReview keeping, slash risk, or guardian staking economics. NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
+description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Long-form reference for the `guardian` skill, which owns the guardian-review triggers; load this when that skill points here (openReview keeping, age-weighted votes, late-vote lockout, coverage underwriting detail). NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, AskUserQuestion
-model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.4.0'
+  version: '0.4.2'
 ---
 
 # Network Guardian (Sherwood)
@@ -92,9 +91,8 @@ copy an address table into a plan.** Resolve at call time, in this order:
    `factory.governorOf(vault)` (`sherwood governor show --vault <addr>` prints it).
 
 The current chain of record is the **Robinhood mainnet fork, chain 9994663**
-(`sherwood --chain robinhood-fork`; the CLI defaults to it). Never reuse a Base (8453)
-or Robinhood-testnet (46630) allowlist on it: a labeled address on one chain is an
-unrelated contract on another.
+(the CLI defaults to it). Never reuse an address list from another chain on it: a
+labeled address on one chain is an unrelated contract on another.
 
 ## Review lifecycle — and who moves it
 

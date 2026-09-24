@@ -1,20 +1,16 @@
 # Contract Addresses
 
 Sherwood's chain of record is the **Robinhood mainnet fork — a Tenderly vnet, chain
-9994663**: the CLI targets it by default and `--chain robinhood-testnet` selects the
-**Robinhood testnet (chain 46630)** deployment instead. Both books are also available
-in `cli/src/lib/addresses.ts` (resolved at runtime), and the protocol will expand to
-more chains over time.
-
-The vnet is listed first below. It is ephemeral and carries no real value.
+9994663**, and the CLI targets it by default. The CLI resolves the same book at
+runtime. The vnet is ephemeral and carries no real value.
 
 > See also: [Deployments reference](https://docs.sherwood.sh/reference/deployments)
 
 > **Robinhood mainnet (chain 4663) is not listed here.** No Sherwood core address
-> exists on it yet — the addresses land after the deployment ceremony. Do not infer
-> one from a testnet address, and do not reuse this table on 4663. The one thing that
+> exists on it yet — the addresses land after the deployment ceremony. Do not reuse
+> this table on 4663. The one thing that
 > *is* live on 4663 is the canonical ERC-8004 IdentityRegistry, which is not a
-> Sherwood contract — see the identity note under "Not yet active" below.
+> Sherwood contract — see "Not active on the fork" below.
 
 ## Robinhood mainnet fork — Tenderly vnet (chain 9994663)
 
@@ -22,7 +18,7 @@ The vnet is listed first below. It is ephemeral and carries no real value.
 > Robinhood mainnet, reachable only through its own RPC URL. Every address below dies
 > when the vnet is re-minted, and a fresh fork gets a whole new table. Do not stake,
 > fund, or route real value here, and never treat these as Robinhood mainnet (4663)
-> addresses. Source of truth: `contracts/chains/9994663.json`.
+> addresses. Source of truth: `chains/9994663.json` in `sherwoodagent/sherwood-protocol`.
 
 Public RPC (bundled by the CLI, no flag needed):
 `https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe`
@@ -122,120 +118,13 @@ must have `from == vault` (else `TransferFromNotVault`), calldata shorter than 3
 bytes reverts `MalformedAssetCall`, and any other selector's first argument is
 read as the spender whose allowance is reset after the batch.
 
-## Robinhood testnet (chain 46630)
-
-V2 deployment — full stack: core contracts + guardian layer (registry + sWOOD) +
-live-NAV (PriceRouter + Uniswap-compatible adapter backed by Synthra) +
-StrategyFactory keyless deploy. Source of truth: `contracts/chains/46630.json`.
-
-> **This table is chain 46630 only, and 46630 is not the default chain.** A bare CLI
-> invocation targets the 9994663 fork above, whose addresses are entirely different —
-> read them from that section, never from this one. The econ-security stack
-> (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt) exists on the fork
-> and **not** here.
-
-| Contract | Address |
-|----------|---------|
-| SyndicateFactory | `0xa91AA45AFF32f52b6357044B02a16EBA775feC0b` |
-| GovernorBeacon | `0x3D46Ec018cd5893b685b4dfdc3921A4Eb64E11d1` |
-| ProtocolConfig | `0xC104Eb6a522d6718cA28F344B2373B29d57FF2E0` |
-| SyndicateVaultImpl | `0xC57e12d6e2d8Ed49316F0b69c51893CcA44151F7` |
-| BatchExecutorLib | `0xF3b8db5aa41c7Ce92478A0Fa9C55a6460533eb86` |
-| GuardianRegistry | `0xA400eFcfFc820C6f812203C58ee00423AeCC0903` |
-| StakedWood (sWOOD) | `0x21A69A6c9814c0d339C57fDdafed3B283702a739` |
-| TierRegistry | `0x99b8068Dc0F6093466964D581f72d947e3e380DB` |
-| WOOD token (fixture) | `0xCCb4fB59cf40de1E23083037ee81Da1DD747D8d7` |
-| PriceRouter | `0xDd302ffcfA08071780eC1A2f12BccFB9ba6b6731` |
-| PortfolioStrategy (template) | `0x67420Cc504d70a42Adfd8867d878afe0978C7d10` |
-| StrategyFactory | `0xb683Bb8EEcBc2419BC3801df6FeA88f96657e670` |
-| UniswapSwapAdapter (Synthra-backed) | `0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490` |
-
-There is **no singleton `SyndicateGovernor`**. Since PR #421 each vault has its own
-governor — a `BeaconProxy` the factory deploys at creation, all sharing one
-implementation via the `GovernorBeacon` above — resolved at runtime via
-`factory.governorOf(vault)` (`sherwood governor show --vault <addr>` prints it; the
-CLI resolves it for you). Protocol-level fees live on the shared `ProtocolConfig`.
-
-### Tokens
-
-| Token | Address |
-|-------|---------|
-| WETH (default vault asset) | `0x7943e237c7F95DA44E0301572D358911207852Fa` |
-| TSLA | `0xC9f9c86933092BbbfFF3CCb4b105A4A94bf3Bd4E` |
-| AMZN | `0x5884aD2f920c162CFBbACc88C9C51AA75eC09E02` |
-| PLTR | `0x1FBE1a0e43594b3455993B5dE5Fd0A7A266298d0` |
-| NFLX | `0x3b8262A63d25f0477c4DDE23F83cfe22Cb768C93` |
-| AMD | `0x71178BAc73cBeb415514eB542a8995b82669778d` |
-
-There is no USDC on this chain — WETH is the default vault asset.
-
-### External Protocols
-
-Synthra is Uniswap-V3-compatible; the deployed `UniswapSwapAdapter` is backed by the
-Synthra router plus a QuoterV2 shim. Prices come from Chainlink Data Streams via the
-verifier proxy.
-
-| Contract | Address |
-|----------|---------|
-| Synthra Router | `0x3Ce954107b1A675826B33bF23060Dd655e3758fE` |
-| Synthra Quoter | `0x231606c321A99DE81e28fE48B07a93F1ba49e713` |
-| Synthra V3 Factory | `0x911b4000D3422F482F4062a913885f7b035382Df` |
-| Synthra QuoterV2 shim | `0xb3C009aECAeDd5ccC62Ec12eDAAA55F19C4A1eFb` |
-| Chainlink Verifier Proxy | `0x72790f9eB82db492a7DDb6d2af22A270Dcc3Db64` |
-| Permit2 | `0x000000000022D473030F116dDEE9F6B43aC78BA3` |
-| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` |
-
-## Not yet active on Robinhood testnet
-
-The following are not active on Robinhood testnet — not deployed there, or
-deployed elsewhere and not enforced on-chain — and come online as Sherwood expands:
+## Not active on the fork
 
 - **On-chain identity gating** — identity itself IS live: every agent mints on the
   canonical ERC-8004 IdentityRegistry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on
-  Robinhood mainnet (4663), the coordination chain, whatever chain its fund runs on.
-  What is off is the factory-side check: `agentRegistry` is `address(0)` at v1, so
-  `syndicate create` / `syndicate add` do not verify NFT ownership on-chain, and
-  `agentId=0` is accepted when `--agent-id` is omitted.
-- **EAS coordination attestations** (join requests / approvals) — no EAS predeploy.
-- **ENS subnames (Durin)** — no registrar; `syndicate create` skips ENS registration.
-- **Strategies other than Portfolio** — Moonwell (supply / wstETH), Aerodrome LP,
-  Leveraged Aerodrome CL, Venice inference, Mamo yield, Hyperliquid perp/grid.
-
-## Strategy Templates
-
-The live strategy on Robinhood testnet is **Portfolio** — a weighted basket of
-tokenized stocks/crypto with on-chain rebalancing through Synthra. Use
-`sherwood strategy list` to see current deployed template addresses.
-
-| Template | Address |
-|----------|---------|
-| PortfolioStrategy | `0x67420Cc504d70a42Adfd8867d878afe0978C7d10` |
-| UniswapSwapAdapter (Synthra-backed) | `0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490` |
-
-Under the V2 live-NAV model the strategy is never trusted for value: it reports its
-on-venue holdings via `IStrategy.positions()` and the vault prices them through the
-governance-owned `PriceRouter`. Portfolio reports no priceable positions and routes
-through the async-redeem queue (Lane B), settling at one frozen per-proposal price.
-
-## Batch callees — Portfolio Strategy
-
-There is **no vault-side target list**, and no callee or adapter allowlist. The
-vault does not maintain an on-chain batch-target set.
-
-The vault `asset()` is the sole structural exemption. Everything else a governor
-batch calls must be a strategy registered on `StrategyFactory`
-(`isRegisteredStrategy`, permissionless) or the batch reverts
-`NotARegisteredStrategy(target)`. Approve spenders are not allowlisted — the
-named spender's allowance is simply reset after the batch. A venue the strategy
-itself calls (swap adapter, price source, lending pool) is checked strategy-side
-against `TierRegistry.isCounterpartyAllowed`, not by the vault.
-
-Typical Portfolio addresses on Robinhood testnet:
-
-| Role | Address |
-|------|---------|
-| WETH (vault asset) | `0x7943e237c7F95DA44E0301572D358911207852Fa` |
-| UniswapSwapAdapter (Synthra) | `0x4fc3492117cC3bbcE0b210D22a8DC244f9d86490` |
-| Synthra Router | `0x3Ce954107b1A675826B33bF23060Dd655e3758fE` |
-| Stock tokens | e.g. TSLA / AMZN / AMD (see Tokens above) |
-| Strategy clone | printed by `sherwood strategy propose` |
+  Robinhood mainnet (4663), the coordination chain. What is off is the factory-side
+  check: `agentRegistry` is `address(0)` at v1, so `vault create` / `vault add` do not
+  verify NFT ownership on-chain, and `agentId=0` is accepted when `--agent-id` is omitted.
+- **ENS subnames** — no registrar; `vault create` skips ENS registration.
+- **Strategies other than Portfolio, Morpho Supply, Concentrated Liquidity and
+  Launchpad** — `sherwood strategy list` shows the rest under "Not available".

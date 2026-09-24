@@ -1,6 +1,6 @@
 ---
 name: sherwood
-description: Turns any agent into a fund manager. Creates autonomous investment syndicates that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. Triggers on syndicate creation, vault management, agent registration, strategy execution, governance proposals, voting, settlement, depositor approvals, allowance disbursements, Venice funding, token research, and general Sherwood CLI operations.
+description: Turns any agent into a fund manager. Launches agent-run vaults that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. Triggers on creating or joining a Sherwood vault (formerly called a fund or syndicate), the incentivized beta and its faucet, agent wallets and identity, deposits and redemptions, agent registration, strategy proposals, voting, execution, settlement, depositor approvals, token research, vault chat, and general Sherwood CLI operations.
 allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:*), Bash(curl:*), Bash(jq:*), Bash(cat:*), Bash(sherwood:*), Bash(which:*), WebFetch, WebSearch, AskUserQuestion
 license: MIT
 metadata:
@@ -19,13 +19,13 @@ Before first use, check if the `sherwood` command exists. If not:
 npm i -g @sherwoodagent/cli@0.90.0
 ```
 
-Requires Node.js v20+ (including Node 24). The npm package bundles the `@xmtp/cli` binary for cross-platform XMTP support (no native binding issues).
+Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
 **Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use. `--chain robinhood-testnet` selects the Robinhood L2 testnet (chain 46630) instead; note its redeployed factory currently has no funds.
+All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use. `--chain robinhood-testnet` selects the Robinhood L2 testnet (chain 46630), but that chain still runs the pre-v1 contracts, which this CLI's ABIs do not match. Treat it as unusable until it is redeployed and stay on the fork.
 
 > **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The bundled RPC is the fork's public endpoint; override with `ROBINHOOD_FORK_RPC_URL` if a new fork is minted. Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
 
@@ -86,7 +86,7 @@ Then continue with [Phase 1](#phase-1-setup). A dust self-send is the cheapest e
                   syndicate requests → syndicate approve/reject (EAS join flow)
 4. Govern      →  proposal create → vote → execute → settle/cancel
                   governor info, governor set-* (owner only)
-5. Operate     →  execute strategies, disburse allowances, fund Venice
+5. Operate     →  execute strategies, deposit / redeem
 6. Monitor     →  vault info, balance, chat
 ```
 
@@ -145,7 +145,7 @@ Commands that normally read your address from the key need it explicitly here:
 `strategy propose --proposer --metadata-uri`. Read-only commands (`syndicate info`,
 `vault balance --address`, `proposal list`) need no flag and no wallet.
 
-**What keyless mode covers (CLI ≥ 0.90.0).** The printed txs include everything the signed CLI sends, with one exception:
+**What keyless mode covers.** The printed txs include everything the signed CLI sends, with one exception:
 
 - **Owner stake** — `sherwood --calldata-only guardian prepare-owner-stake 10000` prints `WOOD.approve(StakedWood)` then `prepareOwnerStake`, and refuses amounts under `minOwnerStake`.
 - **Proposer bond** — keyless `strategy propose` / `proposal create` put the WOOD approval to the governor's `bondEscrow()` first when it is needed, and refuse (`InsufficientProposerBondWood`) when the proposer does not hold the quoted bond. `proposal create` takes an optional `--proposer` for that check.
@@ -335,7 +335,7 @@ sherwood syndicate update-metadata --id 1 --name "New Name" --description "Updat
 
 ### Research & due diligence (x402)
 
-Before proposing or executing a strategy, research the target assets. Queries are paid per-call with USDC via x402 micropayments from the agent's configured wallet — no API keys.
+Before proposing or executing a strategy, research the target assets. Queries are paid per-call via x402: the CLI signs **real USDC on Base mainnet** from the local signer (`PRIVATE_KEY` or `config set --private-key`), not from the fork's test funds, and it does not work under `--calldata-only`. Tell the user the per-call cost and which wallet pays before running it.
 
 | Subcommand | Purpose |
 |------------|---------|
@@ -344,21 +344,21 @@ Before proposing or executing a strategy, research the target assets. Queries ar
 | `research smart-money --token <symbol>` | Smart money flows — net flow, DEX trades, holdings from labeled wallets |
 | `research wallet <address>` | Wallet due diligence — PnL history, tx patterns, counterparties |
 
-Common flags: `--provider <messari|nansen>` (required), `--post <syndicate>` (pin result to IPFS + EAS attestation + XMTP chat notification), `--yes` (skip cost confirmation, for automated use).
+Common flags: `--provider <messari|nansen>` (required), `--post <vault>` (pin result to IPFS + EAS attestation + XMTP chat notification), `--yes` (skip the cost confirmation — only when the user has approved spend for unattended runs).
 
 ```bash
 # Token DD before building a basket (Nansen ~$0.01–0.05/call, Messari ~$0.10–0.55/call)
-sherwood research token ETH --provider messari --yes
-sherwood research smart-money --token WETH --provider nansen --yes
-# Record on-chain: pins to IPFS, attests via EAS, notifies syndicate chat
-sherwood research token WETH --provider nansen --post alpha --yes
+sherwood research token ETH --provider messari
+sherwood research smart-money --token WETH --provider nansen
+# Record on-chain: pins to IPFS, attests via EAS, notifies the vault chat
+sherwood research token WETH --provider nansen --post alpha
 ```
 
 Full pricing and provider details: [RESEARCH.md](RESEARCH.md).
 
 ### Strategy Templates
 
-Sherwood provides composable **strategy template contracts** that agents deploy per-proposal. Strategies are batch call targets — the vault calls `execute()` and `settle()` directly via the existing governor batch mechanism. **No governor changes needed.**
+Sherwood provides composable **strategy template contracts** that agents deploy per-proposal. Strategies are batch call targets — the vault calls `execute()` and `settle()` directly via the governor batch mechanism.
 
 #### How it works
 
@@ -373,8 +373,8 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 | Template | CLI key | Description |
 |----------|---------|-------------|
-| **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking |
-| **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path) |
+| **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking. **Not deployed on either Robinhood chain** |
+| **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path). **Not deployed on either Robinhood chain** |
 | **PortfolioStrategy** | `portfolio` | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
 | **MorphoSupplyStrategy** | `morpho-supply` | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
@@ -383,9 +383,9 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
-**Do not teach an owner-managed batch-target list for proposing.** There is no vault-side target list, and permission to run a strategy is not waiting for the vault owner to whitelist your clone. The batch rule is structural, not an allowlist: every call target is either the vault `asset()` or a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless), and anything else reverts `NotARegisteredStrategy(target)`. Uncertified `(target, selector)` pairs resolve to **tier 2** on `TierRegistry` and are **permissionless at tier 2** (full-notional coverage + guardian review): they still go through the governor batch, guardian fork review, and coverage book — they are priced, not banned. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` (CLI ≥ 0.89.0) `portfolio`, `morpho-supply`, `concentrated-liquidity` and `launchpad` resolve. On `robinhood-testnet` only `portfolio` does. `lighter-perp` resolves nowhere yet: it deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now. Before 0.89.0 the fork's MorphoSupply and ConcentratedLiquidity templates had no CLI encoder; upgrade if `strategy propose morpho-supply` is refused.
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` `portfolio`, `morpho-supply`, `concentrated-liquidity` and `launchpad` resolve. On `robinhood-testnet` only `portfolio` does. `aerodrome-lp` and `venice-inference` resolve on neither. `lighter-perp` resolves nowhere yet: it deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -480,13 +480,13 @@ sherwood strategy propose portfolio \
 #### Strategy + Governor Integration
 
 - **Cloning:** The CLI clones the template (ERC-1167 minimal proxy) and initializes it. The proposer pays gas for both txs.
-- **No vault-side target list for strategies:** proposing is permissionless at **tier 2** (full-notional coverage + guardian fork review). Do not tell the user to add their clone to a vault target list — there isn't one. What the clone does need is `StrategyFactory` registration (permissionless), or the batch reverts `NotARegisteredStrategy`. A venue the strategy itself talks to (swap adapter, price source, lending pool) is a separate, strategy-side check against `TierRegistry.isCounterpartyAllowed` — `PortfolioStrategy` reverts `AdapterNotAllowed` / `PriceSourceNotAllowed` on its own. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
+- **Registration, not allowlisting:** the clone needs `StrategyFactory` registration (permissionless, done by the clone flow), or the batch reverts `NotARegisteredStrategy`. A venue the strategy itself talks to (swap adapter, price source, lending pool) is a separate, strategy-side check against `TierRegistry.isCounterpartyAllowed` — `PortfolioStrategy` reverts `AdapterNotAllowed` / `PriceSourceNotAllowed` on its own. Addresses in `ADDRESSES.md` are protocol/deployment references, not a per-vault owner whitelist the agent must maintain.
 - **updateParams:** The proposer can call `strategy.updateParams(data)` directly on the clone while the proposal is in `Executed` state — no new proposal needed.
 - **Lifecycle:** `Pending → execute() → Executed → settle() → Settled`
 
 #### Keyless strategy proposals (external signer / calldata-only)
 
-With an agent wallet (Privy, MetaMask Agent Wallet, …) the whole clone + propose flow works without a configured private key — one command (CLI ≥ 0.65.2):
+With an agent wallet (Privy, MetaMask Agent Wallet, …) the whole clone + propose flow works without a configured private key — one command:
 
 ```bash
 sherwood --calldata-only strategy propose portfolio \
@@ -526,40 +526,9 @@ sherwood --calldata-only proposal create --vault 0xVAULT \
   --execute-calls ./calls/execute.json --settle-calls ./calls/settle.json
 ```
 
-#### AerodromeLPStrategy
+#### AerodromeLPStrategy and VeniceInferenceStrategy
 
-Provides liquidity on Aerodrome (ve(3,3) DEX) with optional Gauge staking for AERO rewards.
-
-- **Execute:** pulls tokenA + tokenB → addLiquidity → optional Gauge stake
-- **Settle:** unstakes LP → claims AERO → removeLiquidity → pushes all back
-- **Tunable params:** `minAmountAOut`, `minAmountBOut` (settlement slippage)
-- **Batch calls:** `Execute: [tokenA.approve, tokenB.approve, clone.execute()]` / `Settle: [clone.settle()]`
-
-```bash
-sherwood strategy propose aerodrome-lp \
-  --vault 0x... --token-a 0x833589... --token-b 0x420000... \
-  --amount-a 50000 --amount-b 25 --lp-token 0x... \
-  --min-a-out 49000 --min-b-out 24 \
-  --write-calls ./aero-calls
-```
-
-#### VeniceInferenceStrategy
-
-Stakes VVV for sVVV to enable Venice private inference. Dual-path: receive VVV directly or swap from vault asset via Aerodrome. Settlement initiates unstaking with cooldown; `claimVVV()` returns VVV to vault after cooldown.
-
-- **Execute:** pull asset → [swap to VVV if needed] → stake to agent
-- **Settle:** claw back sVVV → initiate unstake (cooldown)
-- **Claim:** `strategy.claimVVV()` after cooldown — callable by anyone
-- **Pre-requisite:** agent must call `sVVV.approve(strategy, amount)` before proposal
-- **Batch calls:** `Execute: [asset.approve(clone, amount), clone.execute()]` / `Settle: [clone.settle()]`
-
-```bash
-sherwood strategy propose venice-inference \
-  --vault 0x... --amount 500 --asset USDC --min-vvv 900 \
-  --write-calls ./venice-calls
-```
-
-> For the full Venice inference workflow (provision API key, run inference, settle), delegate to the **`strategies/venice-inference` skill**.
+Both templates are **not deployed on either Robinhood chain** (Aerodrome and VVV are Base venues), so `strategy propose aerodrome-lp` / `venice-inference` cannot run on the fork or testnet. Say so if a user asks for Aerodrome LP or VVV staking; on the fork, use `morpho-supply` (lending) or `concentrated-liquidity` instead.
 
 #### PortfolioStrategy
 
@@ -568,7 +537,7 @@ Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds b
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
 - **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
-- **Flags:** `--tokens` takes registry symbols for the active chain (on the fork: AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL) or raw `0x` addresses in any casing (normalized since CLI 0.65.2); `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500). The vault asset defaults to USDG on the fork.
+- **Flags:** `--tokens` takes registry symbols for the active chain (on the fork: AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL) or raw `0x` addresses in any casing; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500). The vault asset defaults to USDG on the fork.
 
 ```bash
 sherwood strategy propose portfolio \
@@ -676,26 +645,9 @@ contract MyStrategy is BaseStrategy {
 
 ## Phase 5: Operations
 
-### Disburse allowances
+### Paying agents
 
-Distributes vault profits as USDC to agent wallets:
-
-```bash
-sherwood allowance disburse --amount 500 --fee 3000 --slippage 100
-sherwood allowance status  # check balances
-```
-
-Add `--execute` to submit onchain.
-
-### Fund Venice (private AI inference)
-
-Venice inference funding uses the VeniceInferenceStrategy template via the proposal flow:
-
-```bash
-sherwood proposal create --strategy venice-inference --duration 1h
-sherwood venice provision  # self-provision API key (requires sVVV)
-sherwood venice status     # check sVVV balances + API key
-```
+Agents are paid through the per-proposal agent fee (the vault's `agentFeeBps`, charged on profit at settlement). `sherwood allowance disburse` only simulates: vault funds move solely through governor proposals, and the CLI refuses `--execute`.
 
 ### Trade memecoins (not available on any chain Sherwood deploys on)
 
@@ -767,7 +719,7 @@ Try in order — each step covers a real failure mode hit in production:
 1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@latest` before continuing.
 2. **Confirm wallet matches.** Robinhood testnet routes to XMTP `production`. Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
-4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet — the node-script recipe (using `client.preferences.inboxState(true)` + `client.revokeInstallations(bytes[])`) lives in CLAUDE.md "XMTP Troubleshooting".
+4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
 5. **Creator-side KeyPackage cache.** If step 4's re-add still doesn't deliver, the creator's CLI is holding a stale KeyPackage from before your revoke. Have them open `chat <name>` (forces `syncAll`) before re-running `add`, or restart their CLI process to drop the in-memory cache.
 
 ---
@@ -784,21 +736,7 @@ The SyndicateGovernor uses **optimistic governance**: proposals pass by default 
 
 Performance fees (agent's cut, capped by governor) and protocol fees are distributed on settlement, calculated on profit only.
 
-### Tiers, coverage, and the bond (read this before proposing)
-
-Agents reading only this file should take away four facts:
-
-1. **Tier 2 exists** — `TierRegistry` default for uncertified `(target, selector)`.
-2. **It is permissionless at tier 2** — no vault-owner strategy allowlist;
-   uncertified calldata is allowed, then bounded by guardian fork review,
-   batch caps, and the coverage book.
-3. **It costs full-notional coverage** — `requiredCoverage` uses `10_000` bps
-   of each call cap when the call is tier 2 / uncertified.
-4. **It scales the proposer bond** — `ExposureLedger.proposerBondWood` is ~1%
-   (`proposerBondBps` default 100) of that coverage in WOOD, not a fixed WOOD
-   number.
-
-Details: [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+Before proposing, read [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond): uncertified calls cost full-notional coverage and a WOOD proposer bond that scales with it.
 
 ### Create a proposal
 
@@ -810,18 +748,15 @@ Before invoking the command, **echo every resolved parameter back to the user an
 
 The summary MUST include all of:
 
-- **Vault** — confirm the vault address. A proposal sent to the wrong vault either fails or targets someone else's fund.
-- **Vault** — show both the address AND the syndicate subdomain so the user can verify it's the intended fund.
+- **Vault** — show both the address AND the vault subdomain. A proposal sent to the wrong vault either fails or targets someone else's vault.
 - **Strategy / name** and **description** — voters depend on the description; do not auto-fill it with a placeholder.
-- **Agent fee** — `proposal create` no longer takes a fee flag. The agent's cut is the vault's `agentFeeBps` (default 20%, max 25%), snapshotted onto the proposal at propose time and clamped to the governor's `maxPerformanceFeeBps`. Show it as bps AND a percentage for transparency, and note the owner changes it via `sherwood syndicate set-agent-fee` — not here.
+- **Agent fee** — the vault's `agentFeeBps`, shown as bps AND a percentage (see the note below the flag table).
 - **Duration** — show in human form (`7d`, `24h`). Capped by `governor.maxDuration`.
 - **Execute calls** and **settle calls** — show the file paths AND the call counts, plus the strategy clone address if generated by `sherwood strategy propose`.
 
-- **Proposer bond** — scales with coverage. Uncertified / **tier 2** books are
-  priced at **full notional**; default bond is 1% of that (`proposerBondBps`),
-  quoted by `ExposureLedger.proposerBondWood`. Permissionless at tier 2 —
-  not an owner allowlist. The CLI handles escrow allowance; the wallet must
-  **hold** that WOOD on top of any owner stake.
+- **Proposer bond** — the quoted WOOD (`ExposureLedger.proposerBondWood`, ~1% of
+  required coverage, full notional for tier 2). The wallet must **hold** it on top
+  of any owner stake.
 
 
 Re-confirm if the user changes any field. Do not batch-confirm a list of commands — confirm `proposal create` on its own.
@@ -852,40 +787,45 @@ Execute calls run at proposal execution (open positions). Settlement calls run a
 
 If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
 
-> **Agent fee.** `propose` no longer takes a fee argument. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 20% / 2000 bps, max 25% / 2500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps` (2000 bps / 20% on a factory-created vault).
+> **Agent fee.** `proposal create` takes no fee flag. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood syndicate set-agent-fee --bps <bps>` (default 20% / 2000 bps, max 25% / 2500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps` (2000 bps / 20% on a factory-created vault).
 
 ### List proposals
 
 ```bash
-sherwood proposal list [--vault <addr>] [--state <filter>]```
+sherwood proposal list [--vault <addr>] [--state <filter>]
+```
 
 Filter by state: `pending`, `approved`, `executed`, `settled`, `all` (default: `all`).
 
 ### Show proposal detail
 
 ```bash
-sherwood proposal show <id>```
+sherwood proposal show <id>
+```
 
 Displays metadata, state, timestamps, vote breakdown, decoded calls, capital snapshot (if executed), and P&L/fees (if settled).
 
 ### Vote on a proposal
 
 ```bash
-sherwood proposal vote --id <proposalId> --support <for|against|abstain>```
+sherwood proposal vote --id <proposalId> --support <for|against|abstain>
+```
 
 Caller must have voting power (vault shares at snapshot). Displays vote weight before confirming.
 
 ### Execute an approved proposal
 
 ```bash
-sherwood proposal execute --id <proposalId>```
+sherwood proposal execute --id <proposalId>
+```
 
 Anyone can call. Verifies proposal is Approved, within execution window, no other active strategy, and cooldown has elapsed.
 
 ### Settle an executed proposal
 
 ```bash
-sherwood proposal settle --id <proposalId> [--calls <path-to-json>]```
+sherwood proposal settle --id <proposalId> [--calls <path-to-json>]
+```
 
 Auto-routes to the correct settlement path:
 - **Proposer:** `settleProposal` — the proposer may settle early, but not immediately: `MIN_STRATEGY_DURATION_BEFORE_SELF_SETTLE` is a hard **1-hour** floor from `executedAt`. Settling before it reverts `StrategyDurationNotElapsed()`.
@@ -897,21 +837,24 @@ Output: P&L, fees distributed, redemptions unlocked.
 ### Veto a proposal (vault owner only)
 
 ```bash
-sherwood proposal veto --id <proposalId>```
+sherwood proposal veto --id <proposalId>
+```
 
 Vault owner only, and only while the proposal is `Pending`. The call reverts once the proposal enters `GuardianReview`. To block at that point, depend on guardian block-quorum instead (see the `guardian` skill). Sets state to `Rejected` (distinct from `Cancelled`).
 
 ### Cancel a proposal
 
 ```bash
-sherwood proposal cancel --id <proposalId>```
+sherwood proposal cancel --id <proposalId>
+```
 
 Proposer can cancel at any pre-execute state: Draft, Pending (while the voting window is open), GuardianReview (before the review window ends), or Approved. Vault owner can emergency cancel from Draft or Pending **only** — once a proposal reaches GuardianReview, the owner loses unilateral cancel authority and only the proposer can cancel.
 
 ### Governor info
 
 ```bash
-sherwood governor info --vault 0x...```
+sherwood governor info --vault 0x...
+```
 
 `--vault` is **required** — governors are per-vault, so there is no global one to query.
 
@@ -920,9 +863,15 @@ Displays: vault, governor address, voting period, execution window, veto thresho
 ### Governor parameter setters (owner only)
 
 ```bash
-sherwood governor set-voting-period --seconds <n>sherwood governor set-execution-window --seconds <n>sherwood governor set-veto-threshold --bps <n>sherwood governor set-max-fee --bps <n>sherwood governor set-max-duration --seconds <n>sherwood governor set-cooldown --seconds <n>sherwood governor set-protocol-fee --bps <n>```
+sherwood governor set-voting-period --vault 0x... --seconds <n>
+sherwood governor set-execution-window --vault 0x... --seconds <n>
+sherwood governor set-veto-threshold --vault 0x... --bps <n>
+sherwood governor set-max-fee --vault 0x... --bps <n>
+sherwood governor set-max-duration --vault 0x... --seconds <n>
+sherwood governor set-cooldown --vault 0x... --seconds <n>
+```
 
-Each validates against hardcoded bounds before submitting.
+Each validates against hardcoded bounds before submitting, and all are frozen while the vault has an open proposal. Protocol-wide fees are not a governor parameter: `governor set-mgmt-split` / `set-perf-split` set the splits on `ProtocolConfig` and are protocol-owner only.
 
 ---
 
@@ -936,19 +885,17 @@ Each validates against hardcoded bounds before submitting.
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
 | [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and `--calldata-only` broadcast recipes (Privy sign-then-broadcast on the fork, MetaMask) |
-| `cli/src/lib/addresses.ts` | Canonical address source (resolved at runtime by network) |
-| `cli/src/commands/` | Command implementations for each subcommand group |
 
 ### Key flags
 
 | Flag | Effect |
 |------|--------|
 | `--vault <addr>` | Override vault (default: from config) |
-| `--execute` | Submit onchain (default: simulate only) |
+| `--calldata-only` | Root flag: print EIP-5792 txs for an agent wallet instead of signing |
 
 ### Config
 
-State stored in `~/.sherwood/config.json`: `privateKey`, `agentId`, `contracts.{chainId}.vault`, `veniceApiKey`, `uniswapApiKey`, `positions`, `groupCache`.
+State stored in `~/.sherwood/config.json`: `agentId`, `contracts.{chainId}.vault`, `groupCache`, and — only if the user set them — `privateKey` and API keys.
 
 ---
 
@@ -1045,13 +992,12 @@ User wants to...
 ├── Join a fund        → Phase 2: syndicate join → creator approves (auto-adds to chat)
 ├── Review requests    → Phase 3: syndicate requests → syndicate approve/reject
 ├── Configure vault    → Phase 3: register agents → approve depositors
-├── Trade (levered)    → Phase 4: delegate to `levered-swap` skill
-├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Synthra routing)
+├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4 on the fork, Synthra on testnet)
+├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
-├── Provide LP         → Phase 4: AerodromeLPStrategy template (+ optional gauge staking)
 ├── Lend / earn yield  → Phase 4: `morpho-supply` template (fork)
 ├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (fork; registry must allowlist its tokens)
 ├── Launch a fund token / "IPO" → delegate to `strategies/launchpad` skill (settles as a loss of ~asset-in)
@@ -1072,9 +1018,8 @@ User wants to...
 ├── Vault owner (veto / pause / emergency unwind / vault params) → `vault-owner` skill
 ├── Staked review (stake WOOD, review calldata, Approve/Block) → `guardian` skill
 ├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-wood}
-├── Pay agents / AI    → Phase 5: allowance disburse / proposal (venice-inference strategy)
-├── Fund Venice via governance → delegate to `strategies/venice-inference` skill
-├── Private inference   → Phase 5: venice infer (or delegate to `strategies/venice-inference` skill)
+├── Pay agents         → agent fee (`agentFeeBps`) at settlement; see Phase 5
+├── Aerodrome LP / Venice VVV staking → not deployed on either Robinhood chain
 ├── Check status       → Phase 6: vault info, balance, syndicate list
 ├── Catch up / poll    → Phase 6: session check (events + messages, proposal metadata enriched)
 └── Communicate        → Phase 6: chat commands

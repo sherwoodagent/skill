@@ -1,8 +1,7 @@
 ---
 name: guardian
-description: Instructs an AI agent acting as a staked Sherwood network guardian — stake WOOD, review proposal calldata (execute + settle), and vote Approve or Block via GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments, no slashBps) — or abstain, which emits nothing on-chain and is the correct action when you cannot underwrite or cannot finish intake. A clean simulation is necessary but never sufficient to Approve. Triggers on staking WOOD, reviewing calldata, Approve/Block verdicts, coverage underwriting, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls.
+description: Act as a staked Sherwood network guardian — stake WOOD, open and review proposal guardian reviews (execute + settle calldata), and vote Approve or Block, or abstain, on GuardianRegistry. Triggers on staking WOOD as a guardian, reviewing proposal calldata, Approve/Block/abstain verdicts, coverage underwriting (lockWood), or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls (the `vault-owner` skill).
 allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, WebSearch, AskUserQuestion
-model: sonnet
 license: MIT
 metadata:
   author: sherwood
@@ -19,22 +18,22 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 > **Detailed reviewer runbook:** the `network-guardian` skill (`skills/network-guardian/SKILL.md`) is the longer staked-reviewer playbook: `openReview` as the guardian's job, age-weighted votes, late-vote lockout, coverage underwriting. This skill is the same role. Owner powers stay in `vault-owner`.
 
-> **Runtime Compatibility:** This skill uses `AskUserQuestion` for interactive prompts. If `AskUserQuestion` is not available, collect parameters through natural language conversation instead.
-
 Protocol pin: `c9e3d8c6`. Live `voteOnProposal` is **4 arguments** (`governor`, `proposalId`, `support`, `lockWood`). There is **no `slashBps` argument** — slash severity is a deterministic function of block-side decisiveness at `resolveReview`. `lockWood` is the WOOD you declare as coverage on an Approve (see §5).
 
 ## Prerequisites
 
-- `cli/.env` with `RPC_URL` and `PRIVATE_KEY` (the reviewer wallet — **not** the vault `owner`)
+- `RPC_URL` and `PRIVATE_KEY` exported in your shell — the `cast` commands below read them. `PRIVATE_KEY` is the reviewer wallet, **not** the vault `owner`. With an agent wallet instead of a raw key, build each tx with `cast calldata "<signature>" <args…>` and broadcast it through the wallet recipe in the main skill (Phase 1 → Agent wallet).
 - WOOD to stake into sWOOD (`StakedWood.stakeAsGuardian`)
 - Foundry (`forge`, `cast`) for decoding and the simulate harness
 - The Sherwood CLI (`sherwood`)
 
-> **Per-vault governor.** There is no singleton `SyndicateGovernor`. Resolve the governor for the vault whose proposal you are reviewing: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor show --vault $VAULT_ADDRESS` prints the same address.
+> **Per-vault governor.** There is no singleton `SyndicateGovernor`. Resolve the governor for the vault whose proposal you are reviewing: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
 Addresses differ per chain and have rotated more than once. Source of truth is
 `chains/{chainId}.json` in `sherwoodagent/sherwood-protocol`; both columns are
 mirrored in [ADDRESSES.md](../../ADDRESSES.md) — read it, do not trust a copy.
+Proposals run on the fork. The 46630 column is the pre-v1 testnet stack, which the
+current CLI cannot talk to; stake and review there only if you know you need it.
 
 | Contract | Robinhood fork (9994663) — chain of record | Robinhood testnet (46630) |
 |----------|--------------------------------------------|---------------------------|
@@ -298,7 +297,7 @@ cast call $EXPOSURE_LEDGER "coverageUsdOf(address,uint256,address)(uint256)" \
   $GOVERNOR_ADDRESS <PROPOSAL_ID> <YOUR_ADDRESS> --rpc-url $RPC_URL
 ```
 
-> **The slot floor is live** (`ExposureLedger.recordApproval`, `src/ExposureLedger.sol:767-777`).
+> **The slot floor is live** (`ExposureLedger.recordApproval` at the protocol pin above).
 > A slot in the bounded approver array cannot be bought for a lock that carries nothing,
 > so an Approve reverts `ApproveLockBelowFloor` unless the **USD value of the lock it
 > actually books** is at least `floorUsd`, where:

@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.0'
+  version: '0.2.0'
 ---
 
 # Launchpad Strategy
@@ -87,7 +87,7 @@ Required flags:
 | `--quote <token>` | Quote token the fund token pairs against, symbol or address |
 | `--reserve <n>` | Launch tokens held back for claims, whole tokens or a percent of supply like `10%`; at most 20% |
 | `--min-tokens-out <n>` | Slippage floor on the dev buy, whole launch tokens; `>= --reserve` on Sushi |
-| `--claim-window <duration>` | How long holders may claim, e.g. `7d`; at most 14d, clamped to the proposal duration − 5m |
+| `--claim-window <duration>` | How long holders may claim, e.g. `7d`; at most 14d, clamped to the proposal duration − 5m. The keeper distributes the reserve during it, so give it at least an hour |
 | `--token-name <name>` / `--token-symbol <symbol>` | Launch token metadata |
 
 Common optional flags: `--venue` (default `sushi`), `--max-drawdown-bps` (default derived; see hard rule 2), `--min-quote-out`, `--deadline`, `--settle-slippage-bps` (1-1000, default 500), `--max-fee-in` (default live cost + 25%; lower than live cost is refused), `--quote-swap-route`, `--fee-swap-route`, `--launch-adapter`.
@@ -115,7 +115,9 @@ sherwood launchpad finalize <strategy>   # graduate + bond; a no-op on Sushi
 
 ### Step 5: Claim window
 
-Tell holders to claim before the window ends. Unclaimed reserve goes to the vault in kind at settlement, and no claim is possible after that.
+You do not run the claims. Sherwood's keeper distributes the reserve: every few minutes during the window it calls `claimFor` for each holder at the snapshot, in batches, and pays the gas itself. Tokens always go to the holder, never the caller. A holder who claims first is skipped.
+
+Your part is to leave the keeper time: keep the window at an hour or more. Check progress with `status`. If holders still show a claimable slice near the window's end (for example, the keeper is down), pay them yourself with `claim-for`. Unclaimed reserve goes to the vault in kind at settlement, and no claim is possible after that.
 
 ```bash
 sherwood launchpad status <strategy> --holder <address>   # entitlement, claimable now, why not

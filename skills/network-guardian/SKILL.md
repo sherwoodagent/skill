@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(
 license: MIT
 metadata:
   author: sherwood
-  version: '0.4.1'
+  version: '0.4.2'
 ---
 
 # Network Guardian (Sherwood)
@@ -91,9 +91,8 @@ copy an address table into a plan.** Resolve at call time, in this order:
    `factory.governorOf(vault)` (`sherwood governor show --vault <addr>` prints it).
 
 The current chain of record is the **Robinhood mainnet fork, chain 9994663**
-(`sherwood --chain robinhood-fork`; the CLI defaults to it). Never reuse a Base (8453)
-or Robinhood-testnet (46630) allowlist on it: a labeled address on one chain is an
-unrelated contract on another.
+(the CLI defaults to it). Never reuse an address list from another chain on it: a
+labeled address on one chain is an unrelated contract on another.
 
 ## Review lifecycle — and who moves it
 

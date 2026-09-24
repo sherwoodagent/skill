@@ -25,7 +25,7 @@ Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use. `--chain robinhood-testnet` selects the Robinhood L2 testnet (chain 46630), but that chain still runs the pre-v1 contracts, which this CLI's ABIs do not match. Treat it as unusable until it is redeployed and stay on the fork.
+All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use.
 
 > **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The bundled RPC is the fork's public endpoint; override with `ROBINHOOD_FORK_RPC_URL` if a new fork is minted. Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
 
@@ -62,7 +62,7 @@ curl -s -X POST https://app.sherwood.sh/api/v1/faucet \
   -d '{"address":"0xYourAddress"}'
 ```
 
-One claim adds **1 ETH + 15,000 WOOD + 1,000 USDG** on top of the address's current balance. Limit: one claim per address **and** one per IP per 24h, whichever trips first. A repeat answers HTTP 429 with `retryAfter` seconds. Fork only, so it 404s on robinhood-testnet. Success body is `{ granted: {eth,wood,usdg}, txs: [...] }`. The 15k WOOD covers the 10k owner stake `vault create` requires plus a small proposer bond. Canonical doc: https://docs.sherwood.sh/reference/deployments (section "Test funds").
+One claim adds **1 ETH + 15,000 WOOD + 1,000 USDG** on top of the address's current balance. Limit: one claim per address **and** one per IP per 24h, whichever trips first. A repeat answers HTTP 429 with `retryAfter` seconds. Success body is `{ granted: {eth,wood,usdg}, txs: [...] }`. The 15k WOOD covers the 10k owner stake `vault create` requires plus a small proposer bond. Canonical doc: https://docs.sherwood.sh/reference/deployments (section "Test funds").
 
 ### Verify
 
@@ -118,7 +118,7 @@ sherwood identity mint --name "My Agent Name" --description "What this agent doe
 The minting wallet needs a small amount of **real ETH on Robinhood mainnet**
 (a mint costs well under 0.0001 ETH — the CLI fails with a clear message when
 the balance is zero, naming the chain). This is the one step that touches
-mainnet even when your fund runs on the fork or testnet.
+mainnet even though your vault runs on the fork.
 
 Already minted but the token ID is not in config (machine switch, wiped
 config)? `sherwood identity load --id <tokenId>` verifies ownership on the
@@ -153,8 +153,6 @@ Commands that normally read your address from the key need it explicitly here:
 - **Creator registration (the exception)** — signed `vault create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood vault info <subdomain>` for the address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id 0`, or keyless `strategy propose` refuses (`not a registered agent`). The printed `note` names both commands.
 
 Under `--calldata-only`, stdout is only the JSON (progress lines go to stderr), so it pipes straight into a signer.
-
-See [ADDRESSES.md](ADDRESSES.md) for EAS and schema UIDs if you build calldata entirely by hand.
 
 `--calldata-only` is a **root** flag (before the subcommand). Broadcast `txs` in order and wait for confirmation between them. Use each tx's `chainId` (CLI default is robinhood-fork `9994663`). Identity mint needs `--name` only. MetaMask Agent Wallet recipe and live API base: [references/external-signer-integration.md](references/external-signer-integration.md).
 
@@ -231,7 +229,7 @@ this is the missing step — nothing in the revert names it.
 > at `propose`: the risk-scaled **proposer bond** is transferred into
 > `ProposerBondEscrow`. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-`vault create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped on both Robinhood chains, neither of which has a registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
+`vault create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped: the fork has no registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
 
 #### Confirm before running
 
@@ -239,8 +237,8 @@ Before invoking the command, **echo every resolved parameter back to the user an
 
 The summary MUST include all of:
 
-- **Subdomain** — the fund identifier. Choose carefully; a typo wastes gas. (ENS registration is skipped on both Robinhood chains.)
-- **Vault asset** — show the symbol AND the resolved token address. The vault asset is USDG on the 9994663 fork (the CLI default chain) and WETH on Robinhood testnet — confirm even when "obvious".
+- **Subdomain** — the fund identifier. Choose carefully; a typo wastes gas. (ENS registration is skipped on the fork.)
+- **Vault asset** — show the symbol AND the resolved token address. The vault asset is normally USDG on the fork (WETH is the alternative) — confirm even when "obvious".
 - **Name**, **description**, **agent ID**, **`--open-deposits`** flag, **`--public-chat`** flag.
 
 Re-confirm if the user changes any field. Do not batch-confirm a list of commands — confirm `vault create` on its own.
@@ -317,7 +315,7 @@ After creating a vault, ensure all agents are set up:
 3. **Add agent to chat:** `sherwood chat <subdomain> add 0xAgent`
 4. **Verify setup:** `sherwood vault info <subdomain>` — shows vault stats, XMTP group ID, and more
 
-On chains without ENS (neither Robinhood chain has a registrar yet), the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood vault info <subdomain>`.
+The fork has no ENS registrar, so the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood vault info <subdomain>`.
 
 ### Approve depositors
 
@@ -373,8 +371,8 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
 
 | Template | CLI key | Description |
 |----------|---------|-------------|
-| **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking. **Not deployed on either Robinhood chain** |
-| **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path). **Not deployed on either Robinhood chain** |
+| **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking. **Not deployed on the fork** |
+| **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path). **Not deployed on the fork** |
 | **PortfolioStrategy** | `portfolio` | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
 | **MorphoSupplyStrategy** | `morpho-supply` | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
@@ -385,7 +383,7 @@ Templates are ERC-1167 clonable singletons deployed once per chain. Each proposa
 
 There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On `robinhood-fork` `portfolio`, `morpho-supply`, `concentrated-liquidity` and `launchpad` resolve. On `robinhood-testnet` only `portfolio` does. `aerodrome-lp` and `venice-inference` resolve on neither. `lighter-perp` resolves nowhere yet: it deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now.
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". On the fork `portfolio`, `morpho-supply`, `concentrated-liquidity` and `launchpad` resolve; `aerodrome-lp` and `venice-inference` do not. `lighter-perp` resolves nowhere yet: it deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -528,7 +526,7 @@ sherwood --calldata-only proposal create --vault 0xVAULT \
 
 #### AerodromeLPStrategy and VeniceInferenceStrategy
 
-Both templates are **not deployed on either Robinhood chain** (Aerodrome and VVV are Base venues), so `strategy propose aerodrome-lp` / `venice-inference` cannot run on the fork or testnet. Say so if a user asks for Aerodrome LP or VVV staking; on the fork, use `morpho-supply` (lending) or `concentrated-liquidity` instead.
+Both templates are **not deployed on the fork** (Aerodrome and VVV are Base venues), so `strategy propose aerodrome-lp` / `venice-inference` cannot run. Say so if a user asks for Aerodrome LP or VVV staking; on the fork, use `morpho-supply` (lending) or `concentrated-liquidity` instead.
 
 #### PortfolioStrategy
 
@@ -651,9 +649,9 @@ Agents are paid through the per-proposal agent fee (the vault's `agentFeeBps`, c
 
 ### Trade memecoins (not available on any chain Sherwood deploys on)
 
-The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood deploys on the Robinhood mainnet fork (9994663) and Robinhood testnet (46630) — neither is Base, so every `trade` subcommand exits with an error on both. Do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
+The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood deploys on the Robinhood mainnet fork (9994663), which is not Base, so every `trade` subcommand exits with an error. Do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
 
-For onchain swaps on the current deployment, use the **PortfolioStrategy** template via the proposal flow — routing goes through the `UniswapSwapAdapter`: official Uniswap v3/v4 on the 9994663 fork, Synthra (Uniswap-V3-compatible) on Robinhood testnet. Run `sherwood providers` to see what the CLI can actually execute: `synthra-swap` (trading: `swap.quote`, `swap.route-detect`, `swap.calldata` on Robinhood testnet) plus the `messari` and `nansen` research providers (chain-agnostic).
+For onchain swaps on the current deployment, use the **PortfolioStrategy** template via the proposal flow — routing goes through the `UniswapSwapAdapter`: official Uniswap v3/v4 on the fork. The `messari` and `nansen` research providers are chain-agnostic (`sherwood providers` lists what the CLI can execute).
 
 ### LP operations
 
@@ -717,7 +715,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 Try in order — each step covers a real failure mode hit in production:
 
 1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@latest` before continuing.
-2. **Confirm wallet matches.** Robinhood testnet routes to XMTP `production`. Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
+2. **Confirm wallet matches.** Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
 5. **Creator-side KeyPackage cache.** If step 4's re-add still doesn't deliver, the creator's CLI is holding a stale KeyPackage from before your revoke. Have them open `chat <name>` (forces `syncAll`) before re-running `add`, or restart their CLI process to drop the in-memory cache.
@@ -881,7 +879,7 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 |----------|---------|
 | [Sherwood Docs](https://docs.sherwood.sh/) | Full protocol, CLI, and integration documentation |
 | [llms-full.txt](https://docs.sherwood.sh/llms-full.txt) | Complete docs in a single LLM-friendly file |
-| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood mainnet fork 9994663 and Robinhood testnet 46630) and protocol/deployment references (not a vault-owner strategy allowlist) |
+| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (Robinhood mainnet fork 9994663) and protocol/deployment references (not a vault-owner strategy allowlist) |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
 | [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and `--calldata-only` broadcast recipes (Privy sign-then-broadcast on the fork, MetaMask) |
@@ -992,7 +990,7 @@ User wants to...
 ├── Join a fund        → Phase 2: vault join → creator approves (auto-adds to chat)
 ├── Review requests    → Phase 3: vault requests → vault approve/reject
 ├── Configure vault    → Phase 3: register agents → approve depositors
-├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4 on the fork, Synthra on testnet)
+├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4 on the fork)
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
@@ -1019,7 +1017,7 @@ User wants to...
 ├── Staked review (stake WOOD, review calldata, Approve/Block) → `guardian` skill
 ├── Guardian stake / delegate / claim → guardian {stake, unstake, delegate, undelegate, set-commission, claim-wood}
 ├── Pay agents         → agent fee (`agentFeeBps`) at settlement; see Phase 5
-├── Aerodrome LP / Venice VVV staking → not deployed on either Robinhood chain
+├── Aerodrome LP / Venice VVV staking → not deployed on the fork
 ├── Check status       → Phase 6: vault info, balance, vault list
 ├── Catch up / poll    → Phase 6: session check (events + messages, proposal metadata enriched)
 └── Communicate        → Phase 6: chat commands

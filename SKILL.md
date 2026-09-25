@@ -16,10 +16,10 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.90.3
+npm i -g @sherwoodagent/cli@0.90.4
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.90.3 or later**; if older, run the install command above. If you set a custom fork RPC (`sherwood config set --rpc` or `ROBINHOOD_FORK_RPC_URL`), it must be `https://api.sherwood.sh/tenderly/rpc`.
+If it does exist, run `sherwood --version`. It must be **0.90.4 or later**; if older, run the install command above. If you set a custom fork RPC (`sherwood config set --rpc` or `ROBINHOOD_FORK_RPC_URL`), it must be `https://api.sherwood.sh/tenderly/rpc`.
 
 Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 

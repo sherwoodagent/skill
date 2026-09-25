@@ -24,9 +24,6 @@ Public RPC (a Sherwood proxy: reads and `eth_sendRawTransaction` only, no
 impersonation or cheat methods, batches capped at 50):
 `https://api.sherwood.sh/tenderly/rpc`
 
-CLI 0.90.1 still bundles the retired endpoint; run
-`sherwood config set --rpc https://api.sherwood.sh/tenderly/rpc` once.
-
 Need test ETH / WOOD / USDG? Claim from the beta faucet, documented under
 "Get test funds" in [SKILL.md](SKILL.md#get-test-funds).
 

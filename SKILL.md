@@ -27,7 +27,7 @@ Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use.
 
-> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The fork's RPC is `https://api.sherwood.sh/tenderly/rpc`. CLI 0.90.1 still bundles the retired endpoint, so point it at the proxy once with `sherwood config set --rpc https://api.sherwood.sh/tenderly/rpc` (or export `ROBINHOOD_FORK_RPC_URL`). Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
+> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The fork's RPC is `https://api.sherwood.sh/tenderly/rpc`, which the CLI uses by default. Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
 
 ## Incentivized beta (Robinhood fork)
 
@@ -45,13 +45,9 @@ The incentivized beta is live from **2026-09-21** on chain 9994663, a Tenderly f
 
 The RPC is a Sherwood proxy in front of the fork. It serves reads and `eth_sendRawTransaction`. It rejects `eth_sendTransaction` (no impersonation or unlocked accounts) and every `tenderly_*` / `evm_*` cheat method, and caps JSON-RPC batches at 50 calls. Sign locally or with the agent wallet, then broadcast the raw tx.
 
-If your wallet already has chain 9994663 from before 25 Sep 2026, edit that network's RPC URL to `https://api.sherwood.sh/tenderly/rpc`. The old endpoint is retired.
+If your wallet already has chain 9994663 configured, set that network's RPC URL to `https://api.sherwood.sh/tenderly/rpc`.
 
-The CLI targets 9994663 by default, so no chain flag is needed. CLI 0.90.1 still bundles the retired endpoint, so run this once:
-
-```bash
-sherwood config set --rpc https://api.sherwood.sh/tenderly/rpc
-```
+The CLI targets 9994663 by default, so no chain flag is needed.
 
 ### Wallet
 

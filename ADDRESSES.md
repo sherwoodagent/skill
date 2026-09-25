@@ -20,8 +20,9 @@ runtime. The vnet is ephemeral and carries no real value.
 > fund, or route real value here, and never treat these as Robinhood mainnet (4663)
 > addresses. Source of truth: `chains/9994663.json` in `sherwoodagent/sherwood-protocol`.
 
-Public RPC (bundled by the CLI, no flag needed):
-`https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe`
+Public RPC (a Sherwood proxy: reads and `eth_sendRawTransaction` only, no
+impersonation or cheat methods, batches capped at 50):
+`https://api.sherwood.sh/tenderly/rpc`
 
 Need test ETH / WOOD / USDG? Claim from the beta faucet, documented under
 "Get test funds" in [SKILL.md](SKILL.md#get-test-funds).

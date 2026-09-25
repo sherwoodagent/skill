@@ -94,7 +94,7 @@ Response carries the signed RLP at `data.signed_transaction` (per https://docs.p
 ### 4. Broadcast it yourself
 
 ```bash
-curl -s -X POST https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe \
+curl -s -X POST https://api.sherwood.sh/tenderly/rpc \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_sendRawTransaction","params":["<data.signed_transaction>"]}'
 ```

@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.23.1'
+  version: '0.23.2'
 ---
 
 # Sherwood
@@ -27,7 +27,7 @@ Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use.
 
-> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The bundled RPC is the fork's public endpoint; override with `ROBINHOOD_FORK_RPC_URL` if a new fork is minted. Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
+> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The fork's RPC is `https://api.sherwood.sh/tenderly/rpc`. CLI 0.90.1 still bundles the retired endpoint, so point it at the proxy once with `sherwood config set --rpc https://api.sherwood.sh/tenderly/rpc` (or export `ROBINHOOD_FORK_RPC_URL`). Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
 
 ## Incentivized beta (Robinhood fork)
 
@@ -38,12 +38,20 @@ The incentivized beta is live from **2026-09-21** on chain 9994663, a Tenderly f
 | | |
 |---|---|
 | Chain ID | `9994663` (`0x9881a7`) |
-| RPC | `https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe` |
-| Explorer | `https://dashboard.tenderly.co/explorer/vnet/6ad5961e-fbca-452f-939f-ca9a8c020933` |
+| RPC | `https://api.sherwood.sh/tenderly/rpc` |
+| Explorer | `https://dashboard.tenderly.co/explorer/vnet/6ad5961e-fbca-452f-939f-ca9a8c020933` <!-- TODO(vnet-rotation): new explorer id --> |
 | Vault asset | USDG (6 decimals) |
 | Addresses | [ADDRESSES.md](ADDRESSES.md) |
 
-The CLI bundles that RPC and targets 9994663 by default, so no chain flag is needed.
+The RPC is a Sherwood proxy in front of the fork. It serves reads and `eth_sendRawTransaction`. It rejects `eth_sendTransaction` (no impersonation or unlocked accounts) and every `tenderly_*` / `evm_*` cheat method, and caps JSON-RPC batches at 50 calls. Sign locally or with the agent wallet, then broadcast the raw tx.
+
+If your wallet already has chain 9994663 from before 25 Sep 2026, edit that network's RPC URL to `https://api.sherwood.sh/tenderly/rpc`. The old endpoint is retired.
+
+The CLI targets 9994663 by default, so no chain flag is needed. CLI 0.90.1 still bundles the retired endpoint, so run this once:
+
+```bash
+sherwood config set --rpc https://api.sherwood.sh/tenderly/rpc
+```
 
 ### Wallet
 
@@ -69,7 +77,7 @@ One claim adds **1 ETH + 15,000 WOOD + 1,000 USDG** on top of the address's curr
 The faucet response lists the three top-up tx hashes. Confirm the ETH leg landed (`sherwood balance` reads vault shares, not wallet balances):
 
 ```bash
-curl -s -X POST https://virtual.robinhood-chain.eu.rpc.tenderly.co/moonwell/wormhole-bridge/f509bc-4fdefe \
+curl -s -X POST https://api.sherwood.sh/tenderly/rpc \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0xYourAddress","latest"]}'   # → 0xde0b6b3a7640000 (1 ETH)
 ```

@@ -39,7 +39,7 @@ The incentivized beta is live from **2026-09-21** on chain 9994663, a Tenderly f
 |---|---|
 | Chain ID | `9994663` (`0x9881a7`) |
 | RPC | `https://api.sherwood.sh/tenderly/rpc` |
-| Explorer | `https://dashboard.tenderly.co/explorer/vnet/6ad5961e-fbca-452f-939f-ca9a8c020933` <!-- TODO(vnet-rotation): new explorer id --> |
+| Explorer | `https://dashboard.tenderly.co/explorer/vnet/3dfb4efc-929e-4a2a-8a7c-056208b5fc69` |
 | Vault asset | USDG (6 decimals) |
 | Addresses | [ADDRESSES.md](ADDRESSES.md) |
 

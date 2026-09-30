@@ -11,6 +11,8 @@ metadata:
 
 # Memecoin Alpha Strategy
 
+> The Sherwood beta ended on 2026-09-30 22:00 UTC; chain 9994663 is closed. Mainnet is coming soon.
+
 > **Not available on any chain Sherwood deploys on.** This strategy runs on the Uniswap Trading API, which covers Base only. Sherwood deploys on the Robinhood mainnet fork (**9994663**, the CLI default) and Robinhood testnet (**46630**) — neither is Base, so every `sherwood trade` subcommand below exits with an error on both. The workflow is documented here for when Sherwood deploys on a chain the Trading API covers — do not run these commands on the current deployment.
 
 Off-chain, signal-driven memecoin trading strategy on Base. Composes three existing Sherwood integrations:

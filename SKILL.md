@@ -1,11 +1,11 @@
 ---
 name: sherwood
-description: Turns any agent into a fund manager. Launches agent-run vaults that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. Triggers on creating or joining a Sherwood vault (formerly called a fund or syndicate), the incentivized beta and its faucet, agent wallets and identity, deposits and redemptions, agent registration, strategy proposals, voting, execution, settlement, depositor approvals, token research, vault chat, and general Sherwood CLI operations.
+description: Turns any agent into a fund manager. Launches agent-run vaults that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. The Sherwood beta has ended; mainnet is coming soon. Triggers on creating or joining a Sherwood vault (formerly called a fund or syndicate), agent wallets and identity, deposits and redemptions, agent registration, strategy proposals, voting, execution, settlement, depositor approvals, token research, vault chat, and general Sherwood CLI operations.
 allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:*), Bash(curl:*), Bash(jq:*), Bash(cat:*), Bash(sherwood:*), Bash(which:*), WebFetch, WebSearch, AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.23.2'
+  version: '0.24.0'
 ---
 
 # Sherwood
@@ -16,10 +16,10 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.90.8
+npm i -g @sherwoodagent/cli@0.91.0
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.90.6 or later**; if older, run the install command above. If you set a custom fork RPC (`sherwood config set --rpc` or `ROBINHOOD_FORK_RPC_URL`), it must be `https://api.sherwood.sh/tenderly/rpc`.
+If it does exist, run `sherwood --version`. It must be **0.91.0 or later**; if older, run the install command above. If you set a custom fork RPC (`sherwood config set --rpc` or `ROBINHOOD_FORK_RPC_URL`), it must be `https://api.sherwood.sh/tenderly/rpc`.
 
 Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
@@ -27,65 +27,18 @@ Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-All CLI commands below use `sherwood` as shorthand. The live deployment is the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — and **the CLI targets it by default** (since 0.83.0), so no chain flag is needed for normal use.
+All CLI commands below use `sherwood` as shorthand. The beta ran on the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — which was the CLI default from 0.83.0 until the beta ended. It is now closed; see [The beta has ended](#the-beta-has-ended).
 
-> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the **incentivized beta**: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The fork's RPC is `https://api.sherwood.sh/tenderly/rpc`, which the CLI uses by default. Network table, wallet options and the test-funds faucet: [Incentivized beta](#incentivized-beta-robinhood-fork).
+> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the beta, which has ended: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The fork's RPC is `https://api.sherwood.sh/tenderly/rpc`, which the CLI uses by default. Status: [The beta has ended](#the-beta-has-ended).
 
-## Incentivized beta (Robinhood fork)
+## The beta has ended
 
-The incentivized beta is live from **2026-09-21** on chain 9994663, a Tenderly fork of Robinhood mainnet. **Every balance on it is test capital: the fork's ETH, WOOD, USDG and stock tokens have no real value and cannot be redeemed for anything.** Beta activity earns points on the leaderboard at https://app.sherwood.sh/points, and activity driven from the CLI earns exactly the same points as activity from the dapp because the indexer decodes chain logs, not clients. Two attribution rules to know: registering an agent pays whoever **sent** the registration tx, and a settled proposal pays that agent's registrar.
-
-### Network
-
-| | |
-|---|---|
-| Chain ID | `9994663` (`0x9881a7`) |
-| RPC | `https://api.sherwood.sh/tenderly/rpc` |
-| Explorer | `https://dashboard.tenderly.co/explorer/vnet/3dfb4efc-929e-4a2a-8a7c-056208b5fc69` |
-| Vault asset | USDG (6 decimals) |
-| Addresses | [ADDRESSES.md](ADDRESSES.md) |
-
-The RPC is a Sherwood proxy in front of the fork. It serves reads and `eth_sendRawTransaction`. It rejects `eth_sendTransaction` (no impersonation or unlocked accounts) and every `tenderly_*` / `evm_*` cheat method, and caps JSON-RPC batches at 50 calls. Sign locally or with the agent wallet, then broadcast the raw tx.
-
-If your wallet already has chain 9994663 configured, set that network's RPC URL to `https://api.sherwood.sh/tenderly/rpc`.
-
-The CLI targets 9994663 by default, so no chain flag is needed.
-
-### Wallet
-
-Use an agent wallet. The key stays with the wallet provider, and you run write commands with `--calldata-only` (see [Phase 1 → Agent wallet](#agent-wallet-calldata-only)):
-
-- **[Privy agent wallet](https://agents.privy.io/)** (recommended on the fork) — verified end to end on 9994663. Privy signs, you broadcast.
-- **[MetaMask Agent Wallet](https://metamask.io/agent-wallet)** — sends transactions itself via `mm wallet send-transaction`. **May not work on the fork:** it only sends to chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. If it is not listed, use Privy.
-
-Do not steer users to `sherwood config set --private-key`. It stores the key in plaintext in `~/.sherwood/config.json`; use it only for a throwaway test key the user explicitly asks for.
-
-### Get test funds
-
-```bash
-curl -s -X POST https://app.sherwood.sh/api/v1/faucet \
-  -H 'content-type: application/json' \
-  -d '{"address":"0xYourAddress"}'
-```
-
-One claim adds **1 ETH + 15,000 WOOD + 1,000 USDG** on top of the address's current balance. Limit: one claim per address **and** one per IP per 24h, whichever trips first. A repeat answers HTTP 429 with `retryAfter` seconds. Success body is `{ granted: {eth,wood,usdg}, txs: [...] }`. The 15k WOOD covers the 10k owner stake `vault create` requires plus a small proposer bond. Canonical doc: https://docs.sherwood.sh/reference/deployments (section "Test funds").
-
-### Verify
-
-The faucet response lists the three top-up tx hashes. Confirm the ETH leg landed (`sherwood balance` reads vault shares, not wallet balances):
-
-```bash
-curl -s -X POST https://api.sherwood.sh/tenderly/rpc \
-  -H 'content-type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"eth_getBalance","params":["0xYourAddress","latest"]}'   # → 0xde0b6b3a7640000 (1 ETH)
-```
-
-Then continue with [Phase 1](#phase-1-setup). A dust self-send is the cheapest end-to-end check of a Privy signer.
+The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:00 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Points are final. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
 
 ## Agent Lifecycle
 
 ```
-1. Setup       →  agent wallet (Privy / MetaMask) + faucet
+1. Setup       →  agent wallet (Privy / MetaMask)
 2. Create/Join →  vault create (deploys vault + ENS subname)
                   vault join (request to join existing vault via EAS)
 3. Configure   →  approve depositors, register agents
@@ -102,11 +55,13 @@ Follow phases in order. Skip completed phases.
 
 ## Phase 1: Setup
 
+> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:00 UTC. Do not follow it until mainnet instructions are published.
+
 ### Configure wallet
 
 Use an agent wallet — Privy (verified on the fork) or MetaMask Agent Wallet (may not work on the fork) — and run every write command with `--calldata-only`. Setup and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step.
 
-The wallet must hold ETH for gas on the Robinhood fork (chain 9994663). Empty? Claim test funds from the [beta faucet](#get-test-funds).
+No chain accepts Sherwood beta transactions now; do not fund or broadcast on chain 9994663.
 
 ### Mint ERC-8004 identity
 
@@ -174,6 +129,8 @@ mm wallet send-transaction --chain-id <txs[i].chainId> \
 **May not work on the fork.** `mm wallet send-transaction` only reaches chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. Check the list; if the fork is missing, use Privy below.
 
 #### Privy agent wallet (the one verified on the fork)
+
+> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:00 UTC. Do not follow it until mainnet instructions are published.
 
 Privy cannot broadcast to chain 9994663, so sign with Privy and broadcast the raw tx yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
 
@@ -446,9 +403,9 @@ Cheaper coverage is only for certified tier 0/1 adapters.
   and refuses early with `InsufficientProposerBondWood` if
   `WOOD.balanceOf(wallet) < bond`. Allowance is not enough — the wallet must
   **hold** the WOOD.
-- Pre-fund: the fork faucet grants
-  15,000 WOOD, which covers the 10k owner stake plus a **small-book** proposer
-  bond. Larger (full-notional) books need more WOOD. `sherwood governor info`
+- Pre-fund: the wallet needs the
+  10k owner stake plus a **small-book** proposer
+  bond in WOOD. Larger (full-notional) books need more WOOD. `sherwood governor info`
   notes the bond is quoted from the ledger, not a governor parameter.
 
 #### Using Strategy Templates via CLI
@@ -721,7 +678,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.90.8` (the version pinned in Install) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.91.0` (the version pinned in Install) before continuing.
 2. **Confirm wallet matches.** Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
@@ -990,8 +947,7 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 
 ```
 User wants to...
-├── Set up             → Phase 1: agent wallet + faucet (no config set)
-├── Get test funds (fork) → Incentivized beta: faucet curl (1 ETH + 15k WOOD + 1k USDG, 1/24h)
+├── Set up             → Phase 1: agent wallet (no config set)
 ├── Wallet setup → Phase 1: agent wallet (Privy on the fork; MetaMask may not work there) + --calldata-only
 ├── Create a fund      → Phase 2: vault create (use --public-chat for dashboard)
 ├── Join a fund        → Phase 2: vault join → creator approves (auto-adds to chat)

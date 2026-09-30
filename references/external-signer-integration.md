@@ -1,5 +1,7 @@
 # External signer and HTTP API
 
+> The Sherwood beta ended on 2026-09-30 22:15 UTC; chain 9994663 is closed. Mainnet is coming soon.
+
 ## HTTP API base
 
 Live base: `https://api.sherwood.sh`

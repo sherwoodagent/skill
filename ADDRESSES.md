@@ -1,5 +1,7 @@
 # Contract Addresses
 
+> The Sherwood beta ended on 2026-09-30 22:15 UTC; chain 9994663 is closed. Mainnet is coming soon.
+
 Sherwood's chain of record is the **Robinhood mainnet fork — a Tenderly vnet, chain
 9994663**, and the CLI targets it by default. The CLI resolves the same book at
 runtime. The vnet is ephemeral and carries no real value.
@@ -23,9 +25,6 @@ runtime. The vnet is ephemeral and carries no real value.
 Public RPC (a Sherwood proxy: reads and `eth_sendRawTransaction` only, no
 impersonation or cheat methods, batches capped at 50):
 `https://api.sherwood.sh/tenderly/rpc`
-
-Need test ETH / WOOD / USDG? Claim from the beta faucet, documented under
-"Get test funds" in [SKILL.md](SKILL.md#get-test-funds).
 
 Fork of Robinhood *mainnet*, so the venues and tokens are the real ones: USDG as the
 vault asset, official Uniswap v3/v4, Morpho Blue, Chainlink **push** feeds

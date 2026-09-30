@@ -36,7 +36,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `InsufficientProposerBondWood` | Wallet WOOD balance is below the quoted proposer bond (`ExposureLedger.proposerBondWood`) | Hold more WOOD. This is **not** the 10k owner stake. The CLI sets escrow allowance but cannot mint WOOD. On the fork, the faucet 15k WOOD covers the owner stake plus a small-book bond. The amount **scales** with coverage and WOOD price — quote it; do not assume a fixed WOOD number. |
+| `InsufficientProposerBondWood` | Wallet WOOD balance is below the quoted proposer bond (`ExposureLedger.proposerBondWood`) | Hold more WOOD. This is **not** the 10k owner stake. The CLI sets escrow allowance but cannot mint WOOD. The beta faucet closed with the beta. The amount **scales** with coverage and WOOD price — quote it; do not assume a fixed WOOD number. |
 
 ## Governance Errors
 

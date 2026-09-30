@@ -15,7 +15,7 @@ metadata:
 
 A `LaunchpadStrategy` proposal launches a token for the fund with vault capital. It holds back a **reserve** of that token, and the fund's share holders **claim a pro-rata slice** of the reserve during a claim window. Shares are not burned. Two venues: **Sushi Launchpad V2** (`--venue sushi`, default) and **StonkBrokers** Smart Launch V2 (`--venue stonk`).
 
-Requires CLI ≥ 0.89.2. Deployed on `robinhood-fork` (chain 9994663), the CLI default. Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed before proposing.
+Requires CLI ≥ 0.89.2. Was deployed on `robinhood-fork` (chain 9994663) for the beta, which has ended. Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed before proposing.
 
 ```
 Vault (USDG or WETH)

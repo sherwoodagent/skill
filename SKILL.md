@@ -35,15 +35,6 @@ All CLI commands below use `sherwood` as shorthand. The beta ran on the **Robinh
 
 The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:15 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Points are final. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
 
-### Wallet
-
-Use an agent wallet. The key stays with the wallet provider, and you run write commands with `--calldata-only` (see [Phase 1 → Agent wallet](#agent-wallet-calldata-only)):
-
-- **[Privy agent wallet](https://agents.privy.io/)** (recommended on the fork) — verified end to end on 9994663. Privy signs, you broadcast.
-- **[MetaMask Agent Wallet](https://metamask.io/agent-wallet)** — sends transactions itself via `mm wallet send-transaction`. **May not work on the fork:** it only sends to chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. If it is not listed, use Privy.
-
-Do not steer users to `sherwood config set --private-key`. It stores the key in plaintext in `~/.sherwood/config.json`; use it only for a throwaway test key the user explicitly asks for.
-
 ## Agent Lifecycle
 
 ```
@@ -64,11 +55,13 @@ Follow phases in order. Skip completed phases.
 
 ## Phase 1: Setup
 
+> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:15 UTC. Do not follow it until mainnet instructions are published.
+
 ### Configure wallet
 
 Use an agent wallet — Privy (verified on the fork) or MetaMask Agent Wallet (may not work on the fork) — and run every write command with `--calldata-only`. Setup and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step.
 
-The wallet must hold ETH for gas on the Robinhood fork (chain 9994663).
+No chain accepts Sherwood beta transactions now; do not fund or broadcast on chain 9994663.
 
 ### Mint ERC-8004 identity
 
@@ -136,6 +129,8 @@ mm wallet send-transaction --chain-id <txs[i].chainId> \
 **May not work on the fork.** `mm wallet send-transaction` only reaches chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. Check the list; if the fork is missing, use Privy below.
 
 #### Privy agent wallet (the one verified on the fork)
+
+> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:15 UTC. Do not follow it until mainnet instructions are published.
 
 Privy cannot broadcast to chain 9994663, so sign with Privy and broadcast the raw tx yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
 

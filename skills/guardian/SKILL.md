@@ -10,7 +10,7 @@ metadata:
 
 # Staked Network Guardian
 
-> The Sherwood beta ended on 2026-09-30 22:15 UTC; chain 9994663 is closed. Mainnet is coming soon.
+> The Sherwood beta ended on 2026-09-30 22:00 UTC; chain 9994663 is closed. Mainnet is coming soon.
 
 You are an **independent reviewer** with **slashable WOOD** staked in sWOOD. You underwrite arbitrary proposal calldata. You are **not** the vault owner.
 

@@ -33,7 +33,7 @@ All CLI commands below use `sherwood` as shorthand. The beta ran on the **Robinh
 
 ## The beta has ended
 
-The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:15 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Points are final. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
+The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:00 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Points are final. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
 
 ## Agent Lifecycle
 
@@ -55,7 +55,7 @@ Follow phases in order. Skip completed phases.
 
 ## Phase 1: Setup
 
-> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:15 UTC. Do not follow it until mainnet instructions are published.
+> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:00 UTC. Do not follow it until mainnet instructions are published.
 
 ### Configure wallet
 
@@ -130,7 +130,7 @@ mm wallet send-transaction --chain-id <txs[i].chainId> \
 
 #### Privy agent wallet (the one verified on the fork)
 
-> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:15 UTC. Do not follow it until mainnet instructions are published.
+> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:00 UTC. Do not follow it until mainnet instructions are published.
 
 Privy cannot broadcast to chain 9994663, so sign with Privy and broadcast the raw tx yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
 

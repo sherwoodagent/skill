@@ -17,6 +17,8 @@ The agent fee is a **vault-owner property**, not a per-proposal parameter. The v
 
 Gather all inputs from the operator before running the command.
 
+While the factory's `ownerOnlyProposals` launch flag is on, only the vault owner can propose, and collaborative proposals are refused (`ProposerNotOwner`, `CollaborationDisabled`). The CLI refuses any other proposer before pinning metadata or locking the bond. See "Single-operator vaults" in [SKILL.md](SKILL.md#single-operator-vaults).
+
 ```bash
 sherwood proposal create \
   --vault 0x... \
@@ -70,9 +72,12 @@ Displays metadata, state, timestamps, vote breakdown, decoded calls, capital sna
 ## Vote on a proposal
 
 ```bash
-sherwood proposal vote --id <proposalId> --support <for|against|abstain>```
+sherwood proposal vote --vault 0x... --id <proposalId> --support <for|against|abstain>
+```
 
-Caller must have voting power (vault shares at snapshot). Displays vote weight before confirming.
+`--vault` is required (each vault has its own governor). Caller must have voting power (vault shares at snapshot). Displays vote weight, then sends the vote.
+
+A vote cannot land in the second its proposal was created. The governor snapshots at the propose block's timestamp minus one, refuses votes while `block.timestamp <= snapshotTimestamp + 1` (`NotWithinVotingPeriod`), and `getVoteWeight` reads 0 until then. The signed CLI waits on the chain's clock (latest block timestamp) before voting, and stops with `No block has been produced since this proposal …` if no later block has landed; rerun once one has. With `--calldata-only` it does not wait: broadcast the vote only after a block at least one second past the propose block (on a chain that produces blocks continuously, two seconds after the propose confirms is enough), and resend it if it reverts `NotWithinVotingPeriod`.
 
 ## Execute an approved proposal
 

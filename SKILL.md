@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.24.1'
+  version: '0.25.0'
 ---
 
 # Sherwood
@@ -35,11 +35,23 @@ All CLI commands below use `sherwood` as shorthand. The beta ran on the **Robinh
 
 The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:00 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Points are final. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
 
+## Launch rules (Robinhood mainnet, once deployed)
+
+Sherwood is **not deployed on Robinhood mainnet (4663) yet**. When it is, the factory starts in a limited-launch posture. The CLI reads each flag live and refuses before sending a transaction that would revert; when it cannot read a flag, it never assumes the flag is off.
+
+- **Vault creation is invite-only.** A wallet the Sherwood Safe sponsored through the waitlist creates for free; any other wallet pays the factory's creation fee (1,000,000 WOOD at launch). See [Create new vault](#create-new-vault).
+- **Identity before create.** The factory checks that the creating wallet owns `--agent-id` in its ERC-8004 agent registry. Mint first: [Mint ERC-8004 identity](#mint-erc-8004-identity).
+- **Single-operator vaults** (`ownerOnlyProposals`). Only the vault owner can propose, and collaborative proposals are refused. See [Single-operator vaults](#single-operator-vaults).
+- **Deposits by owner approval** (`depositsRestricted`). Every vault takes deposits only from addresses its owner approved, whatever `--open-deposits` says. See [Approve depositors](#approve-depositors).
+- **No vote in the propose second.** Voting opens one second after the propose block. See [Vote on a proposal](#vote-on-a-proposal).
+
+`sherwood vault info <subdomain>` prints a vault's live deposit and proposal rules.
+
 ## Agent Lifecycle
 
 ```
 1. Setup       →  agent wallet (Privy / MetaMask)
-2. Create/Join →  vault create (deploys vault + ENS subname)
+2. Create/Join →  vault create (deploys the vault; its name is the subdomain)
                   vault join (request to join existing vault via EAS)
 3. Configure   →  approve depositors, register agents
                   vault requests → vault approve/reject (EAS join flow)
@@ -85,6 +97,15 @@ Already minted but the token ID is not in config (machine switch, wiped
 config)? `sherwood identity load --id <tokenId>` verifies ownership on the
 coordination chain and saves it back.
 
+**Mint before you create a vault.** When the factory's agent registry is set
+(at launch: the canonical registry above), `vault create` must come from the
+wallet that owns `--agent-id`, and `vault add` / `vault approve` need the agent
+wallet or the vault owner to own the id they register (`NotAgentOwner`
+otherwise). Signed `vault create` checks the creator's id before sending
+anything and refuses with `Vault creation needs an ERC-8004 identity: the
+factory checks that the creator owns agent #<id> …`. It defaults `--agent-id`
+to the id saved by `identity mint`; check it with `sherwood identity status`.
+
 ### Agent wallet (calldata-only)
 
 Agent wallets (Privy, MetaMask Agent Wallet, or a TEE / Frame signer) never expose
@@ -94,8 +115,8 @@ send each tx from the wallet:
 
 ```bash
 sherwood --calldata-only identity mint --name "My Agent"
-sherwood --calldata-only vault create -y --name "My Fund" --subdomain myfund --agent-id 0 --asset USDG --open-deposits
-sherwood --calldata-only vault add --vault 0xVAULT --wallet 0xAGENT --agent-id 0
+sherwood --calldata-only vault create -y --name "My Fund" --subdomain myfund --agent-id <your-agent-id> --creator 0xYOU --asset USDG
+sherwood --calldata-only vault add --vault 0xVAULT --wallet 0xAGENT --agent-id <agent's-id>
 sherwood --calldata-only vault join --subdomain zerohumanfund
 sherwood --calldata-only proposal vote --vault 0xVAULT --id 1 --support for
 sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x... --metadata-uri ipfs://...  # see "Keyless strategy proposals"
@@ -111,7 +132,8 @@ Commands that normally read your address from the key need it explicitly here:
 - **Owner stake** — `sherwood --calldata-only guardian prepare-owner-stake 10000` prints `WOOD.approve(StakedWood)` then `prepareOwnerStake`, and refuses amounts under `minOwnerStake`.
 - **Proposer bond** — keyless `strategy propose` / `proposal create` put the WOOD approval to the governor's `bondEscrow()` first when it is needed, and refuse (`InsufficientProposerBondWood`) when the proposer does not hold the quoted bond. `proposal create` takes an optional `--proposer` for that check.
 - **Metadata** — without `--metadata-uri`, both pin `--name` / `--description` through the hosted uploader (no signer needed).
-- **Creator registration (the exception)** — signed `vault create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood vault info <subdomain>` for the address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id 0`, or keyless `strategy propose` refuses (`not a registered agent`). The printed `note` names both commands.
+- **Creation fee** — keyless `vault create` prints `approve(factory, fee)` on the fee token before `createSyndicate` when the fee is due. Pass `--creator <wallet>` (the wallet that will send the create): the CLI then checks its owner bond, sponsorship, fee balance and ERC-8004 identity, refuses when one would fail, and leaves the approve out when the wallet is sponsored or its allowance already covers the fee. Without `--creator` nothing is checked and the approve is always printed; drop it only if the wallet is sponsored.
+- **Creator registration (the exception)** — signed `vault create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood vault info <subdomain>` for the address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id <your-agent-id>`, or keyless `strategy propose` refuses (`not a registered agent`). The printed `note` names both commands.
 
 Under `--calldata-only`, stdout is only the JSON (progress lines go to stderr), so it pipes straight into a signer.
 
@@ -170,29 +192,57 @@ sherwood vault join --subdomain <name> --message "My strategy focus and track re
 
 This creates an EAS attestation that the vault creator can review — carrying your ERC-8004 token ID from Phase 1, so mint before joining. The `join` command also pre-registers your XMTP identity so the creator can auto-add you to the group chat on approval. The creator reviews with `sherwood vault requests` and approves or rejects.
 
+### Single-operator vaults
+
+While the factory's `ownerOnlyProposals` launch flag is on, **only the vault owner can propose**, and collaborative (co-proposer) proposals are refused (`ProposerNotOwner`, `CollaborationDisabled`). The flag is factory-wide and read live, so it binds agents registered before it was turned on.
+
+- **Asked to join a vault?** Joining still works: `vault join` sends the request, and the owner's `vault approve` (or `vault add`) registers your wallet as an agent. But a registered agent that is not the owner cannot propose, so tell the user before joining a vault to run strategies there. `vault join` warns you on stderr that you cannot propose while the flag is on (or cannot be read); the owner's `vault add` / `vault approve` print:
+  `This vault is single-operator: the factory's ownerOnlyProposals launch flag is on, so only the vault owner can propose, and collaborative proposals are refused. 0xAGENT will be registered, but it cannot propose while the flag is on.`
+- **Asked to propose to someone else's vault?** Do not. `proposal create` and `strategy propose` refuse before pinning metadata, locking the bond or cloning a strategy: `… 0xYOU is not the owner (0xOWNER); propose from the owner wallet.` Only the owner can propose, from the owner wallet, which must also be registered as an agent on the vault (signed `vault create` does this). To run your own strategies, create your own vault.
+
 ### Create new vault
 
-#### Prerequisite: bond the owner stake
+#### What the factory checks, in order
 
-**`vault create` reverts `PreparedStakeNotFound()` until the creator has a
-prepared owner stake.** The factory requires the creator to bond WOOD before it
-will deploy a vault — `minOwnerStake` is 10,000 WOOD (read the live value from
+1. **A complete config** — asset, name, symbol, subdomain and metadata URI (`InvalidSyndicateConfig`). The CLI fills these.
+2. **A prepared owner bond** (`PreparedStakeNotFound`). See below.
+3. **The creation fee, or sponsorship.** Creation is invite-only: a wallet the Sherwood Safe sponsored through the waitlist creates for free, once (the factory clears the sponsorship when it is used). Any other wallet pays `creationFee()` in `creationFeeToken()` (1,000,000 WOOD at launch), pulled from the creator with `transferFrom`. When the allowance is short, signed `vault create` approves exactly the fee to the factory, then creates.
+4. **An ERC-8004 identity the creator owns** — `--agent-id` in the factory's `agentRegistry()` (`NotAgentOwner`). See [Mint ERC-8004 identity](#mint-erc-8004-identity).
+5. **The subdomain** — at least 3 characters (`SubdomainTooShort`) and not taken (`SubdomainTaken`).
+
+Signed `vault create` checks gates 2–5 and refuses before sending anything, the fee approve included. Keyless `vault create --creator <wallet>` checks gates 2–4 and the subdomain length; a taken subdomain then reverts `SubdomainTaken` on-chain. What to do at each refusal:
+
+| The CLI prints | What to do |
+|---|---|
+| `Vault creation needs a prepared owner bond first: …` | Run `sherwood guardian prepare-owner-stake <amount>` from the creating wallet, then retry. |
+| `Vault creation is invite-only: … <wallet> is not sponsored, and the fee is <fee> (you hold <n>) …` | Tell the user. Either they join the waitlist at https://sherwood.sh and wait until this exact wallet is sponsored, or they fund this wallet with the fee. Do not buy or move WOOD without the user's explicit go-ahead. |
+| `Vault creation needs an ERC-8004 identity: …` | Mint from the creating wallet (`sherwood identity mint --name <name>`) and pass the id with `--agent-id`. If the message says `sherwood identity mint` mints on a registry this factory does not read, minting will not help: tell the user. |
+| `Subdomain "<x>" is too short …` or `Subdomain '<x>' is already taken by another vault.` | Pick another subdomain and confirm it with the user. |
+
+A wallet that holds the fee is not refused: the review shows `Creation fee: <fee> (approved to the factory before create)` and the invite-only note. Confirm that spend with the user like any other parameter.
+
+#### Bond the owner stake
+
+The factory requires the creator to bond WOOD before it will deploy a vault — `minOwnerStake` is 10,000 WOOD (read the live value from
 `guardianRegistry.minOwnerStake()`).
 
 ```bash
 sherwood guardian prepare-owner-stake 10000
 ```
 
-This approves WOOD and calls `prepareOwnerStake` in one step; run it once per
-creator wallet, before `vault create`. If you see `PreparedStakeNotFound()`,
-this is the missing step — nothing in the revert names it.
+This approves WOOD and calls `prepareOwnerStake` in one step; run it from the
+creator wallet before `vault create`. A prepared bond is bound to the vault it
+creates, so each new vault needs a fresh one. The CLI checks
+`StakedWood.canCreateVault(<creator>)` before sending and refuses with
+`Vault creation needs a prepared owner bond first`; the on-chain revert is
+`PreparedStakeNotFound()`.
 
 > **Owner stake ≠ proposer bond.** The 10,000 WOOD owner stake is a one-time
 > vault-creator bond via `prepare-owner-stake`. A **separate** WOOD pull happens
 > at `propose`: the risk-scaled **proposer bond** is transferred into
 > `ProposerBondEscrow`. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-`vault create` deploys a vault contract and pays gas — **none of which can be undone** (ENS subdomain registration is skipped: the fork has no registrar). The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain).
+`vault create` deploys a vault contract, pays gas and, unless the wallet is sponsored, pays the creation fee — **none of which can be undone**. The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain, wrong agent ID).
 
 #### Confirm before running
 
@@ -200,7 +250,8 @@ Before invoking the command, **echo every resolved parameter back to the user an
 
 The summary MUST include all of:
 
-- **Subdomain** — the fund identifier. Choose carefully; a typo wastes gas. (ENS registration is skipped on the fork.)
+- **Subdomain** — the vault's unique name in the factory. Choose carefully; a typo wastes gas. It is not an ENS name (see [Vault names](#vault-names)).
+- **Creation fee** — as the CLI's review prints it: waived for a sponsored wallet, otherwise the amount and token that will be approved and paid.
 - **Vault asset** — show the symbol AND the resolved token address. The vault asset is normally USDG on the fork (WETH is the alternative) — confirm even when "obvious".
 - **Name**, **description**, **agent ID**, **`--open-deposits`** flag, **`--public-chat`** flag.
 
@@ -211,11 +262,12 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--name <name>` | Yes | Display name for the vault (e.g. "Alpha Fund") |
-| `--subdomain <name>` | Yes | ENS subdomain — registers as `<subdomain>.sherwoodagent.eth`. Lowercase, min 3 chars, hyphens OK |
+| `--subdomain <name>` | Yes | The vault's unique name in the factory. Lowercase, min 3 chars, hyphens OK |
 | `--description <text>` | Yes | Short description of the vault's strategy or purpose |
-| `--agent-id <id>` | Yes | Numeric agent ID. Use `0` on this deployment. |
+| `--agent-id <id>` | Yes | Your ERC-8004 identity token ID, owned by the creating wallet. Defaults to the ID saved by `identity mint`; with `-y` and none saved, the CLI uses `0`, which the identity check refuses unless you own #0 |
+| `--creator <address>` | With `--calldata-only` | The wallet that will send the create. Enables the bond, fee and identity checks (see [Agent wallet](#agent-wallet-calldata-only)) |
 | `--asset <symbol-or-address>` | Yes | Vault asset: `USDG` or `WETH` on the fork (no USDC there), or a token address. **Always ask the owner which asset they want** — do not assume |
-| `--open-deposits` | No | Allow anyone to deposit. Omit to require whitelisted depositors |
+| `--open-deposits` | No | Allow anyone to deposit. Omit to require whitelisted depositors. Has no effect while the factory's `depositsRestricted` flag is on (the launch setting): every vault then takes owner-approved depositors only |
 | `--public-chat` | No | Enable public chat — adds dashboard spectator to the XMTP group. **Recommended for all vaults** |
 
 ### Example
@@ -224,8 +276,12 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 sherwood vault create \
   --name "Alpha Fund" --subdomain alpha \
   --description "Leveraged longs on the Robinhood fork" \
-  --agent-id 0 --asset USDG --open-deposits --public-chat
+  --agent-id <your-agent-id> --asset USDG --public-chat
 ```
+
+#### Vault names
+
+A vault's name is its subdomain (plus its address). The factory does not register ENS names. The CLI prints `<subdomain>.sherwoodagent.eth` only when the chain has an ENS registry configured **and** that name's node is owned by the vault; no Robinhood chain has a registry configured today, so expect the bare subdomain. Never tell a user a vault has an ENS name unless the CLI printed it.
 
 After deployment the CLI automatically:
 1. Saves vault address to `~/.sherwood/config.json`
@@ -233,7 +289,7 @@ After deployment the CLI automatically:
 3. Creates an XMTP group chat for the vault
 4. Adds the dashboard spectator (if `--public-chat`)
 
-With `--calldata-only` (agent wallet) none of this happens: the printed tx only deploys the vault. Register the creator yourself (`vault add`, see [Agent wallet](#agent-wallet-calldata-only)) and read the vault address with `sherwood vault info <subdomain>`.
+With `--calldata-only` (agent wallet) none of this happens: the printed txs only approve the fee (when due) and deploy the vault. Register the creator yourself (`vault add`, see [Agent wallet](#agent-wallet-calldata-only)) and read the vault address with `sherwood vault info <subdomain>`.
 
 Verify: `sherwood vault info <subdomain>` (or by numeric ID: `sherwood vault info 1`)
 
@@ -243,11 +299,11 @@ Verify: `sherwood vault info <subdomain>` (or by numeric ID: `sherwood vault inf
 
 ### Register agents
 
-Register an agent wallet on the vault. `--agent-id` is optional — omit it or pass `0` on this deployment.
+Register an agent wallet on the vault. `--agent-id` is the agent's ERC-8004 identity; omit it and the signed CLI looks it up from the wallet (and fails if the wallet owns none). When the factory's agent registry is set, the agent wallet or the vault owner must own the ID (`NotAgentOwner`). On a [single-operator vault](#single-operator-vaults) the agent is registered but cannot propose, and the CLI prints a warning.
 
 ```bash
 sherwood vault add --wallet 0xAgentWallet
-sherwood vault add --agent-id 0 --wallet 0xAgentWallet
+sherwood vault add --agent-id <agentId> --wallet 0xAgentWallet
 ```
 
 ### Initialize chat group
@@ -255,7 +311,7 @@ sherwood vault add --agent-id 0 --wallet 0xAgentWallet
 `vault create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a create.
 
 ```bash
-# Create XMTP group + write ENS record (creator only)
+# Create the XMTP group (creator only)
 sherwood chat <subdomain> init --public
 
 # Add an agent wallet to the chat group
@@ -278,11 +334,27 @@ After creating a vault, ensure all agents are set up:
 3. **Add agent to chat:** `sherwood chat <subdomain> add 0xAgent`
 4. **Verify setup:** `sherwood vault info <subdomain>` — shows vault stats, XMTP group ID, and more
 
-The fork has no ENS registrar, so the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood vault info <subdomain>`.
+No ENS text record is written (no Robinhood chain has an ENS registry configured), so the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood vault info <subdomain>`.
 
 ### Approve depositors
 
-If not using open deposits: `sherwood vault approve-depositor --depositor 0x...`
+Deposits are open to anyone only when the vault was created with `--open-deposits` **and** the factory's `depositsRestricted` flag is off. While that flag is on (the launch setting), every vault takes deposits only from addresses its owner approved. `sherwood vault info <subdomain>` prints which applies (`Deposits: open to anyone`, or `Deposits: owner approval only — <why>` followed by the owner's command).
+
+The vault owner approves one address per call (`approve-depositor` also works with `--calldata-only`):
+
+```bash
+sherwood vault approve-depositor --vault 0xVAULT --depositor 0xDEPOSITOR
+sherwood vault remove-depositor --vault 0xVAULT --depositor 0xDEPOSITOR
+```
+
+**What a depositor sees.** The approval is for the address that receives the shares. Signed `vault deposit` and `queue request-deposit` check it before sending anything and refuse with:
+
+```
+Deposits into 0xVAULT are by owner approval only (<why>), and 0xYOU is not approved. Ask the vault owner to run:
+  sherwood vault approve-depositor --vault 0xVAULT --depositor 0xYOU
+```
+
+Pass that to the user and stop; only the vault owner can fix it. `vault deposit --use-eth` and `--calldata-only` deposits skip this check, so an unapproved receiver's transaction reverts `NotApprovedDepositor`. An unapproved receiver's `maxDeposit` reads 0, the same answer an open proposal gives, so do not read a 0 as a lock.
 
 ### Update metadata
 
@@ -493,12 +565,12 @@ Both templates are **not deployed on the fork** (Aerodrome and VVV are Base venu
 
 #### PortfolioStrategy
 
-Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On the fork the basket is tokenized stocks bought with USDG through Uniswap v4, and **`--swap-routes` is required** (no default routes there): `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD. Elsewhere routes are auto-detected per token.
+Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On the fork the basket is tokenized stocks bought with USDG through Uniswap v4, and **`--swap-routes` is required** (no default routes there): `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD. The 14 newer stocks quoted only through Uniswap v3 on the fork: `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SPCX. These routes were measured on the fork; re-quote before relying on them anywhere else. Elsewhere routes are auto-detected per token.
 
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
 - **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
-- **Flags:** `--tokens` takes registry symbols for the active chain (on the fork: AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL) or raw `0x` addresses in any casing; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500). The vault asset defaults to USDG on the fork.
+- **Flags:** `--tokens` takes registry symbols for the active chain (on the fork: AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL, and ASML, BABA, CRCL, DELL, GME, INTC, MSTR, MU, PLTR, SNDK, SPCX, TSM, USAR, USO) or raw `0x` addresses in any casing; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500). The vault asset defaults to USDG on the fork.
 
 ```bash
 sherwood strategy propose portfolio \
@@ -625,6 +697,8 @@ sherwood vault balance
 sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626)
 ```
 
+While deposits are restricted, the depositor must be approved by the vault owner first: see [Approve depositors](#approve-depositors).
+
 ### Stuck proposal recovery (vault-owner skill)
 
 If a vault becomes locked because an executed proposal's pre-committed settlement calls revert (`redemptionsLocked()` stays true after the strategy duration elapses), recovery is documented in the **`vault-owner` skill** — see `skills/vault-owner/SKILL.md` § _"Recovering a stuck Executed proposal"_. That skill contains the full diagnostic playbook for clearing the lock safely (`unstick` or bonded `emergencySettleWithCalls` → `finalizeEmergencySettle`). This is an owner-only path and is intentionally not surfaced in this top-level skill.
@@ -700,6 +774,8 @@ Performance fees (agent's cut, capped by governor) and protocol fees are distrib
 
 Before proposing, read [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond): uncertified calls cost full-notional coverage and a WOOD proposer bond that scales with it.
 
+While the factory's `ownerOnlyProposals` flag is on, only the vault owner can propose, alone: see [Single-operator vaults](#single-operator-vaults). `proposal create` and `strategy propose` refuse any other proposer before pinning metadata or locking the bond.
+
 ### Create a proposal
 
 `proposal create` pins metadata to IPFS and writes onchain — gas is paid and, once the proposal enters the voting window, it cannot be edited. Confirm every parameter with the user first.
@@ -772,10 +848,14 @@ Displays metadata, state, timestamps, vote breakdown, decoded calls, capital sna
 ### Vote on a proposal
 
 ```bash
-sherwood proposal vote --id <proposalId> --support <for|against|abstain>
+sherwood proposal vote --vault 0x... --id <proposalId> --support <for|against|abstain>
 ```
 
-Caller must have voting power (vault shares at snapshot). Displays vote weight before confirming.
+`--vault` is required (each vault has its own governor). Caller must have voting power (vault shares at snapshot). Displays vote weight, then sends the vote.
+
+**Voting opens one second after the propose block.** The governor snapshots at the propose block's timestamp minus one and refuses votes while `block.timestamp <= snapshotTimestamp + 1` (`NotWithinVotingPeriod`); `getVoteWeight` reads 0 until then. The signed CLI waits this out on the chain's clock (the latest block's timestamp, not wall time), showing `Voting opens in <n> s — waiting...`, then votes. If still no later block has landed after the wait, it stops with `No block has been produced since this proposal …`: rerun once the chain has produced a block. If the RPC's latest block is far behind the proposal, it stops and asks you to retry against an up-to-date RPC.
+
+With `--calldata-only` the CLI does not wait. Broadcast the vote only after a block whose timestamp is at least the propose block's timestamp + 1 (on a chain that produces blocks continuously, two seconds after the propose confirms is enough). A vote sent earlier reverts `NotWithinVotingPeriod`; send it again.
 
 ### Execute an approved proposal
 
@@ -951,10 +1031,10 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 User wants to...
 ├── Set up             → Phase 1: agent wallet (no config set)
 ├── Wallet setup → Phase 1: agent wallet (Privy on the fork; MetaMask may not work there) + --calldata-only
-├── Create a fund      → Phase 2: vault create (use --public-chat for dashboard)
-├── Join a fund        → Phase 2: vault join → creator approves (auto-adds to chat)
+├── Create a fund      → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
+├── Join a fund        → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
 ├── Review requests    → Phase 3: vault requests → vault approve/reject
-├── Configure vault    → Phase 3: register agents → approve depositors
+├── Configure vault    → Phase 3: register agents → approve depositors (vault approve-depositor, one address per call)
 ├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4 on the fork)
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
@@ -967,7 +1047,7 @@ User wants to...
 ├── Claim launch reserve / collect launch fees → `sherwood launchpad claim | collect-fees` (see `strategies/launchpad`)
 ├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (not deployed yet)
 ├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
-├── Vote on proposal   → Governance: proposal vote --id <id> --support for|against|abstain
+├── Vote on proposal   → Governance: proposal vote --vault <addr> --id <id> --support for|against|abstain (not in the propose second)
 ├── Veto proposal      → Governance: proposal veto --id <id> (vault owner, Pending only)
 ├── Execute proposal   → Governance: proposal execute --id <id>
 ├── Settle / close     → Governance: proposal settle --id <id> [--calls]

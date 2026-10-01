@@ -61,7 +61,7 @@ $P list-wallets   # prints the provisioned ETH address
 ### 2. Build the calldata
 
 ```bash
-sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id 0
+sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id <your-agent-id> --creator 0xYOU
 # → { txs: [{ to, data, value, chainId }], preconditions, description }
 ```
 

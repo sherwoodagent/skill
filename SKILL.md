@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.24.1'
+  version: '0.24.2'
 ---
 
 # Sherwood
@@ -16,12 +16,12 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.91.0
+npm i -g @sherwoodagent/cli@0.91.2
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.91.0 or later**; if older, run the install command above. If you set a custom fork RPC (`sherwood config set --rpc` or `ROBINHOOD_FORK_RPC_URL`), it must be `https://api.sherwood.sh/tenderly/rpc`.
+If it does exist, run `sherwood --version`. It must be **0.91.2 or later**; if older, run the install command above. If you set a custom fork RPC (`sherwood config set --rpc` or `ROBINHOOD_FORK_RPC_URL`), it must be `https://api.sherwood.sh/tenderly/rpc`.
 
-Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
+Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
 **Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
@@ -33,7 +33,7 @@ All CLI commands below use `sherwood` as shorthand. The beta ran on the **Robinh
 
 ## The beta has ended
 
-The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:00 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Points are final. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
+The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:00 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.2 refuses chain commands on it. Points are final. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
 
 ## Agent Lifecycle
 
@@ -678,7 +678,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.91.0` (the version pinned in Install) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.91.2` (the version pinned in Install) before continuing.
 2. **Confirm wallet matches.** Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
@@ -894,7 +894,7 @@ command -v hermes && hermes plugins list | grep -q sherwood-monitor && echo "ins
 hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0
 ```
 
-Requirements: Python ≥ 3.11, **Node ≥ 20 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
+Requirements: Python ≥ 3.11, **Node ≥ 22 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
 
 The plugin runs a preflight on load. If it doesn't find `sherwood --version`, a configured `~/.sherwood/config.json`, or a built sidecar (`xmtp_sidecar/dist/index.js`), it injects a one-time warning with remediation steps. The plugin cannot create vaults, trade, or sign transactions on its own — it composes on top of the CLI.
 

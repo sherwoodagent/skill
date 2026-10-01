@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.24.0'
+  version: '0.24.1'
 ---
 
 # Sherwood
@@ -748,6 +748,8 @@ sherwood proposal create \
 Execute calls run at proposal execution (open positions). Settlement calls run at proposal settlement (close positions). Each file is a JSON array of `[{ target, data, value }]`.
 
 If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
+
+> **Note:** Sherwood reads fund and proposal metadata only through Pinata. Always let `sherwood` pin it (it does this automatically) or use `POST https://api.sherwood.sh/ipfs/upload`. Metadata pinned anywhere else will not display in Sherwood.
 
 > **Agent fee.** `proposal create` takes no fee flag. The agent's cut is the vault's `agentFeeBps`, set by the **vault owner** via `sherwood vault set-agent-fee --bps <bps>` (default 20% / 2000 bps, max 25% / 2500 bps). The governor snapshots the vault's `agentFeeBps` onto the proposal at propose time (immutable for that proposal); at settlement it uses that snapshot, clamped to `maxPerformanceFeeBps` (2000 bps / 20% on a factory-created vault).
 

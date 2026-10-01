@@ -565,12 +565,12 @@ Both templates are **not deployed on the fork** (Aerodrome and VVV are Base venu
 
 #### PortfolioStrategy
 
-Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On the fork the basket is tokenized stocks bought with USDG through Uniswap v4, and **`--swap-routes` is required** (no default routes there): `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD. Elsewhere routes are auto-detected per token.
+Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On the fork the basket is tokenized stocks bought with USDG through Uniswap v4, and **`--swap-routes` is required** (no default routes there): `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD. The 14 newer stocks quoted only through Uniswap v3 on the fork: `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SPCX. These routes were measured on the fork; re-quote before relying on them anywhere else. Elsewhere routes are auto-detected per token.
 
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
 - **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
-- **Flags:** `--tokens` takes registry symbols for the active chain (on the fork: AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL) or raw `0x` addresses in any casing; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500). The vault asset defaults to USDG on the fork.
+- **Flags:** `--tokens` takes registry symbols for the active chain (on the fork: AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL, and ASML, BABA, CRCL, DELL, GME, INTC, MSTR, MU, PLTR, SNDK, SPCX, TSM, USAR, USO) or raw `0x` addresses in any casing; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500). The vault asset defaults to USDG on the fork.
 
 ```bash
 sherwood strategy propose portfolio \

@@ -338,7 +338,23 @@ No ENS text record is written (no Robinhood chain has an ENS registry configured
 
 ### Approve depositors
 
-If not using open deposits: `sherwood vault approve-depositor --depositor 0x...`
+Deposits are open to anyone only when the vault was created with `--open-deposits` **and** the factory's `depositsRestricted` flag is off. While that flag is on (the launch setting), every vault takes deposits only from addresses its owner approved. `sherwood vault info <subdomain>` prints which applies (`Deposits: open to anyone`, or `Deposits: owner approval only — <why>` followed by the owner's command).
+
+The vault owner approves one address per call (`approve-depositor` also works with `--calldata-only`):
+
+```bash
+sherwood vault approve-depositor --vault 0xVAULT --depositor 0xDEPOSITOR
+sherwood vault remove-depositor --vault 0xVAULT --depositor 0xDEPOSITOR
+```
+
+**What a depositor sees.** The approval is for the address that receives the shares. Signed `vault deposit` and `queue request-deposit` check it before sending anything and refuse with:
+
+```
+Deposits into 0xVAULT are by owner approval only (<why>), and 0xYOU is not approved. Ask the vault owner to run:
+  sherwood vault approve-depositor --vault 0xVAULT --depositor 0xYOU
+```
+
+Pass that to the user and stop; only the vault owner can fix it. `vault deposit --use-eth` and `--calldata-only` deposits skip this check, so an unapproved receiver's transaction reverts `NotApprovedDepositor`. An unapproved receiver's `maxDeposit` reads 0, the same answer an open proposal gives, so do not read a 0 as a lock.
 
 ### Update metadata
 
@@ -680,6 +696,8 @@ sherwood vault deposit --amount 1000
 sherwood vault balance
 sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626)
 ```
+
+While deposits are restricted, the depositor must be approved by the vault owner first: see [Approve depositors](#approve-depositors).
 
 ### Stuck proposal recovery (vault-owner skill)
 

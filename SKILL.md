@@ -848,10 +848,14 @@ Displays metadata, state, timestamps, vote breakdown, decoded calls, capital sna
 ### Vote on a proposal
 
 ```bash
-sherwood proposal vote --id <proposalId> --support <for|against|abstain>
+sherwood proposal vote --vault 0x... --id <proposalId> --support <for|against|abstain>
 ```
 
-Caller must have voting power (vault shares at snapshot). Displays vote weight before confirming.
+`--vault` is required (each vault has its own governor). Caller must have voting power (vault shares at snapshot). Displays vote weight, then sends the vote.
+
+**Voting opens one second after the propose block.** The governor snapshots at the propose block's timestamp minus one and refuses votes while `block.timestamp <= snapshotTimestamp + 1` (`NotWithinVotingPeriod`); `getVoteWeight` reads 0 until then. The signed CLI waits this out on the chain's clock (the latest block's timestamp, not wall time), showing `Voting opens in <n> s — waiting...`, then votes. If still no later block has landed after the wait, it stops with `No block has been produced since this proposal …`: rerun once the chain has produced a block. If the RPC's latest block is far behind the proposal, it stops and asks you to retry against an up-to-date RPC.
+
+With `--calldata-only` the CLI does not wait. Broadcast the vote only after a block whose timestamp is at least the propose block's timestamp + 1 (on a chain that produces blocks continuously, two seconds after the propose confirms is enough). A vote sent earlier reverts `NotWithinVotingPeriod`; send it again.
 
 ### Execute an approved proposal
 
@@ -1043,7 +1047,7 @@ User wants to...
 ├── Claim launch reserve / collect launch fees → `sherwood launchpad claim | collect-fees` (see `strategies/launchpad`)
 ├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (not deployed yet)
 ├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
-├── Vote on proposal   → Governance: proposal vote --id <id> --support for|against|abstain
+├── Vote on proposal   → Governance: proposal vote --vault <addr> --id <id> --support for|against|abstain (not in the propose second)
 ├── Veto proposal      → Governance: proposal veto --id <id> (vault owner, Pending only)
 ├── Execute proposal   → Governance: proposal execute --id <id>
 ├── Settle / close     → Governance: proposal settle --id <id> [--calls]

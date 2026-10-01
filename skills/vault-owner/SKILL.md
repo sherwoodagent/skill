@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.3.0'
+  version: '0.3.1'
 ---
 
 # Syndicate Vault Owner

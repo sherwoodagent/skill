@@ -287,6 +287,8 @@ cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL         
 
 Common root causes: pre-committed `settlementCalls` hit a broken adapter/router, a pool/position that no longer exists, or calldata encoded against a replaced contract.
 
+**`StrategyNotSettled(strategy)`.** The settlement calls ran, but the proposal's strategy still reports `executed()`: no leg called its `settle()`, so capital would stay on the clone. `settleProposal` and `unstick` both run this check after the voted batch and revert, and both replay the same pre-committed calls, so retrying either reverts again. **Your bonded emergency settle is the only exit:** commit unwind calls that bring the capital back to the vault (the strategy's `settle()`, if it can still run) with `emergencySettleWithCalls`, then `finalizeEmergencySettle` after the review period (Steps 4–6 below). `finalizeEmergencySettle` is exempt from this check.
+
 **Live owner paths — `GovernorEmergency` (protocol pin `c9e3d8c6`).** There is no owner transaction that immediately runs arbitrary fallback calls. Owner-supplied calldata is committed, reviewed, then finalized.
 
 | Function | What it does | Owner bond | Guardian review |
@@ -328,7 +330,7 @@ cast send $GOVERNOR_ADDRESS "unstick(uint256)" <ID> \
   --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
-If `unstick` reverts, the voted batch is the problem — go to Step 4. Do not expect a no-op view call to mark the proposal Settled.
+If `unstick` reverts (including `StrategyNotSettled`), the voted batch is the problem — go to Step 4. Do not expect a no-op view call to mark the proposal Settled.
 
 **Step 4 — Build real unwind calls** (the calldata guardians will review). Examples:
 

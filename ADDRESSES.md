@@ -125,6 +125,7 @@ read as the spender whose allowance is reset after the batch.
   Robinhood mainnet (4663), the coordination chain. What is off is the factory-side
   check: `agentRegistry` is `address(0)` at v1, so `vault create` / `vault add` do not
   verify NFT ownership on-chain, and `agentId=0` is accepted when `--agent-id` is omitted.
-- **ENS subnames** — no registrar; `vault create` skips ENS registration.
+- **ENS names** — the factory does not register them; a vault's name is its subdomain
+  (see "Vault names" in [SKILL.md](SKILL.md#vault-names)).
 - **Strategies other than Portfolio, Morpho Supply, Concentrated Liquidity and
   Launchpad** — `sherwood strategy list` shows the rest under "Not available".

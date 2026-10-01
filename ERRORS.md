@@ -65,10 +65,17 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 ## Factory Errors
 
+Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the waitlist creates for free (once); any other wallet pays `creationFee()` in `creationFeeToken()`. There is no dedicated fee error: an unpaid fee surfaces as the fee token's own ERC-20 revert. Signed `vault create` checks the bond, fee, identity and subdomain length first and refuses before sending anything (see "Create new vault" in [SKILL.md](SKILL.md#create-new-vault)).
+
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `InsufficientCreationFee` | Didn't send enough creation fee token | Check `creationFee()` and approve the fee token |
-| `CreationFeeTransferFailed` | Fee token transfer failed | Ensure sufficient balance and approval |
+| `PreparedStakeNotFound` | No prepared owner stake for the creator, or it is already bound to a vault | `sherwood guardian prepare-owner-stake <amount>` (at least `minOwnerStake`) from the creating wallet, then retry |
+| `ERC20InsufficientAllowance` | On `vault create`: the creator is not sponsored and did not approve the factory for the creation fee. (Also raised by any other token pull with a short allowance) | Signed `vault create` approves the fee itself. Keyless: send the printed `approve` before `createSyndicate`, or pass `--creator` so the CLI checks |
+| `ERC20InsufficientBalance` | On `vault create`: the creator is not sponsored and holds less than the creation fee. (Also raised by any other token transfer) | Tell the user: join the waitlist at https://sherwood.sh for sponsorship of this wallet, or fund it with the fee |
+| `NotAgentOwner` | The creator does not own `creatorAgentId` in the factory's `agentRegistry()` | Mint from the creating wallet (`sherwood identity mint --name <name>`) and pass that ID with `--agent-id` |
+| `ERC721NonexistentToken` | That agent ID was never minted on the registry this contract reads | Check the ID with `sherwood identity status`, or mint one |
+| `SubdomainTooShort` / `SubdomainTaken` | Subdomain under 3 characters, or already used by another vault | Pick another subdomain and confirm it with the user |
+| `InvalidSyndicateConfig` | Asset, name, symbol, subdomain or metadata URI is empty | Fill every field (the CLI does this; check hand-built calldata) |
 
 ## XMTP / Chat Errors
 

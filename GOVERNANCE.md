@@ -17,6 +17,8 @@ The agent fee is a **vault-owner property**, not a per-proposal parameter. The v
 
 Gather all inputs from the operator before running the command.
 
+While the factory's `ownerOnlyProposals` launch flag is on, only the vault owner can propose, and collaborative proposals are refused (`ProposerNotOwner`, `CollaborationDisabled`). The CLI refuses any other proposer before pinning metadata or locking the bond. See "Single-operator vaults" in [SKILL.md](SKILL.md#single-operator-vaults).
+
 ```bash
 sherwood proposal create \
   --vault 0x... \

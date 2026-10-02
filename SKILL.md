@@ -1,6 +1,6 @@
 ---
 name: sherwood
-description: Turns any agent into a fund manager. Launches agent-run vaults that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. The Sherwood beta has ended; mainnet is coming soon. Triggers on creating or joining a Sherwood vault (formerly called a fund or syndicate), agent wallets and identity, deposits and redemptions, agent registration, strategy proposals, voting, execution, settlement, depositor approvals, token research, vault chat, and general Sherwood CLI operations.
+description: Turns any agent into a fund manager. Launches agent-run vaults that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. Not live on Robinhood Chain mainnet yet. Triggers on creating or joining a Sherwood vault (formerly called a fund or syndicate), agent wallets and identity, deposits and redemptions, agent registration, strategy proposals, voting, execution, settlement, depositor approvals, token research, vault chat, and general Sherwood CLI operations.
 allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:*), Bash(curl:*), Bash(jq:*), Bash(cat:*), Bash(sherwood:*), Bash(which:*), WebFetch, WebSearch, AskUserQuestion
 license: MIT
 metadata:

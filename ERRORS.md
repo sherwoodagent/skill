@@ -69,6 +69,8 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `GaugeMismatch` | Gauge's staking token doesn't match LP token | Verify gauge address corresponds to the correct pool |
 | `InvalidAmount` | Zero supply amount or redeem below minimum | Check amounts; for settlement, update `minRedeemAmount` via `updateParams()` |
 | `TierRegistryUnresolved` | Portfolio, Morpho Supply or Concentrated Liquidity could not resolve the TierRegistry (vault → factory → `tierRegistry`), so it cannot check its counterparties and fails closed | Not fixable from the agent side: the factory's `tierRegistry` must be set before the strategy can initialize, execute or rebalance. Tell the user |
+| `CounterpartyNotAllowed` | The strategy uses a counterparty that is not on the protocol's allowlist. For Morpho Supply this includes the market's oracle and its collateral token, not only the market itself | Choose a market whose oracle and collateral token are allowlisted; do not retry the same market |
+| `UnrecognizedAssetSelector` | A batch call targets the vault's own asset with a function the vault does not allow. On the asset, a batch may only call `transfer`, `transferFrom` out of the vault, and the approve family | Remove or replace that call in the proposal's execute or settlement calls |
 
 ## Coverage Errors (ExposureLedger)
 

@@ -402,17 +402,37 @@ Sherwood provides composable **strategy template contracts** that agents deploy 
    - **Settle batch:** `[strategy.settle()]`
 4. Between execution and settlement, the proposer can call `strategy.updateParams()` to tune slippage or amounts — no new proposal needed
 
+#### Strategies from `sherwood-strategies` are unaudited
+
+The public repository `sherwoodagent/sherwood-strategies` holds strategy contracts built by the Sherwood team and by the community. They have not been audited. Before you propose a strategy from it, or approve one as a guardian or depositor:
+
+1. Find the deployed template's address and confirm its source code is verified on the chain's block explorer.
+2. Confirm the verified source matches the code in the repository.
+3. Read what its execute and settle calls do with the vault's funds.
+
+Tell your user the strategy is unaudited and used at their own risk before any funds are committed.
+
+How to do each step with what the CLI gives you:
+
+- **Template address.** `sherwood strategy list` prints `Template: <address>` for every template deployed on the active chain. A proposal's batch names a clone, not the template; `StrategyFactory.cloneTemplate(<clone>)` returns the template it was cloned from (`address(0)` if the factory did not deploy it).
+- **Explorer.** Use the block explorer of the chain the vault is on; the CLI prints links to it for the transactions it sends.
+- **Repository.** https://github.com/sherwoodagent/sherwood-strategies. Launchpad lives in `src/launchpad/` (template plus the Sushi and StonkBrokers adapters it calls, which need the same checks), Lighter in `src/lighter/`.
+
+Which templates this applies to is in the **Source** column below. `PortfolioStrategy`, `MorphoSupplyStrategy` and `ConcentratedLiquidityStrategy` are core-protocol templates (`sherwoodagent/sherwood-protocol`, `src/strategies/`), not part of `sherwood-strategies`. Templates whose source is in neither repository are covered by this notice too.
+
 #### Available Templates
 
-| Template | CLI key | Description |
-|----------|---------|-------------|
-| **AerodromeLPStrategy** | `aerodrome-lp` | Provide liquidity on Aerodrome DEX + optional Gauge staking. **Not deployed on the fork** |
-| **VeniceInferenceStrategy** | `venice-inference` | Stake VVV for sVVV — Venice private AI inference (dual-path). **Not deployed on the fork** |
-| **PortfolioStrategy** | `portfolio` | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
-| **MorphoSupplyStrategy** | `morpho-supply` | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
-| **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
-| **LaunchpadStrategy** | `launchpad` | Launch a fund token on Sushi Launchpad V2 or StonkBrokers; holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design |
-| **LighterPerpStrategy** | `lighter-perp` | Agent-traded perps on Lighter (zkLighter), USDG vaults only. **Not deployed yet** |
+Choosing a template marked unaudited? Run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) first.
+
+| Template | CLI key | Source | Description |
+|----------|---------|--------|-------------|
+| **AerodromeLPStrategy** | `aerodrome-lp` | Neither repository (removed from the core protocol); unaudited, see the notice | Provide liquidity on Aerodrome DEX + optional Gauge staking. **Not deployed on the fork** |
+| **VeniceInferenceStrategy** | `venice-inference` | Neither repository (removed from the core protocol); unaudited, see the notice | Stake VVV for sVVV — Venice private AI inference (dual-path). **Not deployed on the fork** |
+| **PortfolioStrategy** | `portfolio` | Core protocol | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
+| **MorphoSupplyStrategy** | `morpho-supply` | Core protocol | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
+| **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Core protocol | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
+| **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 or StonkBrokers; holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design |
+| **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. **Not deployed yet** |
 
 Templates are ERC-1167 clonable singletons deployed once per chain. Each proposal clones a template, initializes it with custom params, then references the clone in batch calls.
 
@@ -482,6 +502,8 @@ Cheaper coverage is only for certified tier 0/1 adapters.
 
 #### Using Strategy Templates via CLI
 
+Before `strategy propose` with a template from `sherwood-strategies` or from neither repository (see the **Source** column), run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) and tell the user.
+
 ```bash
 # List available templates and their addresses
 sherwood strategy list
@@ -519,7 +541,7 @@ sherwood strategy propose portfolio \
 
 #### Keyless strategy proposals (external signer / calldata-only)
 
-With an agent wallet (Privy, MetaMask Agent Wallet, …) the whole clone + propose flow works without a configured private key — one command:
+With an agent wallet (Privy, MetaMask Agent Wallet, …) the whole clone + propose flow works without a configured private key — one command. The unaudited-strategy checks above apply here too.
 
 ```bash
 sherwood --calldata-only strategy propose portfolio \
@@ -561,11 +583,11 @@ sherwood --calldata-only proposal create --vault 0xVAULT \
 
 #### AerodromeLPStrategy and VeniceInferenceStrategy
 
-Both templates are **not deployed on the fork** (Aerodrome and VVV are Base venues), so `strategy propose aerodrome-lp` / `venice-inference` cannot run. Say so if a user asks for Aerodrome LP or VVV staking; on the fork, use `morpho-supply` (lending) or `concentrated-liquidity` instead.
+Both templates are **not deployed on the fork** (Aerodrome and VVV are Base venues), so `strategy propose aerodrome-lp` / `venice-inference` cannot run. Say so if a user asks for Aerodrome LP or VVV staking; on the fork, use `morpho-supply` (lending) or `concentrated-liquidity` instead. Their source is in neither the core protocol (which removed them) nor `sherwood-strategies`: treat them as unaudited, see [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited).
 
 #### PortfolioStrategy
 
-Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On the fork the basket is tokenized stocks bought with USDG through Uniswap v4, and **`--swap-routes` is required** (no default routes there): `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD. The 14 newer stocks quoted only through Uniswap v3 on the fork: `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SPCX. These routes were measured on the fork; re-quote before relying on them anywhere else. Elsewhere routes are auto-detected per token.
+Core-protocol template. Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On the fork the basket is tokenized stocks bought with USDG through Uniswap v4, and **`--swap-routes` is required** (no default routes there): `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD. The 14 newer stocks quoted only through Uniswap v3 on the fork: `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SPCX. These routes were measured on the fork; re-quote before relying on them anywhere else. Elsewhere routes are auto-detected per token.
 
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
@@ -582,7 +604,7 @@ sherwood strategy propose portfolio \
 
 #### MorphoSupplyStrategy
 
-Supplies the vault asset to exactly one Morpho Blue market. Deployed on `robinhood-fork`.
+Core-protocol template. Supplies the vault asset to exactly one Morpho Blue market. Deployed on `robinhood-fork`.
 
 - **Execute:** pull `--amount` → supply to the market
 - **Settle:** withdraw the whole position by shares (interest included) → push to vault. All-or-revert: an illiquid market reverts settlement, which is retried later
@@ -602,7 +624,7 @@ Flags: `--market-id <bytes32>` (required), `--amount <n>` (required), `--morpho 
 
 #### ConcentratedLiquidityStrategy
 
-A Uniswap V3 range position funded by borrowing the vault asset from Morpho against vault-asset (or ERC-4626 wrapper) collateral. Deployed on `robinhood-fork`.
+Core-protocol template. A Uniswap V3 range position funded by borrowing the vault asset from Morpho against vault-asset (or ERC-4626 wrapper) collateral. Deployed on `robinhood-fork`.
 
 - **Execute:** pull `--collateral-amount` → post as Morpho collateral → borrow `--borrow-amount` → swap the declared fraction to the pool's other token → mint one position
 - **Rerange:** permissionless within the voted policy (trigger, min interval, max count ≤ 20); never touches the borrow
@@ -624,6 +646,8 @@ Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--po
 
 #### LaunchpadStrategy
 
+**From `sherwood-strategies`, unaudited:** run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) on the template and the launch adapter for the venue, and tell the user, before proposing or approving a launch.
+
 Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) or **StonkBrokers** (`--venue stonk`) with vault capital, holds back a reserve, and lets share holders claim a pro-rata slice during a claim window. Deployed on `robinhood-fork`. Operator commands: `sherwood launchpad status | claim | claim-for | collect-fees | finalize`.
 
 - **A launch settles as a vault-asset LOSS of about `--asset-in`, by design on v1.** The reserve is a dividend in kind to holders; v1 books no value for the launch token. The CLI sets `--max-drawdown-bps` to `ceil(assetIn / totalAssets) + 200` when omitted, refuses a lower value, and refuses the proposal above 9000 bps. Say this to the user before proposing.
@@ -644,6 +668,8 @@ sherwood strategy propose launchpad \
 > For the full Launchpad workflow (venue choice, sizing, claims, fees, settlement), delegate to the **`strategies/launchpad` skill**.
 
 #### LighterPerpStrategy
+
+**From `sherwood-strategies`, unaudited:** run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) and tell the user before proposing or approving it.
 
 Agent-traded perpetuals on Lighter (zkLighter). The strategy clone owns the Lighter account; the agent trades it with a trade-only L2 key; the proposer or vault owner keeps an on-chain kill switch. USDG vaults only.
 
@@ -774,6 +800,8 @@ Performance fees (agent's cut, capped by governor) and protocol fees are distrib
 
 Before proposing, read [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond): uncertified calls cost full-notional coverage and a WOOD proposer bond that scales with it.
 
+Proposing, voting on or reviewing a proposal whose strategy comes from `sherwood-strategies` (or from neither source repository)? It is unaudited: see [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited).
+
 While the factory's `ownerOnlyProposals` flag is on, only the vault owner can propose, alone: see [Single-operator vaults](#single-operator-vaults). `proposal create` and `strategy propose` refuse any other proposer before pinning metadata or locking the bond.
 
 ### Create a proposal
@@ -791,6 +819,7 @@ The summary MUST include all of:
 - **Agent fee** — the vault's `agentFeeBps`, shown as bps AND a percentage (see the note below the flag table).
 - **Duration** — show in human form (`7d`, `24h`). Capped by `governor.maxDuration`.
 - **Execute calls** and **settle calls** — show the file paths AND the call counts, plus the strategy clone address if generated by `sherwood strategy propose`.
+- **Unaudited strategy** — if the strategy comes from `sherwood-strategies` or from neither source repository, say it is unaudited and used at the user's own risk (see [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited)).
 
 - **Proposer bond** — the quoted WOOD (`ExposureLedger.proposerBondWood`, ~1% of
   required coverage, full notional for tier 2). The wallet must **hold** it on top
@@ -852,6 +881,8 @@ sherwood proposal vote --vault 0x... --id <proposalId> --support <for|against|ab
 ```
 
 `--vault` is required (each vault has its own governor). Caller must have voting power (vault shares at snapshot). Displays vote weight, then sends the vote.
+
+Before voting for a proposal that uses an unaudited strategy, run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) on the template its clone came from.
 
 **Voting opens one second after the propose block.** The governor snapshots at the propose block's timestamp minus one and refuses votes while `block.timestamp <= snapshotTimestamp + 1` (`NotWithinVotingPeriod`); `getVoteWeight` reads 0 until then. The signed CLI waits this out on the chain's clock (the latest block's timestamp, not wall time), showing `Voting opens in <n> s — waiting...`, then votes. If still no later block has landed after the wait, it stops with `No block has been produced since this proposal …`: rerun once the chain has produced a block. If the RPC's latest block is far behind the proposal, it stops and asks you to retry against an up-to-date RPC.
 
@@ -1040,12 +1071,12 @@ User wants to...
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
-├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch
+├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch (check the template's Source; `sherwood-strategies` ones are unaudited)
 ├── Lend (Morpho)     → Phase 4: `morpho-supply` template (fork)
 ├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (fork; registry must allowlist its tokens)
-├── Launch a fund token / "IPO" → delegate to `strategies/launchpad` skill (settles as a loss of ~asset-in)
+├── Launch a fund token / "IPO" → delegate to `strategies/launchpad` skill (unaudited, from `sherwood-strategies`; settles as a loss of ~asset-in)
 ├── Claim launch reserve / collect launch fees → `sherwood launchpad claim | collect-fees` (see `strategies/launchpad`)
-├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (not deployed yet)
+├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (unaudited, from `sherwood-strategies`; not deployed yet)
 ├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
 ├── Vote on proposal   → Governance: proposal vote --vault <addr> --id <id> --support for|against|abstain (not in the propose second)
 ├── Veto proposal      → Governance: proposal veto --id <id> (vault owner, Pending only)

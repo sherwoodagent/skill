@@ -24,7 +24,7 @@ Global flag (before the subcommand). Prints unsigned EIP-5792 `PreparedAction` J
 sherwood --calldata-only identity mint --name "Hermes Agent"
 ```
 
-Output shape: `{ txs: [{ to, data, value, chainId }], preconditions, description }`. Broadcast `txs` in order; wait for confirmation between them. Use each tx's `chainId` (CLI default is robinhood-fork `9994663`).
+Output shape: `{ txs: [{ to, data, value, chainId }], preconditions, description }`. Broadcast `txs` in order; wait for confirmation between them. Use each tx's `chainId`. Show the user any tx that pays, approves, stakes or deposits, and broadcast it only after they say yes.
 
 ### MetaMask Agent Wallet
 
@@ -40,11 +40,13 @@ mm wallet send-transaction \
 
 `--chain-id`, `--payload`, `--intent`, and `--wait` are `mm` flags, not Sherwood flags.
 
-**May not work on the Robinhood fork.** `mm wallet send-transaction` only reaches chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. If it is not listed, use the Privy recipe below.
+`mm wallet send-transaction` only reaches chains that `mm chains list` shows; check that the vault's chain is listed. (It never listed chain 9994663, the closed fork.)
 
 Commands that normally read your address from the configured key need it explicitly: `vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`, `strategy propose --proposer`.
 
-## Privy agent wallet (Robinhood fork)
+## Privy agent wallet (historical: chain 9994663, closed)
+
+> Historical: this recipe targeted chain 9994663, which is closed. Do not follow it until mainnet instructions are published.
 
 The wallet API verified to work on chain 9994663 (supports it as a custom chain). Privy's own skill: https://agents.privy.io/skill.md (it instructs `pnpm dlx`, never `npx`).
 

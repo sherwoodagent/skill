@@ -156,7 +156,7 @@ Settle:  [clone.settle()]
 
 The CLI builds both. The launch and swap adapters are counterparties the clone calls, checked against the vault's TierRegistry at init and execute. Settlement and claims never consult the registry.
 
-## Addresses (robinhood-fork, 9994663)
+## Addresses (chain 9994663, closed; historical)
 
 | Contract | Address |
 | --- | --- |

@@ -11,7 +11,7 @@ metadata:
 
 # Lighter Perp Strategy
 
-> **Not deployed yet.** The `LighterPerpStrategy` template is not deployed on any chain Sherwood runs today. Lighter lives on Robinhood mainnet (4663), and the template will deploy there. The CLI keeps mainnet coordination-only for now, so `sherwood strategy propose lighter-perp` cannot run anywhere yet. Do not try it on `robinhood-fork`: the fork has no Lighter sequencer, so withdrawals never mature and capital would be stuck. `sherwood strategy list` shows it under "Not available" until it ships. Tell the user this plainly if they ask for Lighter perps.
+> **Not deployed yet.** The `LighterPerpStrategy` template is not deployed on any chain Sherwood runs today. Lighter lives on Robinhood mainnet (4663), and the template will deploy there. The CLI keeps mainnet coordination-only for now, so `sherwood strategy propose lighter-perp` cannot run anywhere yet. `sherwood strategy list` shows it under "Not available" until it ships. Tell the user this plainly if they ask for Lighter perps.
 
 > **Unaudited.** `LighterPerpStrategy` comes from `sherwood-strategies` (`src/lighter/`), which has not been audited. Before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk.
 

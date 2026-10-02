@@ -42,7 +42,7 @@ This is your most important job. A missed malicious proposal auto-passes and dra
 
 ```bash
 # List all pending proposals
-sherwood proposal list --state pending
+sherwood proposal list --vault $VAULT_ADDRESS --state pending
 
 # Or query the governor directly
 cast call $GOVERNOR_ADDRESS "proposalCount()(uint256)" --rpc-url $RPC_URL
@@ -74,7 +74,7 @@ cast calldata-decode "functionName(type1,type2)" <calldata>
 **Step 3 — Simulate execution.** Use the built-in `proposal simulate` command, which runs a full Tenderly fork simulation via the Sherwood API and returns per-call results with decoded calldata:
 ```bash
 # Simulate an existing proposal by ID
-sherwood proposal simulate --id <PROPOSAL_ID>
+sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID>
 
 # Simulate call files before creating a proposal
 sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json --settle-calls settle.json
@@ -105,7 +105,7 @@ Risk code reference:
 
 **Step 3c — Notify the operator (optional).** Send the risk report to the syndicate's XMTP chat so the human operator is alerted:
 ```bash
-sherwood proposal simulate --id <PROPOSAL_ID> --notify <syndicate-name>
+sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --notify <syndicate-name>
 ```
 This sends a markdown-formatted `RISK_ALERT` message to the group chat with per-call results and risk flags.
 
@@ -116,23 +116,29 @@ cast call --rpc-url $RPC_URL <target> <calldata>
 
 **Step 4 — Apply the decision tree** (see below).
 
-**Step 5 — Check for strategy template usage.** If the proposal batch includes calls to a strategy contract (`execute()` selector `0x61461954`), verify:
-- The strategy implementation is a known Sherwood template (MoonwellSupplyStrategy, AerodromeLPStrategy)
-- If that template comes from `sherwood-strategies` (or from neither source repository; see the **Source** column of SKILL.md's template table), it is unaudited: run the checks in [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) before letting the proposal pass. `StrategyFactory.cloneTemplate(<clone>)` returns the template a clone came from
-- The strategy was properly initialized with the correct vault address
-- Strategy parameters are reasonable (supply amounts, slippage tolerances)
+**Step 5 — Check where the strategy came from.** If the proposal batch includes calls to a strategy contract (`execute()` selector `0x61461954`), run:
 
 ```bash
-# Check if target is a known strategy clone
-cast call <strategy_address> "name()(string)" --rpc-url $RPC_URL
-# Expected: "Moonwell Supply" or "Aerodrome LP"
+sherwood proposal show <PROPOSAL_ID> --vault <vault-address>
+```
 
+Its **Strategy** section says where the strategy came from (the exact lines are in "Where a proposal's strategy came from" in [SKILL.md](../../SKILL.md#where-a-proposals-strategy-came-from)):
+- **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity). If the line adds that the factory owner has since withdrawn approval of the template, treat that as a warning.
+- **Cloned from a `sherwood-strategies` template** (Launchpad, Lighter Perp) **or from a template the CLI does not recognise**: unaudited. Run the checks in [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) before letting the proposal pass.
+- **Not cloned from any template**: hand-written, unverified code, the highest-risk case. Read its verified source on the block explorer; with none, veto while you still can.
+- **Provenance could not be read**: treat it as hand-written.
+
+Then verify:
+- The strategy was initialized with this vault's address
+- Strategy parameters match the proposal description (amounts, slippage tolerances)
+
+```bash
 # Verify strategy vault matches our vault
 cast call <strategy_address> "vault()(address)" --rpc-url $RPC_URL
 
-# Check strategy parameters
-cast call <strategy_address> "supplyAmount()(uint256)" --rpc-url $RPC_URL  # Moonwell
-cast call <strategy_address> "amountADesired()(uint256)" --rpc-url $RPC_URL  # Aerodrome
+# name() is self-reported: a hand-written strategy can return any name, so it is not provenance.
+# The shipped templates return "Portfolio", "Morpho Supply", "Concentrated Liquidity LP", "Launchpad", "LighterPerp".
+cast call <strategy_address> "name()(string)" --rpc-url $RPC_URL
 ```
 
 ### Red flags — VETO immediately if any apply
@@ -151,10 +157,9 @@ cast call <strategy_address> "amountADesired()(uint256)" --rpc-url $RPC_URL  # A
 
 Owner-only, and **only while the proposal is `Pending` (1)**. `vetoProposal` reverts once the proposal enters `GuardianReview` (2). To block at that point, depend on guardian block-quorum (`guardian` skill) — do not retry veto.
 
-```bash
-sherwood proposal veto <PROPOSAL_ID>
+The CLI has no veto command; call the governor directly (`sherwood governor info --vault <vault>` prints its address):
 
-# Or directly on-chain
+```bash
 cast send $GOVERNOR_ADDRESS "vetoProposal(uint256)" <PROPOSAL_ID> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
@@ -171,7 +176,7 @@ New proposal detected
 |   +-- Cannot fetch --> VETO
 |   +-- Fetched OK
 |       |
-|       +-- Run: sherwood proposal simulate --id <ID> [--notify <name>]
+|       +-- Run: sherwood proposal simulate --vault <vault> --id <ID> [--notify <name>]
 |           |
 |           +-- Any CRITICAL risk code in output --> VETO immediately
 |           |     (SIMULATION_FAILED, UNKNOWN_TARGET, TRANSFER_TO_UNKNOWN,
@@ -197,7 +202,7 @@ Track proposals that have been executed and are now live.
 ### Check executed strategies
 
 ```bash
-sherwood proposal list --state executed
+sherwood proposal list --vault $VAULT_ADDRESS --state executed
 
 # Get capital snapshot for P&L tracking
 cast call $GOVERNOR_ADDRESS "getCapitalSnapshot(uint256)(uint256)" <PROPOSAL_ID> --rpc-url $RPC_URL
@@ -220,7 +225,7 @@ cast call $GOVERNOR_ADDRESS "getCapitalSnapshot(uint256)(uint256)" <PROPOSAL_ID>
 3. **Simulate settlement calls before expiry:**
    ```bash
    # Dry-run the full proposal (includes settlement calls)
-   sherwood proposal simulate --id <PROPOSAL_ID>
+   sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID>
    ```
 
 4. **If settlement might fail** (liquidity dried up, position liquidated, slippage too high):
@@ -248,8 +253,8 @@ As vault owner, you have these emergency powers:
 
 | Action | Command | When to use |
 |--------|---------|-------------|
-| **Veto** | `sherwood proposal veto <id>` | Reject a `Pending` proposal only (sets state to Rejected). Reverts once `GuardianReview` begins; block-quorum is the `guardian` skill |
-| **Emergency cancel** | `sherwood proposal emergency-cancel <id>` | Cancel a `Draft` or `Pending` proposal only. Reverts once `GuardianReview` begins — from there only the proposer can cancel |
+| **Veto** | `cast send $GOVERNOR_ADDRESS "vetoProposal(uint256)" <id>` (no CLI command) | Reject a `Pending` proposal only (sets state to Rejected). Reverts once `GuardianReview` begins; block-quorum is the `guardian` skill |
+| **Emergency cancel** | `sherwood proposal cancel --vault <vault> --id <id> --emergency` | Cancel a `Draft` or `Pending` proposal only. Reverts once `GuardianReview` begins — from there only the proposer can cancel |
 | **Emergency settle** | `emergencySettleWithCalls` → review → `finalizeEmergencySettle` | Owner-supplied unwind; bonded + guardian-reviewed; calls do **not** run until finalize |
 
 ### Vault-level
@@ -461,10 +466,10 @@ Run these checks on a recurring basis. Proposal monitoring is the highest priori
 
 ```bash
 # 1. Check for pending proposals
-sherwood proposal list --state pending
+sherwood proposal list --vault $VAULT_ADDRESS --state pending
 
 # 2. For each: simulate via Tenderly and notify the operator
-sherwood proposal simulate --id <PROPOSAL_ID> --notify <syndicate-name>
+sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --notify <syndicate-name>
 
 # 3. Check output for risk codes:
 #    - CRITICAL RISKS → VETO immediately
@@ -478,7 +483,7 @@ sherwood proposal simulate --id <PROPOSAL_ID> --notify <syndicate-name>
 
 ```bash
 # 1. Check executed (live) strategies
-sherwood proposal list --state executed
+sherwood proposal list --vault $VAULT_ADDRESS --state executed
 
 # 2. Compare vault balance to capital snapshots
 cast call $VAULT_ADDRESS "totalAssets()(uint256)" --rpc-url $RPC_URL
@@ -491,7 +496,7 @@ cast call $VAULT_ADDRESS "totalAssets()(uint256)" --rpc-url $RPC_URL
 
 ```bash
 # Full proposal history
-sherwood proposal list
+sherwood proposal list --vault $VAULT_ADDRESS
 
 # Vault TVL
 sherwood vault info $VAULT_ADDRESS

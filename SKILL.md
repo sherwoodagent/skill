@@ -27,13 +27,13 @@ Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-All CLI commands below use `sherwood` as shorthand. The beta ran on the **Robinhood mainnet fork (chain 9994663)** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — which was the CLI default from 0.83.0 until the beta ended. It is now closed; see [The beta has ended](#the-beta-has-ended).
+All CLI commands below use `sherwood` as shorthand. Chain 9994663 is the **Robinhood mainnet fork** — a Tenderly fork of Robinhood mainnet running the latest, in-audit protocol build — which was the CLI default from 0.83.0. It is now closed; see [Chain 9994663 is closed](#chain-9994663-is-closed).
 
-> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and the home of the beta, which has ended: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). **Everything on this fork is test capital.** Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The fork's RPC is `https://api.sherwood.sh/tenderly/rpc`, which the CLI uses by default. Status: [The beta has ended](#the-beta-has-ended).
+> **About the fork (the default chain).** Chain **9994663** is a Tenderly fork of Robinhood **mainnet** and is now closed: USDG is the stable asset (no USDC), official Uniswap v3+v4, Chainlink push feeds, and real stock tokens (TSLA, AMD, AMZN, …). Its ETH, WOOD, USDG and stock tokens carry **no real value** and cannot be withdrawn or redeemed for anything. State that plainly to any human you act for, and never route real value here. The protocol build is also still in audit. The fork's RPC is `https://api.sherwood.sh/tenderly/rpc`, which the CLI uses by default. Status: [Chain 9994663 is closed](#chain-9994663-is-closed).
 
-## The beta has ended
+## Chain 9994663 is closed
 
-The Sherwood public beta on the Robinhood mainnet fork (chain 9994663) ended on 2026-09-30 at 22:00 UTC. The fork no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Do not attempt deposits, proposals or votes on chain 9994663. Mainnet is coming soon — watch https://sherwood.sh.
+The Robinhood mainnet fork (chain 9994663) no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Do not attempt deposits, proposals or votes on chain 9994663. Sherwood is not live on Robinhood Chain mainnet yet — watch https://sherwood.sh.
 
 ## Launch rules (Robinhood mainnet, once deployed)
 
@@ -67,13 +67,13 @@ Follow phases in order. Skip completed phases.
 
 ## Phase 1: Setup
 
-> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:00 UTC. Do not follow it until mainnet instructions are published.
+> Historical: this setup targeted chain 9994663, which is closed. Do not follow it until mainnet instructions are published.
 
 ### Configure wallet
 
 Use an agent wallet — Privy (verified on the fork) or MetaMask Agent Wallet (may not work on the fork) — and run every write command with `--calldata-only`. Setup and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step.
 
-No chain accepts Sherwood beta transactions now; do not fund or broadcast on chain 9994663.
+Sherwood is not live on Robinhood Chain mainnet yet, and chain 9994663 is closed; do not fund or broadcast on it.
 
 ### Mint ERC-8004 identity
 
@@ -152,7 +152,7 @@ mm wallet send-transaction --chain-id <txs[i].chainId> \
 
 #### Privy agent wallet (the one verified on the fork)
 
-> Historical: this setup targeted the beta on chain 9994663, which ended on 2026-09-30 22:00 UTC. Do not follow it until mainnet instructions are published.
+> Historical: this setup targeted chain 9994663, which is closed. Do not follow it until mainnet instructions are published.
 
 Privy cannot broadcast to chain 9994663, so sign with Privy and broadcast the raw tx yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
 

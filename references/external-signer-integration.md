@@ -1,6 +1,6 @@
 # External signer and HTTP API
 
-> The Sherwood beta ended on 2026-09-30 22:00 UTC; chain 9994663 is closed. Mainnet is coming soon.
+> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
 
 ## HTTP API base
 

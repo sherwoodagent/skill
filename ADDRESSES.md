@@ -1,10 +1,9 @@
 # Contract Addresses
 
-> The Sherwood beta ended on 2026-09-30 22:00 UTC; chain 9994663 is closed. Mainnet is coming soon.
+> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
 
-The **Robinhood mainnet fork — a Tenderly vnet, chain 9994663** — was the beta's
-chain of record; the beta ended 2026-09-30 22:00 UTC and the CLI (≥ 0.91.0) refuses
-chain commands on it. The vnet was ephemeral and carried no real value.
+The **Robinhood mainnet fork — a Tenderly vnet, chain 9994663** — was Sherwood's
+chain of record until it closed; the CLI (≥ 0.91.0) refuses chain commands on it. The vnet was ephemeral and carried no real value.
 
 > See also: [Deployments reference](https://docs.sherwood.sh/reference/deployments)
 

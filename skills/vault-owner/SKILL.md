@@ -118,6 +118,7 @@ cast call --rpc-url $RPC_URL <target> <calldata>
 
 **Step 5 — Check for strategy template usage.** If the proposal batch includes calls to a strategy contract (`execute()` selector `0x61461954`), verify:
 - The strategy implementation is a known Sherwood template (MoonwellSupplyStrategy, AerodromeLPStrategy)
+- If that template comes from `sherwood-strategies` (or from neither source repository; see the **Source** column of SKILL.md's template table), it is unaudited: run the checks in [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) before letting the proposal pass. `StrategyFactory.cloneTemplate(<clone>)` returns the template a clone came from
 - The strategy was properly initialized with the correct vault address
 - Strategy parameters are reasonable (supply amounts, slippage tolerances)
 

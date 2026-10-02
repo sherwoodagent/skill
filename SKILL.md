@@ -623,6 +623,7 @@ Both templates are **not deployed** on any Robinhood chain (Aerodrome and VVV ar
 
 Core-protocol template. Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On chain 9994663 (closed) the basket was tokenized stocks bought with USDG, and `--swap-routes` was required there. The routes measured on it: `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD; `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SLV, SPCX. SLV, ASML, BABA, CRCL, DELL, MSTR, TSM, USAR and USO quoted only through Uniswap v3; GME, INTC, MU, PLTR, SNDK and SPCX also have v4 pools, but v3 quoted best. Re-quote before relying on any of these elsewhere. Elsewhere routes are auto-detected per token.
 
+- **Vault asset:** the strategy's asset must be the vault's own asset, and the protocol's coverage ledger must price one unit of it within 1% of $1 (`AssetNotVaultAsset`, `AssetNotUsdPegged`, `ExposureLedgerUnresolved`). The CLI checks all three before anything is sent. "The ledger cannot price the asset" means it has no feed or the feed is stale, not that the asset trades at $0: retry once the feed updates, and if it stays unpriced tell the user, since only the protocol owner configures the ledger. The peg is checked again at execute.
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
 - **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
@@ -643,7 +644,7 @@ Core-protocol template. Supplies the vault asset to exactly one Morpho Blue mark
 - **Execute:** pull `--amount` → supply to the market
 - **Settle:** withdraw the whole position by shares (interest included) → push to vault. All-or-revert: an illiquid market reverts settlement, which is retried later
 - **Tunable params:** none (`updateParams` reverts `NoTunableParams`)
-- **Init checks** (the CLI runs them before any tx): Morpho allowlisted on the vault's TierRegistry (`MorphoNotAllowed`), market loan token == vault asset (`LoanAssetMismatch`), market exists (`MarketNotCreated`). The contract also requires the market id itself to be allowlisted (`MorphoMarketNotAllowed`); the CLI does not preflight that one, so an unlisted market fails at init
+- **Init checks** (the CLI runs them before any tx): Morpho allowlisted on the vault's TierRegistry (`MorphoNotAllowed`), market loan token == vault asset (`LoanAssetMismatch`), market exists (`MarketNotCreated`), and the market id itself allowlisted (`MorphoMarketNotAllowed`). The allowlist is keyed by the market id, which binds all five market parameters, so a market that differs in any one of them is a different market. Only the protocol owner can allowlist one: tell the user and do not retry with that market
 
 ```bash
 # USDG loan / spUSDG collateral market (91.5% LLTV), as on chain 9994663 — fits a USDG vault
@@ -664,7 +665,7 @@ Core-protocol template. A Uniswap V3 range position funded by borrowing the vaul
 - **Rerange:** permissionless within the voted policy (trigger, min interval, max count ≤ 20); never touches the borrow
 - **Settle:** remove liquidity → collect → convert back → repay → withdraw collateral → push to vault. All-or-revert
 - **Tunable params:** settle slippage (tighten only) and settle deadline
-- **Allowlisting:** init checks every counterparty on the vault's TierRegistry, including the Morpho collateral token and the pool's other token. On chain 9994663, spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) were allowlisted, so USDG/WETH with the spUSDG market worked. Any other pool may be refused with `CounterpartyNotAllowed`, and the Morpho market itself must be allowlisted by market id or init reverts `MorphoMarketNotAllowed`; the preflight names each missing address but does not check the market id. That is a registry-owner action: tell the user, do not retry.
+- **Allowlisting:** init checks its counterparties on the vault's TierRegistry (swap adapter, position manager, Morpho, the Uniswap factory and the pool's other token) and the Morpho market by its market id. On chain 9994663, spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) were allowlisted, so USDG/WETH with the spUSDG market worked. Any other pool may be refused with `CounterpartyNotAllowed`, and a market that is not allowlisted by id with `MorphoMarketNotAllowed`; the CLI's preflight refuses both before anything is sent and names what is missing. Both are protocol-owner actions: tell the user, do not retry. The strategy checks the market again at execute and at every rerange.
 
 ```bash
 sherwood strategy propose concentrated-liquidity \
@@ -676,7 +677,7 @@ sherwood strategy propose concentrated-liquidity \
   --name "USDG/WETH range" --duration 7d
 ```
 
-Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--pool <address>`, or `--pair-token <token>` + `--pool-fee <fee>`), and a range (`--range-pct <pct>`, or `--tick-lower <tick>` + `--tick-upper <tick>`). Optional: `--expected-liquidity`, `--swap-fraction-bps`, `--swap-route`, `--twap-window` (default 1800, min 300), `--max-twap-deviation` (ticks, default 100, max 1000), `--mint-slippage-bps` (default 500), `--settle-slippage-bps` (default 500), `--settle-deadline`, `--rerange-half-width`, `--rerange-trigger-bps` (default 8000), `--rerange-min-interval` (default 3600), `--max-reranges` (default 3, max 20), `--rerange-slippage-bps` (default 500), `--rerange-swap-fraction-bps`, `--morpho`, `--position-manager`, `--uniswap-factory`. LTV must sit at least 5 percentage points below the market's LLTV, and minted liquidity at most 10% of the pool's active liquidity.
+Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--pool <address>`, or `--pair-token <token>` + `--pool-fee <fee>`), and a range (`--range-pct <pct>`, or `--tick-lower <tick>` + `--tick-upper <tick>`). Optional: `--expected-liquidity`, `--swap-fraction-bps`, `--swap-route`, `--twap-window` (default 1800, min 300), `--max-twap-deviation` (ticks, default 100, max 1000), `--mint-slippage-bps` (default 500), `--settle-slippage-bps` (default 500; 50 to 1000, and fixed for the strategy's life, so choose it for the settle swap you expect), `--settle-deadline`, `--rerange-half-width`, `--rerange-trigger-bps` (default 8000), `--rerange-min-interval` (default 3600), `--max-reranges` (default 3, max 20), `--rerange-slippage-bps` (default 500), `--rerange-swap-fraction-bps`, `--morpho`, `--position-manager`, `--uniswap-factory`. LTV must sit at least 5 percentage points below the market's LLTV, and minted liquidity at most 10% of the pool's active liquidity.
 
 #### LaunchpadStrategy
 

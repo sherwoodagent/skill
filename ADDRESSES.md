@@ -11,9 +11,9 @@ chain of record until it closed; the CLI (≥ 0.91.0) refuses chain commands on 
 > exists on it yet — the addresses land after the deployment ceremony. Do not reuse
 > this table on 4663. The one thing that
 > *is* live on 4663 is the canonical ERC-8004 IdentityRegistry, which is not a
-> Sherwood contract — see "Not active on the fork" below.
+> Sherwood contract — see "Identity and names" below.
 
-## Robinhood mainnet fork — Tenderly vnet (chain 9994663)
+## Robinhood mainnet fork — Tenderly vnet (chain 9994663, closed; historical)
 
 > **An ephemeral test network, not a public chain.** This vnet is a Tenderly fork of
 > Robinhood mainnet, reachable only through its own RPC URL. Every address below dies
@@ -128,19 +128,24 @@ There is no callee allowlist and no adapter allowlist anywhere in the v1 stack �
 `SyndicateVault._guardBatchCalls` (mirrored at propose by the governor): every
 call target is either the vault `asset()` or a strategy registered on
 `StrategyFactory` (`isRegisteredStrategy`, permissionless), and anything else
-reverts `NotARegisteredStrategy(target)`. On the `asset()` leg, `transferFrom`
-must have `from == vault` (else `TransferFromNotVault`), calldata shorter than 36
-bytes reverts `MalformedAssetCall`, and any other selector's first argument is
-read as the spender whose allowance is reset after the batch.
+reverts `NotARegisteredStrategy(target)`. On the `asset()` leg only three kinds of
+call pass: `transfer`, `transferFrom` with `from == vault` (else
+`TransferFromNotVault`), and the approve family (`approve`, `increaseAllowance`,
+`increaseApproval`, `decreaseAllowance`, `decreaseApproval`), whose first argument
+is the spender whose allowance is reset after the batch. Calldata shorter than 36
+bytes reverts `MalformedAssetCall`, and any other selector reverts
+`UnrecognizedAssetSelector`.
 
-## Not active on the fork
+## Identity and names
 
-- **On-chain identity gating** — identity itself IS live: every agent mints on the
-  canonical ERC-8004 IdentityRegistry `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on
-  Robinhood mainnet (4663), the coordination chain. What is off is the factory-side
-  check: `agentRegistry` is `address(0)` at v1, so `vault create` / `vault add` do not
-  verify NFT ownership on-chain, and `agentId=0` is accepted when `--agent-id` is omitted.
+- **Identity** — every agent mints on the canonical ERC-8004 IdentityRegistry
+  `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on Robinhood mainnet (4663), the
+  coordination chain. Once Sherwood is deployed there, this is the factory's `agentRegistry()`: `vault create`
+  needs the creator to own `--agent-id`, and `vault add` / `vault approve` need the agent
+  wallet or the vault owner to own the id (`NotAgentOwner`). See "Mint ERC-8004
+  identity" in [SKILL.md](SKILL.md#mint-erc-8004-identity).
 - **ENS names** — the factory does not register them; a vault's name is its subdomain
   (see "Vault names" in [SKILL.md](SKILL.md#vault-names)).
-- **Strategies other than Portfolio, Morpho Supply, Concentrated Liquidity and
-  Launchpad** — `sherwood strategy list` shows the rest under "Not available".
+- **Strategies on chain 9994663** — only Portfolio, Morpho Supply, Concentrated
+  Liquidity and Launchpad were deployed there. On any chain, `sherwood strategy list`
+  shows the rest under "Not available".

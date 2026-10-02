@@ -17,9 +17,11 @@ The agent fee is a **vault-owner property**, not a per-proposal parameter. The v
 
 Gather all inputs from the operator before running the command.
 
-While the factory's `ownerOnlyProposals` launch flag is on, only the vault owner can propose, and collaborative proposals are refused (`ProposerNotOwner`, `CollaborationDisabled`). The CLI refuses any other proposer before pinning metadata or locking the bond. See "Single-operator vaults" in [SKILL.md](SKILL.md#single-operator-vaults).
+While the factory's `ownerOnlyProposals` launch flag is on, only the vault owner can propose, and collaborative proposals are refused (`ProposerNotOwner`, `CollaborationDisabled`). Signed `proposal create` refuses any other proposer before pinning metadata or locking the bond; keyless (`--calldata-only`) `proposal create` refuses only when given `--proposer`, and otherwise warns and still prints the calldata. See "Single-operator vaults" in [SKILL.md](SKILL.md#single-operator-vaults).
 
 If the proposal's strategy comes from `sherwood-strategies` (or from neither source repository), it is unaudited: run the checks in [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the operator before proposing.
+
+`propose` locks a WOOD proposer bond. Show the operator the quoted bond and every parameter, and wait for an explicit yes before running the command (see "Ask before funds move" in [SKILL.md](SKILL.md#ask-before-funds-move)).
 
 ```bash
 sherwood proposal create \
@@ -27,6 +29,7 @@ sherwood proposal create \
   --name "Moonwell USDC Yield" \
   --description "Supply USDC to Moonwell for 7 days" \
   --duration 7d \
+  --max-capital 1000 \
   --execute-calls ./execute-calls.json \
   --settle-calls ./settle-calls.json
 ```
@@ -37,6 +40,7 @@ sherwood proposal create \
 | `--name` | yes* | Strategy name (skipped if `--metadata-uri` provided) |
 | `--description` | yes* | Strategy rationale and risk summary (skipped if `--metadata-uri`) |
 | `--duration` | yes | Strategy duration. Accepts seconds or human format (`7d`, `24h`, `1h`) |
+| `--max-capital` | yes | Ceiling the execute batch may deploy, in vault-asset units. The CLI refuses without it |
 | `--execute-calls` | yes | Path to JSON file with execute Call[] array (open positions) |
 | `--settle-calls` | yes | Path to JSON file with settlement Call[] array (close positions) |
 | `--metadata-uri` | no | Override — skip IPFS upload and use this URI directly |
@@ -60,16 +64,18 @@ Defaults to 2000 bps (20%) at vault creation; the vault caps it at 2500 bps (25%
 ## List proposals
 
 ```bash
-sherwood proposal list [--vault <addr>] [--state <filter>]```
+sherwood proposal list --vault <addr> [--state <filter>]
+```
 
 Filter by state: `pending`, `approved`, `executed`, `settled`, `all` (default: `all`).
 
 ## Show proposal detail
 
 ```bash
-sherwood proposal show <id>```
+sherwood proposal show <id> --vault <addr>
+```
 
-Displays metadata, state, timestamps, vote breakdown, decoded calls, capital snapshot (if executed), and P&L/fees (if settled).
+Displays metadata, state, the strategy and where it came from (see "Where a proposal's strategy came from" in [SKILL.md](SKILL.md#where-a-proposals-strategy-came-from)), timestamps, vote breakdown, decoded calls, capital snapshot (if executed), and P&L/fees (if settled).
 
 ## Vote on a proposal
 
@@ -79,21 +85,23 @@ sherwood proposal vote --vault 0x... --id <proposalId> --support <for|against|ab
 
 `--vault` is required (each vault has its own governor). Caller must have voting power (vault shares at snapshot). Displays vote weight, then sends the vote.
 
-Before voting for a proposal that uses an unaudited strategy, run the checks in [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited) on the template its clone came from.
+Before voting, run `sherwood proposal show <id> --vault <vault>` and read where the strategy came from (signed `proposal vote` prints the same lines; `--calldata-only` prints none). For an unaudited or hand-written strategy, run the checks in [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
 
 A vote cannot land in the second its proposal was created. The governor snapshots at the propose block's timestamp minus one, refuses votes while `block.timestamp <= snapshotTimestamp + 1` (`NotWithinVotingPeriod`), and `getVoteWeight` reads 0 until then. The signed CLI waits on the chain's clock (latest block timestamp) before voting, and stops with `No block has been produced since this proposal …` if no later block has landed; rerun once one has. With `--calldata-only` it does not wait: broadcast the vote only after a block at least one second past the propose block (on a chain that produces blocks continuously, two seconds after the propose confirms is enough), and resend it if it reverts `NotWithinVotingPeriod`.
 
 ## Execute an approved proposal
 
 ```bash
-sherwood proposal execute --id <proposalId>```
+sherwood proposal execute --vault <addr> --id <proposalId>
+```
 
 Anyone can call. Verifies proposal is Approved, within execution window, no other active strategy, and cooldown has elapsed.
 
 ## Settle an executed proposal
 
 ```bash
-sherwood proposal settle --id <proposalId> [--calls <path-to-json>]```
+sherwood proposal settle --vault <addr> --id <proposalId> [--calls <path-to-json>]
+```
 
 Auto-routes to the correct settlement path:
 - **Proposer:** `settleProposal` — proposer can call anytime after execution
@@ -105,7 +113,8 @@ Output: P&L, fees distributed, redemptions unlocked.
 ## Cancel a proposal
 
 ```bash
-sherwood proposal cancel --id <proposalId>```
+sherwood proposal cancel --vault <addr> --id <proposalId>
+```
 
 Proposer can cancel at any pre-execute state: Draft, Pending (while the voting window is open), GuardianReview (before the review window ends), or Approved. Vault owner can emergency cancel from Draft or Pending **only** — once a proposal reaches GuardianReview, the owner loses unilateral cancel authority and only the proposer can cancel.
 

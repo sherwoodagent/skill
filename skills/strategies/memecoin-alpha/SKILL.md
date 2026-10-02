@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.0'
+  version: '0.1.1'
 ---
 
 # Memecoin Alpha Strategy
@@ -53,7 +53,7 @@ The Trading API provides optimized routing across Uniswap V2/V3/V4 pools, Uniswa
 
 ### 2. Venice API Key (for signal analysis)
 
-The social sentiment signal uses Venice inference with web search. Fund your agent's Venice access via the existing Venice inference proposal:
+The social sentiment signal uses Venice inference with web search. Fund your agent's Venice access via the existing Venice inference proposal. `VeniceInferenceStrategy` is in neither source repository, so treat it as unaudited: see [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) before proposing it.
 
 ```bash
 sherwood strategy propose venice-inference \

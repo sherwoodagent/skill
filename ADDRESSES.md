@@ -69,6 +69,8 @@ As on every chain, there is no singleton `SyndicateGovernor`: each vault gets it
 
 The Launchpad template and adapters come from sherwood-strategies
 `deployments/9994663.json`. `LighterPerpStrategy` is not deployed on any chain yet.
+Both come from `sherwood-strategies` and are unaudited: see
+[Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
 
 ### Tokens
 

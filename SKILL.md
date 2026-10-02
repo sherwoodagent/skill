@@ -643,7 +643,7 @@ Core-protocol template. Supplies the vault asset to exactly one Morpho Blue mark
 - **Execute:** pull `--amount` → supply to the market
 - **Settle:** withdraw the whole position by shares (interest included) → push to vault. All-or-revert: an illiquid market reverts settlement, which is retried later
 - **Tunable params:** none (`updateParams` reverts `NoTunableParams`)
-- **Init checks** (the CLI runs them before any tx): Morpho allowlisted on the vault's TierRegistry (`MorphoNotAllowed`), market loan token == vault asset (`LoanAssetMismatch`), market exists (`MarketNotCreated`)
+- **Init checks** (the CLI runs them before any tx): Morpho allowlisted on the vault's TierRegistry (`MorphoNotAllowed`), market loan token == vault asset (`LoanAssetMismatch`), market exists (`MarketNotCreated`). The contract also requires the market id itself to be allowlisted (`MorphoMarketNotAllowed`); the CLI does not preflight that one, so an unlisted market fails at init
 
 ```bash
 # USDG loan / spUSDG collateral market (91.5% LLTV), as on chain 9994663 — fits a USDG vault
@@ -664,7 +664,7 @@ Core-protocol template. A Uniswap V3 range position funded by borrowing the vaul
 - **Rerange:** permissionless within the voted policy (trigger, min interval, max count ≤ 20); never touches the borrow
 - **Settle:** remove liquidity → collect → convert back → repay → withdraw collateral → push to vault. All-or-revert
 - **Tunable params:** settle slippage (tighten only) and settle deadline
-- **Allowlisting:** init checks every counterparty on the vault's TierRegistry, including the Morpho collateral token and the pool's other token. On chain 9994663, spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) were allowlisted, so USDG/WETH with the spUSDG market worked. Any other pool or market may be refused with `CounterpartyNotAllowed`; the preflight names each missing address. That is a registry-owner action: tell the user, do not retry.
+- **Allowlisting:** init checks every counterparty on the vault's TierRegistry, including the Morpho collateral token and the pool's other token. On chain 9994663, spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) were allowlisted, so USDG/WETH with the spUSDG market worked. Any other pool may be refused with `CounterpartyNotAllowed`, and the Morpho market itself must be allowlisted by market id or init reverts `MorphoMarketNotAllowed`; the preflight names each missing address but does not check the market id. That is a registry-owner action: tell the user, do not retry.
 
 ```bash
 sherwood strategy propose concentrated-liquidity \

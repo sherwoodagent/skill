@@ -5,12 +5,12 @@ allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(
 license: MIT
 metadata:
   author: sherwood
-  version: '0.12.0'
+  version: '0.13.0'
 ---
 
 # Staked Network Guardian
 
-> The Sherwood beta ended on 2026-09-30 22:00 UTC; chain 9994663 is closed. Mainnet is coming soon.
+> Sherwood is not live on Robinhood Chain mainnet yet.
 
 You are an **independent reviewer** with **slashable WOOD** staked in sWOOD. You underwrite arbitrary proposal calldata. You are **not** the vault owner.
 
@@ -234,9 +234,40 @@ Risk codes from `proposal simulate`:
 3. **Reachability** — there is **no vault-side target list** and no callee or adapter allowlist. Every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (`isRegisteredStrategy`, permissionless); anything else reverts `NotARegisteredStrategy(target)`. On the `asset()` leg, a `transferFrom` whose `from` is not the vault reverts `TransferFromNotVault`, calldata under 36 bytes reverts `MalformedAssetCall`, and any other selector's first argument is the spender whose allowance is reset after the batch. `TierRegistry` **prices** a call, it does not gate it — see item 4. Resolve addresses from the **9994663** vnet's book only — **never** carry an address in from another chain (a Base 8453 address is an unrelated contract here).
 4. **Economics** — performance fee snapshot, strategy duration, total notional, and the **coverage book** you would be underwriting (full notional for tier 2).
 
+### Strategy provenance — unaudited and hand-written strategies
+
+Every proposal names a strategy, and a strategy is one of three kinds. Find out which before anything else:
+
+```bash
+sherwood proposal show --vault <vault> --id <proposalId>   # CLI 0.92.0+: prints the strategy's provenance
+```
+
+1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below.
+2. **Cloned from a `sherwood-strategies` template, or from a template you do not recognise.** **Strategies from `sherwood-strategies` are unaudited.** The public repository `sherwoodagent/sherwood-strategies` holds strategy contracts built by the Sherwood team and by the community. They have not been audited. Before you approve one:
+   1. Find the deployed template's address and confirm its source code is verified on the chain's block explorer.
+   2. Confirm the verified source matches the code in the repository.
+   3. Read what its execute and settle calls do with the vault's funds.
+
+   Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
+3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
+
+If provenance cannot be read, treat the strategy as hand-written.
+
+The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written strategy is critical (`STRATEGY_WITHOUT_PROVENANCE`, Block) and a clone of a non-core template is a warning (`UNAUDITED_TEMPLATE`, never an unattended Approve).
+
+### Flags from the 2026-10-08 audit
+
+- **Block** a settle leg that `transfer`s the asset to anyone but the vault (an authored `asset.transfer(proposer)` passes the net-zero meter).
+- **Flag** Portfolio slippage at or near the 50 bp floor, and any `updateParams` that tightens slippage after execute: settle can then revert and push LPs onto the owner's emergency path.
+- **Flag** a proposer who cancels repeatedly: each cancel keeps LP redemptions locked for up to about 11 days and holds the fleet's coverage for the whole lock tail.
+- The management-fee agent share on the whole fund goes to the **proposer**, not the owner.
+- **Weekends:** a Portfolio proposal holding stock tokens cannot execute or settle from about Saturday 18:40 to Monday 00:00 UTC. Flag windows that land there.
+- **Stock splits:** no stock slot across an announced split until the feed basis is settled.
+
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
 - Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule (§4 intake item 3).
+- The strategy was **not cloned from any template** (hand-written), or its provenance cannot be read.
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
 - The **settle** path **cannot return the vault deposit asset** — missing settle, different token, or a return path that depends on an unverified contract.
 - **Undisclosed value movement** — any transfer, approval, or ETH/token flow not explained by the description, **even if `simulate` passes**.
@@ -252,6 +283,7 @@ proposal is evasive — **abstain** (§2b). Never Approve in either case.
 
 - The description **matches** the decoded execute and settle calls exactly, with no extra behavior.
 - **Every** target is labeled/known **or** is a verified clone of a known template **for THIS chain** (clone/bytecode check on the same chain, never a cross-chain assumption).
+- The strategy's provenance is known: a core-protocol template, or a `sherwood-strategies` template whose verified source you checked against the repository and whose unaudited status you told your user about. Never a hand-written strategy.
 - The **settle** path provably **returns the vault deposit asset** to the vault.
 - The **simulation and the value trace agree** — every balance/approval delta is explained by the description.
 - You are willing to **underwrite the coverage book** with slashable WOOD.
@@ -379,7 +411,7 @@ Verify targets against known protocol addresses **for the chain the proposal exe
 
 See [ADDRESSES.md](../../ADDRESSES.md) for the fork's addresses. Strategy template clones are valid only after you verify the implementation on **this** chain.
 
-Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template.
+Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template. A known template from `sherwood-strategies` is still unaudited; a strategy that was not cloned from any template is hand-written and a Block (see §4, Strategy provenance).
 
 ---
 

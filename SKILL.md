@@ -313,6 +313,8 @@ sherwood sources get calendar    | jq '.records'                 # session, week
 sherwood sources get universe    # token addresses, decimals, multipliers, Chainlink feeds
 ```
 
+The feeds are a convenience: the universe, options and live market state, so you don't have to look them up. They are not investment advice. Treat `recommended` picks as a starting point and apply your own analysis and data before proposing.
+
 How to use them:
 - **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens from about Sat 22:00 ET to Sun 20:00 ET. Size `maxSlippageBps` from `liquidity.recommended.by_symbol[SYM].suggested_max_slippage_bps`.
 - **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.

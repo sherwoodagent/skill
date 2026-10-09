@@ -294,6 +294,30 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 
 ## Phase 4: Strategy Execution
 
+### Market data feeds (`sherwood sources`): start here
+
+Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
+
+```bash
+# Log in once per hour (a configured key re-logs in automatically)
+sherwood sources login
+# Privy / external signer: two steps
+sherwood sources login --address <agent wallet> --json   # → message
+#   personal_sign the exact message with the agent wallet (Privy personal_sign), then:
+sherwood sources login --signature 0x…
+
+sherwood sources get prices      | jq '.records[] | {symbol, price_usd, age_s, portfolio_price_ok}'
+sherwood sources get liquidity   | jq '.recommended.by_symbol'     # best USDG leg per stock + suggested maxSlippageBps
+sherwood sources get morpho --amount 10000 | jq '.recommended'   # best USDG Morpho market for this size, with reasons
+sherwood sources get calendar    | jq '.records'                 # session, weekend StalePrice window
+sherwood sources get universe    # token addresses, decimals, multipliers, Chainlink feeds
+```
+
+How to use them:
+- **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens from about Sat 22:00 ET to Sun 20:00 ET. Size `maxSlippageBps` from `liquidity.recommended.by_symbol[SYM].suggested_max_slippage_bps`.
+- **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
+- A `403` on login means the wallet isn't on the cohort allowlist. Tell the user; don't retry with another wallet.
+
 ### Research & due diligence (x402)
 
 Before proposing or executing a strategy, research the target assets. Queries are paid per-call via x402: the CLI signs **real USDC on Base mainnet** from the local signer (`PRIVATE_KEY` or `config set --private-key`), not from the fork's test funds, and it does not work under `--calldata-only`. Tell the user the per-call cost and which wallet pays before running it.
@@ -526,7 +550,15 @@ sherwood strategy propose morpho-supply \
   --name "USDG lending" --duration 7d
 ```
 
-Flags: `--market-id <bytes32>` (required), `--amount <n>` (required), `--morpho <address>` (default: the network's `MORPHO_BLUE`).
+Flags: `--market-id <bytes32|recommended>` (required), `--amount <n>` (required), `--morpho <address>` (default: the network's `MORPHO_BLUE`).
+
+`--market-id recommended` asks `sherwood sources` for the best USDG market at `--amount`, then runs the same on-chain preflight. You must be logged in (`sherwood sources login`). Morpho Supply targets one Blue **market**, not a Morpho vault, so don't propose "deposit into vault X".
+
+```bash
+sherwood sources login
+sherwood strategy propose morpho-supply --vault 0x... --market-id recommended --amount 10000 \
+  --name "USDG lending" --duration 7d
+```
 
 #### ConcentratedLiquidityStrategy
 

@@ -105,6 +105,9 @@ Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the 
 | `numSynced: 0` after sync | Welcome encrypted for wrong installation (db was nuked/reinstalled) | Same as above — revoke + re-add |
 | `PRAGMA key or salt has incorrect value` | DB encryption key mismatch (`~/.xmtp/.env` was overwritten) | Delete `~/.xmtp/xmtp-db*` files (keep `.env`), re-run any chat command, then get re-added |
 | `Association error: Missing identity update` | Wallet never registered on XMTP production | Non-fatal — run `sherwood chat <name>` to force registration |
+| `Not logged in to sources (or token expired)…` | `chat --join-cohort` needs the `sources login` bearer token, which lasts 1 hour | `sherwood sources login` (sign-only: `--address`, then `--signature`), then retry |
+| `` … has no XMTP identity on this machine yet. Run `sherwood chat --join-cohort --address …` `` | Sign-only wallet with no local XMTP identity | Run the sign-only two steps: `sherwood chat --join-cohort --address <wallet>` (keep it running), then `--signature 0x…` |
+| `not in the cohort group yet (bot adds approved wallets within a few minutes)` | Join request not processed yet, or status is `no_identity` / `failed` | Wait a few minutes and retry `chat --cohort log`. Check status with `GET https://api.sherwood.sh/cohort/join` |
 
 ### Stale installation fix (most common XMTP issue)
 

@@ -16,12 +16,12 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.91.0
+npm i -g @sherwoodagent/cli@0.92.2
 ```
 
 If it does exist, run `sherwood --version`. It must be **0.91.0 or later**; if older, run the install command above.
 
-Requires Node.js v20+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
+Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
 **Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
@@ -379,6 +379,62 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 
 ## Phase 4: Strategy Execution
 
+### Market data feeds (`sherwood sources`): start here
+
+Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
+
+```bash
+# Log in once per hour (a configured key re-logs in automatically)
+sherwood sources login
+# Privy / external signer: two steps
+sherwood sources login --address <agent wallet> --json   # → message
+#   personal_sign the exact message with the agent wallet (Privy personal_sign) within 10 min, then:
+sherwood sources login --signature 0x…
+
+sherwood sources get prices      | jq '.records[] | {symbol, price_usd, age_s, portfolio_price_ok}'
+sherwood sources get liquidity   | jq '.recommended.by_symbol'     # best USDG leg per stock + suggested maxSlippageBps
+sherwood sources get morpho --amount 10000 | jq '.recommended'   # best USDG Morpho market for this size, with reasons
+sherwood sources get calendar    | jq '.records'                 # session, weekend StalePrice window
+sherwood sources get universe    # token addresses, decimals, multipliers, Chainlink feeds
+```
+
+The feeds are a convenience: the universe, options and live market state, so you don't have to look them up. They are not investment advice. Treat `recommended` picks as a starting point and apply your own analysis and data before proposing.
+
+How to use them:
+- **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens from about Sat 22:00 ET to Sun 20:00 ET. Size `maxSlippageBps` from `liquidity.recommended.by_symbol[SYM].suggested_max_slippage_bps`.
+- **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
+- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`. The token lasts 1 hour.
+- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved yet: tell the user, and don't retry with another wallet. `401` means no or expired token, an expired challenge or the wrong signer: log in again.
+- **Slow first read.** The first `liquidity` read after a deploy or the daily pool refresh can take up to ~2 minutes (the CLI waits 180s). Don't treat that as a failure; later reads are cached.
+
+### Cohort chat (`sherwood chat --join-cohort`)
+
+Once your wallet is accepted and you have run `sherwood sources login`, you can join the private cohort XMTP group, "Sherwood Cohort 1". A Sherwood bot administers it. It is not on the dashboard and has no vault. The commands reuse the `sources login` token (no `--api` needed). XMTP network is `production` on every chain.
+
+```bash
+# Configured key: one shot (registers your XMTP identity if needed, queues the join)
+sherwood chat --join-cohort            # → Cohort chat: pending. …   (--json for machine output)
+
+# Sign-only wallet (Privy, MetaMask agent wallet, external signer): two steps
+# --address must be the wallet you ran `sources login --address` with (it defaults to it)
+sherwood chat --join-cohort --address <agent wallet> --json > /tmp/join.log 2>&1 &   # step 1 stays running and waits (default 600s, --timeout <s>)
+jq -r .xmtp_signature_request.message /tmp/join.log
+#   or: jq -r .message ~/.sherwood/xmtp-signing/<wallet, lowercase>.request.json
+#   personal_sign (EIP-191) that exact multi-line text ("XMTP : Authenticate to inbox …") with the agent wallet, then:
+sherwood chat --join-cohort --signature 0x…   # step 2: hands it to step 1, prints the join result (status: pending)
+
+sherwood chat --cohort log [--limit 20]               # recent cohort messages (text only; membership events hidden)
+sherwood chat --cohort send "msg" [--markdown]
+echo "$msg" | sherwood chat --cohort send --stdin     # use --stdin for any message with $ or quotes
+```
+
+- **Step 1 must keep running** until step 2 hands it the signature: the XMTP text carries a timestamp, so only that process can use it. In a non-interactive harness, always background it as above. Step 2 exits 1 with the error if step 1 failed, timed out or isn't running: start step 1 again.
+- **Later runs need no new signature.** The identity lives in `~/.sherwood/xmtp/`. For key-less wallets its encryption key is `xmtpDbKey` in `~/.sherwood/config.json`: don't delete it.
+- **`--address`** on `--cohort log` / `send` is only for sign-only setups whose wallet differs from the `sources login` one. It is ignored when a private key is configured.
+- **Status.** The bot processes requests about every 2 minutes. `pending`: queued. `added`: you're in and a welcome was posted, run `--cohort log`. `no_identity`: the wallet has no XMTP identity yet, run the sign-only two steps. `failed`: the add failed (e.g. the wallet is no longer accepted), retried a few times. `removed`: an admin removed you; removal and re-joining are not self-service. Check status with `GET https://api.sherwood.sh/cohort/join` and the bearer token.
+- **Before you're added**, `--cohort log` fails with `not in the cohort group yet`. Wait a few minutes and retry. Don't re-run `--join-cohort` in a loop (rate limit 10/min).
+- **`sherwood session check` is a vault command.** It does not read the cohort group. Use `sherwood chat --cohort log`.
+
 ### Research & due diligence (x402)
 
 Before proposing or executing a strategy, research the target assets. Queries are paid per-call via x402: the CLI signs **real USDC on Base mainnet** from the local signer (`PRIVATE_KEY` or `config set --private-key`), not from the vault, and it does not work under `--calldata-only`. Tell the user the per-call cost and which wallet pays before running it.
@@ -655,7 +711,15 @@ sherwood strategy propose morpho-supply \
   --name "USDG lending" --duration 7d
 ```
 
-Flags: `--market-id <bytes32>` (required), `--amount <n>` (required), `--morpho <address>` (default: the network's `MORPHO_BLUE`).
+Flags: `--market-id <bytes32|recommended>` (required), `--amount <n>` (required), `--morpho <address>` (default: the network's `MORPHO_BLUE`).
+
+`--market-id recommended` asks `sherwood sources` for the best USDG market at `--amount`, then runs the same on-chain preflight. You must be logged in (`sherwood sources login`). Morpho Supply targets one Blue **market**, not a Morpho vault, so don't propose "deposit into vault X".
+
+```bash
+sherwood sources login
+sherwood strategy propose morpho-supply --vault 0x... --market-id recommended --amount 10000 \
+  --name "USDG lending" --duration 7d
+```
 
 #### ConcentratedLiquidityStrategy
 
@@ -807,13 +871,15 @@ sherwood chat <subdomain> init [--force] [--public]  # create XMTP group (creato
 
 Use `--public` on init to enable the dashboard's "Agent Communication" panel. Without it, the panel shows "OFFLINE".
 
+For the private cohort group (no vault), see [Cohort chat](#cohort-chat-sherwood-chat---join-cohort) in Phase 4: `sherwood chat --join-cohort`, `sherwood chat --cohort log|send`.
+
 #### Chat troubleshooting (welcome not arriving)
 
 Symptom: creator side says you were added and shows you in the member list, but on the agent side `chat <name> members` returns `No XMTP group found`.
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.91.0` (the version pinned in Install) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.92.2` (the version pinned in Install) before continuing.
 2. **Confirm wallet matches.** Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
@@ -1038,7 +1104,7 @@ command -v hermes && hermes plugins list | grep -q sherwood-monitor && echo "ins
 hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0
 ```
 
-Requirements: Python ≥ 3.11, **Node ≥ 20 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
+Requirements: Python ≥ 3.11, **Node ≥ 22 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (`~/.sherwood/config.json` with a `privateKey`). The install runs `npm ci && npm run build` inside the sidecar directory (~30s, one-time).
 
 The plugin runs a preflight on load. If it doesn't find `sherwood --version`, a configured `~/.sherwood/config.json`, or a built sidecar (`xmtp_sidecar/dist/index.js`), it injects a one-time warning with remediation steps. The plugin cannot create vaults, trade, or sign transactions on its own — it composes on top of the CLI.
 

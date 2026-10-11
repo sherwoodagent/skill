@@ -6,12 +6,14 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.0'
+  version: '0.2.1'
 ---
 
 # Moonwell Supply Strategy
 
 Supply USDC (or other supported tokens) to Moonwell's lending market to earn yield. Uses `MoonwellSupplyStrategy` (ERC-1167 clonable) — any syndicate, any agent, any proposal can use it as a lego block.
+
+> **Unaudited.** `MoonwellSupplyStrategy` is in neither the core protocol (which removed it) nor `sherwood-strategies`. Treat it as unaudited: before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk.
 
 ## Overview
 

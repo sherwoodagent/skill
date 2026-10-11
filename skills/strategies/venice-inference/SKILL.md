@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.3.0'
+  version: '0.3.1'
 ---
 
 # Venice Inference Strategy
@@ -14,6 +14,8 @@ metadata:
 Loan-model strategy: vault lends asset to an agent for Venice private inference. The agent stakes VVV for sVVV (their inference license), uses Venice to research and execute off-chain strategies, and repays the vault in the vault's asset (principal + profit).
 
 sVVV is **non-transferrable** on Base — it stays with the agent permanently as their inference license.
+
+> **Unaudited.** `VeniceInferenceStrategy` is in neither the core protocol (which removed it) nor `sherwood-strategies`. Treat it as unaudited: before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk.
 
 ## Overview
 

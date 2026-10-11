@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.0'
+  version: '0.1.1'
 ---
 
 # Levered Swap Strategy
@@ -14,6 +14,8 @@ metadata:
 Interactive assistant for executing the Sherwood levered swap strategy on Base.
 
 > **Strategy**: Deposit WETH as collateral on Moonwell, borrow USDC, swap USDC into a target token via Uniswap V3. The vault acts as an authorization layer only (no vault capital at risk).
+
+> **Unaudited.** This strategy is not a template in either the core protocol or `sherwood-strategies`, so treat it as unaudited: run the checks in [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk before committing funds.
 
 > **Runtime Compatibility:** This skill uses `AskUserQuestion` for interactive prompts. If `AskUserQuestion` is not available, collect parameters through natural language conversation instead.
 

@@ -365,9 +365,9 @@ After creating a vault, and **before the first proposal**:
 
 1. **Seed the risk caps (owner, once).** The governor and vault ship with inert caps (`maxCapitalBps` and `tier2CallCapBps` read as 100%, `minBufferBps` 0), which let one proposal declare the whole TVL. Set them from the owner wallet while no proposal is open:
    ```bash
-   sherwood governor set-max-capital-bps --vault 0xVAULT --bps 8000     # one proposal may deploy at most 80% of TVL
-   sherwood governor set-tier2-call-cap-bps --vault 0xVAULT --bps 200   # each uncertified call capped at 2% of TVL
-   sherwood vault set-min-buffer-bps --vault 0xVAULT --bps 500          # keep 5% of the vault idle after any batch
+   sherwood governor set-max-capital --vault 0xVAULT --bps 8000     # one proposal may deploy at most 80% of TVL
+   sherwood governor set-tier2-call-cap --vault 0xVAULT --bps 200   # each uncertified call capped at 2% of TVL
+   sherwood vault set-min-buffer --vault 0xVAULT --bps 500          # keep 5% of the vault idle after any batch
    ```
    If a setter is missing in your CLI version, call `setMaxCapitalBps` / `setTier2CallCapBps` on the governor and `setMinBufferBps` on the vault directly (`sherwood governor info --vault` prints the governor address). Governor setters are frozen while any proposal is open, Drafts included. **Never raise `minBufferBps` while a proposal is open**: with idle reserve outstanding, settle, unstick and emergency finalize revert until it is lowered again.
 2. **Register agents on the vault:** `sherwood vault add --wallet 0xAgent` (on a single-operator vault they cannot propose; see [Single-operator vaults](#single-operator-vaults)).

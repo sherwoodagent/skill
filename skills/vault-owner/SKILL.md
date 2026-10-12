@@ -57,11 +57,11 @@ Three owner setters, in this order, **before the first propose**. The governor s
 
 ```bash
 # Per-call cap on tier-2 (uncertified) calls: 2% of totalAssets per call at propose (Tier2CallCapExceedsCeiling(i))
-sherwood governor set-tier2-call-cap-bps --vault $VAULT_ADDRESS --bps 200
+sherwood governor set-tier2-call-cap --vault $VAULT_ADDRESS --bps 200
 # Ceiling on --max-capital: 80% of totalAssets, checked at propose and again at execute
-sherwood governor set-max-capital-bps --vault $VAULT_ADDRESS --bps 8000
+sherwood governor set-max-capital --vault $VAULT_ADDRESS --bps 8000
 # Idle float the vault must keep after every governor batch: 5% (max 5000 = 50%, BufferTooHigh)
-sherwood vault set-min-buffer-bps --vault $VAULT_ADDRESS --bps 500
+sherwood vault set-min-buffer --vault $VAULT_ADDRESS --bps 500
 # or: cast send $VAULT_ADDRESS "setMinBufferBps(uint16)" 500 --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
@@ -194,7 +194,7 @@ For each Executed proposal:
 |---|---|---|
 | Pause / unpause | `cast send $VAULT_ADDRESS "pause()"` / `"unpause()"` | Freezes deposit, mint, withdraw, redeem, both queue requests, queue deposit claims **and governor batches**. Rescues, queue `cancel` and queue redeem claims still work |
 | Set the agent fee | `sherwood vault set-agent-fee --vault $VAULT_ADDRESS --bps <n>` | Default 2000 (20%), max 2500 (`AgentFeeTooHigh`). Snapshotted onto each proposal at propose, clamped at settle to the governor's `maxPerformanceFeeBps` (default 2000) |
-| Min buffer | `sherwood vault set-min-buffer-bps --vault $VAULT_ADDRESS --bps <n>` | ≤ 5000; see §0 |
+| Min buffer | `sherwood vault set-min-buffer --vault $VAULT_ADDRESS --bps <n>` | ≤ 5000; see §0 |
 | Depositors | `sherwood vault approve-depositor` / `remove-depositor` | §0. `setOpenDeposits(bool)` (`cast send`) only takes effect once the factory's `depositsRestricted` lifts |
 | Register / remove an agent | `sherwood vault add --vault $VAULT_ADDRESS --wallet 0xAgent --agent-id <id>` / `cast send $VAULT_ADDRESS "removeAgent(address)" 0xAgent` | Max 32 agents. The agent must own the ERC-8004 id (or you must). At launch a non-owner agent still cannot propose |
 | Rescue | `cast send $VAULT_ADDRESS "rescueEth(address,uint256)" <to> <wei>`, `"rescueERC721(address,uint256,address)" <token> <id> <to>`, `"rescueERC20(address,address,uint256)" <token> <to> <amt>` | All revert `RedemptionsLocked` while any proposal is open. `rescueERC20` cannot move the vault asset (`CannotRescueAsset`) and `to` must be one of **this vault's own strategy clones** (`RescueRecipientNotStrategy`) |
@@ -211,8 +211,8 @@ sherwood governor set-max-duration     --vault $VAULT_ADDRESS --seconds <n>   # 
 sherwood governor set-cooldown         --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 30 d (default 1 h)
 # cast only:
 cast send $GOVERNOR_ADDRESS "setMinStrategyDuration(uint256)" <s>   # 1 h – max duration (default 1 h)
-sherwood governor set-max-capital-bps --vault $VAULT_ADDRESS --bps <bps>       # 1 – 10000 (unset reads 10000)
-sherwood governor set-tier2-call-cap-bps --vault $VAULT_ADDRESS --bps <bps>     # 1 – 10000 (unset reads 10000)
+sherwood governor set-max-capital --vault $VAULT_ADDRESS --bps <bps>       # 1 – 10000 (unset reads 10000)
+sherwood governor set-tier2-call-cap --vault $VAULT_ADDRESS --bps <bps>     # 1 – 10000 (unset reads 10000)
 ```
 
 Each applies instantly and emits `ParameterChangeFinalized`. `set-mgmt-split` / `set-perf-split` are protocol-owner only (ProtocolConfig); as vault owner you receive 10% of the performance fee by the launch split.

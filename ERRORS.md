@@ -6,8 +6,27 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (Privy / MetaMask). (CLI ≥ 0.90.0 covers `guardian prepare-owner-stake` too) |
+| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (MetaMask Agent Wallet or Privy) |
 | `Agent identity required` | No agentId saved | `sherwood identity mint --name "..."` |
+| `Sherwood is not deployed on Robinhood Chain for this command yet. Retry after the mainnet deploy completes.` | A core contract this command needs is not in the CLI's 4663 address book yet | Tell the user and stop; retry after the deploy completes |
+| `… not a registered agent` (keyless `strategy propose`) | The creator was never registered on the vault: keyless `vault create` cannot do it | `sherwood vault info <subdomain>` for the vault address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id <id>` and broadcast |
+
+## Data feeds and research
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `401` from `sources` | No login, login (refresh token) older than 7 days, expired challenge (10 min) or wrong signer. The CLI refreshes the 1-hour access token itself, so a `401` means that refresh failed too | Log in again: `sherwood sources login --address <wallet>`, sign, `--signature 0x…`. Sign-only routines re-sign about weekly |
+| `403` from `sources` refresh | The wallet's waitlist approval was revoked; the CLI clears the login | Tell the vault owner. Never retry with another wallet |
+| `403` from `sources login` | Valid signature, but the wallet's waitlist entry is not approved | Tell the vault owner. Never retry with another wallet. Access after paying the creation fee is granted once the indexer ships; until then use an approved waitlist wallet |
+| `research` refuses under `--calldata-only` | x402 needs a signature and no key is configured | Use the two-step: `sherwood research … --address <wallet>` (keep it running), sign the typed data, `sherwood research complete --signature 0x…` (see [RESEARCH.md](RESEARCH.md)) |
+| `research complete` exits 1 | No step 1 is waiting for this wallet, or the payment deadline passed | Start step 1 again, then sign the new typed data |
+
+## Attestations (public track record)
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Schema <NAME> is not registered on Robinhood Chain yet (uid …). Registration is pending.` | The decision-trace schemas are not registered on the 4663 SchemaRegistry yet. Every `attest` write checks first and refuses, also under `--calldata-only` | Tell the owner and carry on: the proposal does not depend on it. Attest once registration lands |
+| `attest` warning during `strategy propose --attest-thesis` | The thesis or link attestation failed (unregistered schema, pin failure, gas) | Nothing to undo: the propose went ahead. Re-run `sherwood attest thesis` / `attest link` later if you want the record |
 
 ## Permission Errors
 
@@ -27,8 +46,8 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `CallCapExceeded(i, outflow, cap)` | Call `i` of the batch moved more of the vault asset out than its declared cap | Raise that call's cap in the proposal (re-propose) or reduce the amount the strategy pulls |
-| `MaxCapitalExceedsCeiling` / `MaxCapitalCeilingRegressed` | `--max-capital` is above `totalAssets() × maxCapitalBps / 10_000` at propose, or the vault shrank before execute | Lower `--max-capital`, or (owner) raise `governor set-max-capital-bps` while no proposal is open |
-| `BufferBreached` | After the batch, the vault held less idle asset than `minBufferBps` requires | Deploy less (`--max-capital`), or (owner) lower `vault set-min-buffer-bps` while no proposal is open; never raise it mid-proposal |
+| `MaxCapitalExceedsCeiling` / `MaxCapitalCeilingRegressed` | `--max-capital` is above `totalAssets() × maxCapitalBps / 10_000` at propose, or the vault shrank before execute | Lower `--max-capital`, or (owner) raise `governor set-max-capital` while no proposal is open |
+| `BufferBreached` | After the batch, the vault held less idle asset than `minBufferBps` requires | Deploy less (`--max-capital`), or (owner) lower `vault set-min-buffer` while no proposal is open; never raise it mid-proposal |
 | `CoveredTvlCapExceeded` | The proposal's required coverage in USD exceeds the ledger's per-proposal cap ($1M at launch) | Split the book or deploy less |
 | `CoverageHorizonExceeded` | `executeBy + strategyDuration` is more than 60 days out | Shorten `--duration` |
 | `OwnerBondNotLive` | The vault owner's stake is not bound, or an owner unstake is pending | Owner: cancel the unstake (`StakedWood.cancelUnstakeOwner`) or re-bond via `rotateOwner`; nobody can propose or execute until then |

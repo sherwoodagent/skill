@@ -66,7 +66,7 @@ Defaults to 2000 bps (20%); the vault caps it at 2500 bps (25%). A factory-creat
 sherwood proposal list --vault <addr> [--state <filter>]
 ```
 
-Filter by state: `pending`, `approved`, `executed`, `settled`, `all` (default: `all`).
+Filter by state: `draft`, `pending`, `guardianreview`, `approved`, `rejected`, `expired`, `executed`, `settled`, `cancelled`, `all` (default: `all`). The owner's veto works only while `Pending`; once a proposal is in `GuardianReview`, only guardian block-quorum stops it.
 
 ## Show proposal detail
 
@@ -152,9 +152,9 @@ sherwood governor set-veto-threshold --vault 0x... --bps <n>         # 2000–80
 sherwood governor set-max-fee --vault 0x... --bps <n>                # ≤ 2500
 sherwood governor set-max-duration --vault 0x... --seconds <n>       # ≤ 30d
 sherwood governor set-cooldown --vault 0x... --seconds <n>           # 1h–30d
-sherwood governor set-max-capital-bps --vault 0x... --bps <n>        # share of TVL one proposal may deploy; seed 8000
-sherwood governor set-tier2-call-cap-bps --vault 0x... --bps <n>     # per-call cap for uncertified calls; seed 200
-sherwood vault set-min-buffer-bps --vault 0x... --bps <n>            # idle reserve kept after any batch; seed 500, ≤ 5000
+sherwood governor set-max-capital --vault 0x... --bps <n>        # share of TVL one proposal may deploy; seed 8000
+sherwood governor set-tier2-call-cap --vault 0x... --bps <n>     # per-call cap for uncertified calls; seed 200
+sherwood vault set-min-buffer --vault 0x... --bps <n>            # idle reserve kept after any batch; seed 500, ≤ 5000
 ```
 
 Each validates against the governor's bounds before submitting, and all governor setters revert `ParamsFrozenDuringProposal` while the vault has an open proposal (Drafts count). Seed the last three right after `vault create` and before the first proposal; never raise `minBufferBps` while a proposal is open. Protocol-wide fee splits (`governor set-mgmt-split` / `set-perf-split`) live on `ProtocolConfig` and are protocol-owner only.

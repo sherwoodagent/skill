@@ -134,15 +134,15 @@ $P rpc --json '{"method":"eth_signTypedData_v4","params":{"typed_data":<typed_da
 
 Three CLI commands need a signature but no transaction. Each prints what to sign, then takes `--signature`.
 
-### Data feeds: `sources login` (every hour)
+### Data feeds: `sources login` (weekly)
 
 ```bash
 sherwood sources login --address <wallet> --json   # → message (expires in 10 min)
 #   personal_sign the exact message: MetaMask mm wallet sign-message --message '<message>' --chain-id 4663, Privy personal_sign
-sherwood sources login --signature 0x…             # → 1-hour token
+sherwood sources login --signature 0x…             # → 1-hour token + 7-day refresh token
 ```
 
-The token is a 1-hour JWT with no refresh: re-run both steps every hour, or on the first `401`. `401` = log in again. `403` = the wallet is not approved: tell the vault owner, and never retry with another wallet. Access after paying the creation fee is granted once the indexer ships; until then use an approved waitlist wallet.
+The CLI refreshes the 1-hour access token itself for 7 days, so re-run both steps about weekly: when `sherwood sources status` shows `auto_refresh: false`, or on a `401` (the CLI's own refresh failed). `401` = log in again. `403` (at login or on refresh) = the wallet is not approved, or no longer approved: tell the vault owner, and never retry with another wallet. Access after paying the creation fee is granted once the indexer ships; until then use an approved waitlist wallet.
 
 ### Cohort chat: `chat --join-cohort`
 

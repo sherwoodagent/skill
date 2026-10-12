@@ -1,15 +1,16 @@
 ---
 name: levered-swap
-description: Executes Sherwood's levered swap strategy on Base — deposits WETH as collateral on Moonwell, borrows USDC, and swaps into a target token via Uniswap V3. Guides step-by-step through token research (DexScreener), risk assessment, parameter selection, simulation, and on-chain execution. Triggers on leveraged trading, collateral + borrow strategies, levered swaps, or entering positions.
-allowed-tools: Read, Glob, Grep, Bash(npx:*), Bash(cd:*), Bash(curl:*), Bash(jq:*), WebFetch, WebSearch, AskUserQuestion
-model: sonnet
+description: Executes Sherwood's levered swap strategy on Base — deposits WETH as collateral on Moonwell, borrows USDC, and swaps into a target token via Uniswap V3. Not available on Robinhood Chain (4663), where Sherwood is live; retained for reference only. Guides step-by-step through token research (DexScreener), risk assessment, parameter selection, simulation, and on-chain execution. Triggers on leveraged trading, collateral + borrow strategies, levered swaps, or entering positions.
+allowed-tools: Read Glob Grep Bash(npx:*) Bash(cd:*) Bash(curl:*) Bash(jq:*) WebFetch WebSearch AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.1'
+  version: '0.1.2'
 ---
 
 # Levered Swap Strategy
+
+> **Not available on Robinhood Chain (4663), where Sherwood is live.** Moonwell and this strategy's BatchExecutor flow exist on another chain only; nothing below runs on 4663. This skill is retained for reference; do not execute it.
 
 Interactive assistant for executing the Sherwood levered swap strategy on Base.
 
@@ -24,7 +25,7 @@ Interactive assistant for executing the Sherwood levered swap strategy on Base.
 Before running this skill, ensure:
 - `cli/.env` is configured with `BASE_RPC_URL`, `PRIVATE_KEY`, `VAULT_ADDRESS`, `BATCH_EXECUTOR_ADDRESS`
 - The agent wallet has WETH available (the agent provides its own collateral)
-- The agent is registered on the vault (`sherwood vault register-agent`)
+- The agent is registered on the vault (`sherwood vault add`)
 - WETH has been sent to the BatchExecutor address before execution
 
 ## Workflow

@@ -1,19 +1,16 @@
 ---
 name: memecoin-alpha
-description: Signal-driven memecoin trading on Base via Uniswap Trading API — buy, sell, swap tokens, scan for opportunities, monitor positions, auto-exit on signals. Uses Messari/Nansen research, Venice inference for sentiment. NOT available on Robinhood chains — Sherwood targets Robinhood Chain mainnet (not live yet), and the Base-only `sherwood trade` commands exit with an error there. Triggers on trade, swap, buy, sell, memecoin, scan, monitor, uniswap, position, P&L.
-allowed-tools: Read, Glob, Grep, Bash(sherwood *), Bash(npm *), Bash(npx *), WebFetch, WebSearch, AskUserQuestion
-model: sonnet
+description: Signal-driven memecoin trading on Base via Uniswap Trading API — buy, sell, swap tokens, scan for opportunities, monitor positions, auto-exit on signals. Uses Messari/Nansen research, Venice inference for sentiment. NOT available on Robinhood Chain (4663), where Sherwood is live — the Base-only `sherwood trade` commands exit with an error there; retained for reference only. Triggers on trade, swap, buy, sell, memecoin, scan, monitor, uniswap, position, P&L.
+allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch WebSearch AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.1'
+  version: '0.1.2'
 ---
 
 # Memecoin Alpha Strategy
 
-> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
-
-> **Not available on Robinhood chains.** This strategy runs on the Uniswap Trading API, which covers Base only. Sherwood targets Robinhood Chain mainnet (not live yet), which is not Base, so every `sherwood trade` subcommand below exits with an error. The workflow is documented here for when Sherwood deploys on a chain the Trading API covers — do not run these commands.
+> **Not available on Robinhood Chain (4663), where Sherwood is live.** This strategy runs on the Uniswap Trading API, which covers Base only, so every `sherwood trade` subcommand below exits with an error on 4663. This skill is retained for reference; do not run these commands.
 
 Off-chain, signal-driven memecoin trading strategy on Base. Composes three existing Sherwood integrations:
 

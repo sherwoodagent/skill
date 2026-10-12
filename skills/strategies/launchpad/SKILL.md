@@ -1,23 +1,22 @@
 ---
 name: launchpad
 description: Launch a fund token ("IPO") on Sushi Launchpad V2 or StonkBrokers with vault capital via a governance proposal, then run the claim window, fee collection and settlement. A launch settles as a vault-asset LOSS of about the capital spent, by design. Triggers on launch a token, fund token, IPO, launchpad, Sushi launchpad, StonkBrokers, reserve claim, claim launch tokens, collect launch fees.
-allowed-tools: Read, Glob, Grep, Bash(sherwood *), Bash(npm *), Bash(npx *), WebFetch, WebSearch, AskUserQuestion
-model: sonnet
+allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch WebSearch AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.1'
+  version: '0.3.0'
 ---
 
 # Launchpad Strategy
 
-> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
+> **Not deployed on Robinhood Chain (4663), where Sherwood is live.** `LaunchpadStrategy` and its launch adapters come from `sherwood-strategies`, which has no deployment book for 4663 yet. `sherwood strategy list` shows `Launchpad (launchpad)` under "Not available" until it ships; do not propose it before then. The workflow below is kept for that day. Chain 9994663, where it was last deployed, is closed.
 
 > **Unaudited.** `LaunchpadStrategy` and its launch adapters come from `sherwood-strategies` (`src/launchpad/`), which has not been audited. Before proposing or approving a launch, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) on the template and the adapter for the venue, and tell the user it is used at their own risk.
 
 A `LaunchpadStrategy` proposal launches a token for the fund with vault capital. It holds back a **reserve** of that token, and the fund's share holders **claim a pro-rata slice** of the reserve during a claim window. Shares are not burned. Two venues: **Sushi Launchpad V2** (`--venue sushi`, default) and **StonkBrokers** Smart Launch V2 (`--venue stonk`).
 
-Requires CLI ≥ 0.89.2. Was deployed on `robinhood-fork` (chain 9994663), which is closed. Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed before proposing.
+Requires `@sherwoodagent/cli@0.93.0` or later. Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed as available on 4663 before proposing.
 
 ```
 Vault (USDG or WETH)
@@ -156,14 +155,6 @@ Settle:  [clone.settle()]
 
 The CLI builds both. The launch and swap adapters are counterparties the clone calls, checked against the vault's TierRegistry at init and execute. Settlement and claims never consult the registry.
 
-## Addresses (chain 9994663, closed; historical)
+## Addresses
 
-| Contract | Address |
-| --- | --- |
-| LaunchpadStrategy template | `0x4435Aae199907f60588902Bcd7c4363a13Bb2951` |
-| SushiLaunchAdapter | `0x20348e428050031647d671F0e24752C01D4b7379` |
-| StonkLaunchAdapter | `0x36C45dC52FbC267d8536E8456ADe5255eC83A5ab` |
-| Sushi Launchpad V2 (proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
-| StonkBrokers lens (V2) | `0x25b5Df581f4b2Ed450203f375ad8A28b17F115B3` |
-
-Source of truth: sherwood-strategies `deployments/9994663.json`. Docs: https://docs.sherwood.sh/protocol/strategies/launchpad
+Not deployed on Robinhood Chain (4663). Once the template and both adapters ship there, their addresses appear in sherwood-strategies `deployments/4663.json` and in [ADDRESSES.md](../../../ADDRESSES.md); `sherwood strategy list` prints the template address. Do not reuse an address from any other chain. Docs: https://docs.sherwood.sh/protocol/strategies/launchpad

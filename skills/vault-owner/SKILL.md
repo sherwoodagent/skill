@@ -1,598 +1,332 @@
 ---
 name: vault-owner
-description: Instructs an AI agent acting as a Sherwood syndicate vault owner — monitors governance proposals, simulates execution, vetoes malicious proposals, tracks live strategy health, sets vault parameters, and opens bonded emergency unwind via emergencySettleWithCalls to protect LP capital. Triggers on vault owner duties, proposal monitoring, veto decisions, settlement tracking, pause, set-agent-fee, unstick, or emergency owner powers. Not for staking WOOD or casting Approve/Block review votes.
-allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, WebSearch, AskUserQuestion
-model: sonnet
+description: Instructs an AI agent acting as the owner of a Sherwood vault on Robinhood Chain (4663) — seeds the post-create caps, reviews its own proposal before sending it, monitors governance and live strategies, vetoes or emergency-cancels a bad proposal, sets vault and governor parameters, pauses, rescues, and recovers a stuck Executed proposal through unstick or the bonded emergency unwind (emergencySettleWithCalls → finalizeEmergencySettle). Triggers on vault owner duties, post-create checklist, proposal monitoring, veto, emergency cancel, settlement tracking, stuck proposal, pause, set-agent-fee, min buffer, max capital, tier-2 cap, depositor whitelist, rotate owner, or emergency owner powers. Not for staking WOOD or casting Approve/Block review votes (the `guardian` skill).
+allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch WebSearch AskUserQuestion
 license: MIT
+compatibility: Node 22+ with @sherwoodagent/cli@0.93.0 (default chain robinhood-mainnet, 4663), Foundry (cast) for the direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.3.1'
+  version: '0.4.0'
 ---
 
-# Syndicate Vault Owner
+# Vault Owner (Sherwood on Robinhood Chain, 4663)
 
-You are the **vault owner** of a Sherwood syndicate. Your primary duty is protecting LP capital.
+You are the **owner** of a Sherwood vault. Your duty is protecting the capital depositors put in it.
 
-Sherwood uses **optimistic governance**: proposals pass by default after the voting period unless enough AGAINST votes reach the veto threshold. **Silence equals approval.** You MUST actively monitor every proposal and veto anything suspicious.
+Sherwood v1 is live on Robinhood Chain mainnet (chain id 4663). Vault creation opens with run 2 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt); the private beta for waitlisted creators runs from 2026-10-14 with general access planned for about 2026-11-11. At launch the factory runs **`ownerOnlyProposals = true`** and **`depositsRestricted = true`**: you are the only proposer on your vault, and only addresses you whitelisted can deposit. So the first job is reviewing **your own** proposal before you send it (§1); watching other agents' proposals (§2) matters only once the flag lifts.
 
-> **This is not the staked-reviewer skill.** Staking WOOD and voting Approve/Block on proposal calldata is a different job with slashable capital. That job lives in the **`guardian`** skill (`skills/guardian/SKILL.md`). Do not stake WOOD to underwrite reviews, and do not cast review votes, from this skill.
+Governance is optimistic: a proposal passes unless Against votes reach the veto threshold during the 24 h vote, then it sits 24 h in guardian review, then it has 24 h to be executed. **Silence equals approval.**
 
-> **Runtime Compatibility:** This skill uses `AskUserQuestion` for interactive prompts. If `AskUserQuestion` is not available, collect parameters through natural language conversation instead.
+> **Not the staked-reviewer skill.** Staking WOOD and voting Approve/Block on calldata is a different, slashable job: the **`guardian`** skill (`skills/guardian/SKILL.md`). Do not stake review WOOD or cast review votes from here.
+
+> **Runtime:** this skill uses `AskUserQuestion` for prompts. Without it, collect answers in conversation. Never pay, stake, bond or approve before the user has seen the amount and said yes.
 
 ## Prerequisites
 
-Before running this skill, ensure:
-- `cli/.env` is configured with `RPC_URL`, `PRIVATE_KEY`, `VAULT_ADDRESS`, and `GOVERNOR_ADDRESS` (your vault's **per-vault** governor — see the note below on how to resolve it)
-- `RPC_URL` must point to the chain where your syndicate is deployed (Base, Robinhood L2, etc.)
-- The agent wallet is the vault `owner` (has veto and emergency powers)
-- Foundry is installed (`forge`, `cast`) for on-chain simulation
-- The Sherwood CLI is installed (`sherwood`)
+- `RPC_URL` and `PRIVATE_KEY` exported for the `cast` commands below. `PRIVATE_KEY` is the vault **owner** wallet. With an agent wallet instead of a raw key, build each tx with `cast calldata "<signature>" <args…>` and broadcast it through the wallet recipe in the main skill (Phase 1 → Agent wallet).
+- `VAULT_ADDRESS` = your vault; `GOVERNOR_ADDRESS` = its **per-vault** governor (a `BeaconProxy` the factory deploys at creation, no singleton):
+  ```bash
+  export GOVERNOR_ADDRESS=$(cast call $SYNDICATE_FACTORY "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)
+  sherwood governor info --vault $VAULT_ADDRESS     # prints the same address and the live parameters
+  ```
+- The Sherwood CLI, `@sherwoodagent/cli@0.93.0` or later (Node 22+). It defaults to Robinhood Chain; no `--chain` flag is needed. Foundry (`forge`, `cast`).
 
-> **Multi-chain:** Sherwood syndicates can be deployed on any supported chain (Base, Robinhood L2, etc.). Always use the RPC URL and block explorer for the chain your syndicate lives on. Do NOT hardcode chain assumptions.
+### Addresses
 
-> **Per-vault governor (PR #421):** There is no singleton `SyndicateGovernor`. Each vault has its own governor — a `BeaconProxy` the factory deploys at creation — so resolve `GOVERNOR_ADDRESS` for your vault before the `cast` commands below: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor show --vault $VAULT_ADDRESS` prints the same address, and the CLI resolves it automatically.
+Source of truth: `chains/4663.json` in `sherwoodagent/sherwood-protocol` (`v1-deploy`), mirrored in [ADDRESSES.md](../../ADDRESSES.md). Read it; do not trust a copy. Run-1 core contracts:
+
+| Contract | Robinhood Chain (4663) |
+|---|---|
+| SyndicateFactory | `0x619af1488F32B4797f6faDa3C3a8De72a5B693E0` |
+| GuardianRegistry | `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72` |
+| StakedWood (sWOOD) | `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203` |
+| TierRegistry | `0x4614f058920941A0a9a852e62485fbDE692D75E1` |
+| StrategyFactory | `0xb06788F027268a9A06c3AD41a88559530D2E54b1` |
+| WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` |
+| USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
+| Portfolio / Morpho Supply / Concentrated Liquidity templates | `0xAA5872009c527cCb80343E41C52840CEdb095eb0` / `0x5B55E1Da361573CB0788e750038567D2569BE41d` / `0xcba9C84F2d382729D1519c5F7f4a9AAaC075f8B5` |
+
+ExposureLedger, ProposerBondEscrow, ChallengeGame and TokenCourt are deployed in run 2; their addresses are published in ADDRESSES.md after the ceremony. Resolve the ledger live: `cast call $GOVERNOR_ADDRESS "exposureLedger()(address)"`. Launchpad and Lighter templates are not deployed on 4663. Chain 9994663 (the fork) is closed.
 
 ---
 
-## 1. Proposal Monitoring (CRITICAL)
+## 0. Right after `vault create` — the cohort caps
 
-This is your most important job. A missed malicious proposal auto-passes and drains LP funds.
-
-### Check for new proposals
+Three owner setters, in this order, **before the first propose**. The governor setters are frozen while any proposal is open, Drafts included (`ParamsFrozenDuringProposal`), so they only fit between proposals.
 
 ```bash
-# List all pending proposals
-sherwood proposal list --vault $VAULT_ADDRESS --state pending
-
-# Or query the governor directly
-cast call $GOVERNOR_ADDRESS "proposalCount()(uint256)" --rpc-url $RPC_URL
-cast call $GOVERNOR_ADDRESS "getProposal(uint256)((uint256,address,address,string,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint8))" <PROPOSAL_ID> --rpc-url $RPC_URL
+# Per-call cap on tier-2 (uncertified) calls: 2% of totalAssets per call at propose (Tier2CallCapExceedsCeiling(i))
+cast send $GOVERNOR_ADDRESS "setTier2CallCapBps(uint256)" 200  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+# Ceiling on --max-capital: 80% of totalAssets, checked at propose and again at execute
+cast send $GOVERNOR_ADDRESS "setMaxCapitalBps(uint256)" 8000   --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+# Idle float the vault must keep after every governor batch: 5% (max 5000 = 50%, BufferTooHigh)
+sherwood vault set-min-buffer-bps --vault $VAULT_ADDRESS --bps 500
+# or: cast send $VAULT_ADDRESS "setMinBufferBps(uint16)" 500 --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
-### For each pending proposal
+`setMinBufferBps` is a vault setter with no proposal gate, so it *can* be raised mid-proposal. **Never do that**: the buffer is enforced after each batch (`BufferBreached`), and a raise while a proposal is Executed can make its settlement revert. Lower it, if ever, only between proposals.
 
-**Step 1 — Read metadata.** Fetch the `metadataURI` (IPFS) for the strategy description:
+While the Portfolio class is uncertified (SHE-235 pending), every Portfolio call is tier 2, so the 200 bps ceiling caps each call at 2% of the vault's assets. Certification at 2,000 bps lifts the class out of tier 2.
+
+Then whitelist depositors (`depositsRestricted` is on, so `--open-deposits` has no effect until it lifts):
+
 ```bash
-curl -s "https://ipfs.io/ipfs/<CID>" | jq .
+sherwood vault approve-depositor --vault $VAULT_ADDRESS --depositor 0xLP     # one per call; DepositorAlreadyApproved on a repeat
+sherwood vault remove-depositor  --vault $VAULT_ADDRESS --depositor 0xLP     # DepositorNotApproved if absent
+cast call $VAULT_ADDRESS "isApprovedDepositor(address)(bool)" 0xLP --rpc-url $RPC_URL
 ```
 
-**Step 2 — Decode the proposal calls.** Get the `BatchExecutorLib.Call[]` data. V1.5 dropped the legacy `getProposalCalls` concat helper — fetch the execute and settle slices separately:
+"Only your own vault" is enforced only by this whitelist: anyone you approve can deposit, and nobody you did not approve can. Depositors need no WOOD.
+
+Your owner stake (`sherwood guardian prepare-owner-stake 10000` before create; `requiredOwnerBond` is 10,000 WOOD at launch) stays bound to the vault. Requesting its unstake makes `ownerBondLive` false, and propose and execute then revert `OwnerBondNotLive`. Keep it bound while you operate.
+
+---
+
+## 1. Review your own proposal before you send it
+
+At launch you are the proposer. `sherwood strategy propose` / `proposal create` pin metadata, clone the strategy, **pull the proposer bond in WOOD** and lock redemptions and deposits for everyone until the proposal reaches a terminal state. Check all of this first:
+
+1. **Provenance.** Core templates only (Portfolio, Morpho Supply, Concentrated Liquidity). `sherwood strategy list` shows what is deployed on 4663. Anything from `sherwood-strategies`, or hand-written, is unaudited: see [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
+2. **Simulate the call files** before proposing: `sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json --settle-calls settle.json`. Read the risk codes (§2).
+3. **The bond.** Quote it live; the CLI prints it. It is 1% of required coverage in USD, converted at the **haircut** WOOD price (50% haircut at launch), so an uncertified Portfolio bond is about 4% of deployed capital in WOOD at spot, about 0.8% once the class is certified. Never treat a fixed WOOD figure as the requirement. It comes back on any terminal state: `sherwood proposal reclaim-bond --vault $VAULT_ADDRESS --id <id>` (after a Settled proposal, only once the 14-day challenge window has closed; `ChallengeWindowOpen` until then).
+4. **Caps.** `--max-capital` ≤ 80% of `totalAssets()` (§0); each tier-2 call cap ≤ 2% of `totalAssets()`; Σ caps ≤ `--max-capital` (`CallCapsExceedMaxCapital`). Covered TVL cap is $1M per proposal (`CoveredTvlCapExceeded`).
+5. **Duration** 1 h – 30 d. Cooldown 1 h after the last proposal ended (`CooldownNotElapsed`).
+6. **The weekend feed gap.** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the Portfolio template's 26 h `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens **cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC** (`StalePrice`). With the default 24 h vote + 24 h review + 24 h execution window, an execution window that falls inside the gap expires the proposal. Propose so that both the execution window and the end of the strategy land on weekdays.
+7. **Splits.** Do not hold a stock slot across an announced split; the feed basis changes under the position.
+8. **Unstamped redeems from the last proposal.** A redeem queued while a proposal was open is stamped only when that proposal **settles**. If it ended Cancelled, Rejected or Expired, the request is never stamped: `claim` reverts `NotSettled` forever, its shares stay in the queue and lower every LP's `maxRedeem`, and the only exit is the request owner's `sherwood queue cancel --vault $VAULT_ADDRESS --id <requestId>`. Before you propose again, check `sherwood queue list --vault $VAULT_ADDRESS` and have each LP cancel and re-request (or redeem instantly while nothing is open). A queued **deposit** under such a proposal is still claimable at the live price once nothing is open.
+9. **Confirm with the user** (vault, strategy, amounts, duration, bond) and wait for an explicit yes.
+
+Once sent, you can still `sherwood proposal cancel --vault $VAULT_ADDRESS --id <id>` as proposer in Draft, Pending (until `voteEnd`), GuardianReview (until the review ends or block quorum is reached) and Approved. Each cancel keeps LP redemptions locked for the time already spent and restarts the 1 h cooldown.
+
+---
+
+## 2. Proposal monitoring (other proposers, once `ownerOnlyProposals` lifts)
+
 ```bash
-cast call $GOVERNOR_ADDRESS "getExecuteCalls(uint256)((address,bytes,uint256)[])" <PROPOSAL_ID> --rpc-url $RPC_URL
-cast call $GOVERNOR_ADDRESS "getSettlementCalls(uint256)((address,bytes,uint256)[])" <PROPOSAL_ID> --rpc-url $RPC_URL
+sherwood proposal list --vault $VAULT_ADDRESS --state pending      # draft | pending | approved | executed | settled | all
+sherwood proposal show <id> --vault $VAULT_ADDRESS                 # metadata, state, strategy + provenance, decoded calls
 ```
 
-Decode individual call targets and selectors:
+**Step 1 — Read the metadata** (`curl -s "https://ipfs.io/ipfs/<CID>" | jq .`).
+
+**Step 2 — Decode every call** in both slices; these two arrays are the whole committed payload:
 ```bash
-# Decode the function selector from calldata
-cast 4byte <first-4-bytes-of-calldata>
-
-# Decode full calldata if ABI is known
-cast calldata-decode "functionName(type1,type2)" <calldata>
+cast call $GOVERNOR_ADDRESS "getExecuteCalls(uint256)((address,bytes,uint256)[])" <id> --rpc-url $RPC_URL
+cast call $GOVERNOR_ADDRESS "getSettlementCalls(uint256)((address,bytes,uint256)[])" <id> --rpc-url $RPC_URL
+cast 4byte <selector>; cast calldata-decode "fn(type1,type2)" <calldata>
 ```
+Every non-asset target must be a strategy registered on `StrategyFactory` (`NotARegisteredStrategy` otherwise); registration is permissionless, so it proves nothing about the code.
 
-**Step 3 — Simulate execution.** Use the built-in `proposal simulate` command, which runs a full Tenderly fork simulation via the Sherwood API and returns per-call results with decoded calldata:
+**Step 3 — Simulate** (necessary, not sufficient):
 ```bash
-# Simulate an existing proposal by ID
-sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID>
-
-# Simulate call files before creating a proposal
-sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json --settle-calls settle.json
+sherwood proposal simulate --vault $VAULT_ADDRESS --id <id> [--notify <subdomain>]   # --notify posts a RISK_ALERT to the vault chat
 ```
-
-The command outputs a human-readable report with per-call pass/fail status, gas usage, and decoded function names. If the Tenderly API is unavailable, it falls back to a basic `eth_call` check.
-
-**Step 3b — Review risk analysis.** The simulation automatically runs semantic risk analysis on every call. Look for these sections in the output:
-
-- **`✓ RISK ASSESSMENT: CLEAN`** — All targets are known protocols, all calldata decoded. Not an automatic pass: still read the metadata and decoded calls before letting it through.
-- **`⚠ WARNINGS (n)`** — Review carefully. May include high fees, extreme durations.
-- **`✖ CRITICAL RISKS (n)`** — **VETO immediately.** Includes transfers to unknown addresses, undecoded calldata to unknown contracts.
-
-Risk code reference:
 
 | Code | Level | Meaning |
 |------|-------|---------|
 | `SIMULATION_FAILED` | critical | Call reverted during fork simulation |
-| `UNKNOWN_TARGET` | critical | Call targets a contract not in the known address registry |
+| `UNKNOWN_TARGET` | critical | Target not in the known address registry |
 | `UNDECODED_CALLDATA` | critical | Calldata cannot be decoded AND target is unknown |
-| `TRANSFER_TO_UNKNOWN` | critical | `transfer()` sends funds to an unlabeled address |
-| `TRANSFER_FROM_TO_UNKNOWN` | critical | `transferFrom()` sends funds to an unlabeled address |
-| `APPROVE_TO_UNKNOWN` | critical | `approve()` grants allowance to an unlabeled address |
-| `SHORT_STRATEGY_DURATION` | warning | Duration under 1 hour |
-| `LONG_STRATEGY_DURATION` | warning | Duration over 30 days |
-| `ALL_TARGETS_VERIFIED` | info | All targets are known protocols |
-| `ALL_CALLS_DECODED` | info | All calldata successfully decoded |
+| `TRANSFER_TO_UNKNOWN` / `TRANSFER_FROM_TO_UNKNOWN` | critical | Funds sent to an unlabeled address |
+| `APPROVE_TO_UNKNOWN` | critical | Allowance granted to an unlabeled address |
+| `SHORT_STRATEGY_DURATION` / `LONG_STRATEGY_DURATION` | warning | Under 1 hour / over 30 days |
+| `ALL_TARGETS_VERIFIED` / `ALL_CALLS_DECODED` | info | Known targets / decoded calls |
 
-**Step 3c — Notify the operator (optional).** Send the risk report to the syndicate's XMTP chat so the human operator is alerted:
-```bash
-sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --notify <syndicate-name>
+`RISK ASSESSMENT: CLEAN` is not a pass. Still read the metadata and the decoded calls.
+
+**Step 4 — Provenance.** `sherwood proposal show <id> --vault $VAULT_ADDRESS` prints where the strategy came from ([Where a proposal's strategy came from](../../SKILL.md#where-a-proposals-strategy-came-from)): a core template (fine; a withdrawn template approval is a warning), a `sherwood-strategies` or unrecognised template (unaudited: run the checks before letting it pass), hand-written or unreadable (unverified code, the highest risk: veto while you can). Then confirm `cast call <strategy> "vault()(address)"` is your vault. `name()` is self-reported and is not provenance.
+
+### Red flags — veto if any apply
+
+Unknown or unverified targets; `approve`/`transfer` to an EOA; a settle leg that `transfer`s the asset anywhere but the vault; value movement the description does not explain; undecodable calldata; missing metadata; a hand-written strategy; a stock Portfolio whose windows land in the weekend gap.
+
+### Veto and emergency cancel
+
+| Action | How | When |
+|---|---|---|
+| **Veto** | `cast send $GOVERNOR_ADDRESS "vetoProposal(uint256)" <id> --private-key $PRIVATE_KEY --rpc-url $RPC_URL` (no CLI command) | Owner only, **Pending only**; sets `Rejected`. Reverts `ProposalNotCancellable` once GuardianReview begins; from there only guardian block quorum (the `guardian` skill) or the proposer's cancel can stop it |
+| **Emergency cancel** | `sherwood proposal cancel --vault $VAULT_ADDRESS --id <id> --emergency` (`emergencyCancel`) | Owner only, **Draft or Pending**; sets `Cancelled` |
+
+Shareholders can also vote Against (`sherwood proposal vote --vault … --id … --support against`, from one second after the propose block); the threshold is 20% of votable supply (queued shares carry no weight), floored at one vote.
+
 ```
-This sends a markdown-formatted `RISK_ALERT` message to the group chat with per-call results and risk flags.
-
-For deeper debugging, you can also simulate individual calls directly:
-```bash
-cast call --rpc-url $RPC_URL <target> <calldata>
-```
-
-**Step 4 — Apply the decision tree** (see below).
-
-**Step 5 — Check where the strategy came from.** If the proposal batch includes calls to a strategy contract (`execute()` selector `0x61461954`), run:
-
-```bash
-sherwood proposal show <PROPOSAL_ID> --vault <vault-address>
-```
-
-Its **Strategy** section says where the strategy came from (the exact lines are in "Where a proposal's strategy came from" in [SKILL.md](../../SKILL.md#where-a-proposals-strategy-came-from)):
-- **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity). If the line adds that the factory owner has since withdrawn approval of the template, treat that as a warning.
-- **Cloned from a `sherwood-strategies` template** (Launchpad, Lighter Perp) **or from a template the CLI does not recognise**: unaudited. Run the checks in [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) before letting the proposal pass.
-- **Not cloned from any template**: hand-written, unverified code, the highest-risk case. Read its verified source on the block explorer; with none, veto while you still can.
-- **Provenance could not be read**: treat it as hand-written.
-
-Then verify:
-- The strategy was initialized with this vault's address
-- Strategy parameters match the proposal description (amounts, slippage tolerances)
-
-```bash
-# Verify strategy vault matches our vault
-cast call <strategy_address> "vault()(address)" --rpc-url $RPC_URL
-
-# name() is self-reported: a hand-written strategy can return any name, so it is not provenance.
-# The shipped templates return "Portfolio", "Morpho Supply", "Concentrated Liquidity LP", "Launchpad", "LighterPerp".
-cast call <strategy_address> "name()(string)" --rpc-url $RPC_URL
+New proposal
++-- metadata unreachable ----------------------------> VETO
++-- simulate: CRITICAL ------------------------------> VETO
++-- provenance hand-written / unreadable ------------> VETO
++-- WARNING only / CLEAN ----------------------------> read metadata + decoded calls; no veto on simulation grounds alone
 ```
 
-### Red flags — VETO immediately if any apply
-
-| Flag | Why it's dangerous |
-|------|-------------------|
-| Calls to unknown/unverified contracts | Could be a backdoor or drain contract |
-| `approve()` or `transfer()` to external EOAs | Direct fund extraction |
-| Large fund movements outside known DeFi protocols | Capital leaving the vault's control |
-| Very short strategy duration (< 1 hour) | Flash-loan-style attack window |
-| Very long strategy duration (> 30 days) | Capital locked with minimal oversight |
-| Calldata that cannot be decoded | Opaque operations — safety first |
-| Metadata URI missing or unreachable | No transparency on strategy intent |
-
-### Veto a proposal
-
-Owner-only, and **only while the proposal is `Pending` (1)**. `vetoProposal` reverts once the proposal enters `GuardianReview` (2). To block at that point, depend on guardian block-quorum (`guardian` skill) — do not retry veto.
-
-The CLI has no veto command; call the governor directly (`sherwood governor info --vault <vault>` prints its address):
-
-```bash
-cast send $GOVERNOR_ADDRESS "vetoProposal(uint256)" <PROPOSAL_ID> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-```
+A vetoed honest proposal can be resubmitted. Drained funds cannot be recovered.
 
 ---
 
-## 2. Decision Tree
-
-Follow this tree for every new proposal:
-
-```
-New proposal detected
-|
-+-- Fetch metadata URI
-|   +-- Cannot fetch --> VETO
-|   +-- Fetched OK
-|       |
-|       +-- Run: sherwood proposal simulate --vault <vault> --id <ID> [--notify <name>]
-|           |
-|           +-- Any CRITICAL risk code in output --> VETO immediately
-|           |     (SIMULATION_FAILED, UNKNOWN_TARGET, TRANSFER_TO_UNKNOWN,
-|           |      APPROVE_TO_UNKNOWN, UNDECODED_CALLDATA)
-|           |
-|           +-- Only WARNING codes --> REVIEW CAREFULLY
-|           |     (SHORT_STRATEGY_DURATION, LONG_STRATEGY_DURATION)
-|           |
-|           +-- RISK ASSESSMENT: CLEAN --> NOT an automatic pass
-|                 Still read the metadata and decoded calls before letting
-|                 it pass. Silence lets a proposal pass — that is your job
-|                 to prevent.
-```
-
-When in doubt, **VETO**. A vetoed legitimate proposal can be resubmitted. Drained funds cannot be recovered.
-
----
-
-## 3. Live Strategy Monitoring
-
-Track proposals that have been executed and are now live.
-
-### Check executed strategies
+## 3. Live strategy monitoring
 
 ```bash
 sherwood proposal list --vault $VAULT_ADDRESS --state executed
-
-# Get capital snapshot for P&L tracking
-cast call $GOVERNOR_ADDRESS "getCapitalSnapshot(uint256)(uint256)" <PROPOSAL_ID> --rpc-url $RPC_URL
+sherwood proposal show <id> --vault $VAULT_ADDRESS                     # executedAt, duration, capital snapshot
+cast call $GOVERNOR_ADDRESS "getCapitalSnapshot(uint256)(uint256)" <id> --rpc-url $RPC_URL
+cast call $VAULT_ADDRESS "totalAssets()(uint256)" --rpc-url $RPC_URL
+cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL   # true from propose until a terminal state
 ```
 
-### For each live strategy
+For each Executed proposal:
 
-1. **Monitor vault balance vs capital snapshot:**
+1. **Track `totalAssets()` against the capital snapshot.** The management fee (200 bps/yr on the whole fund) accrues only while Executed; the performance fee is charged on profit above the high-water mark at settle, clamped to the governor's `maxPerformanceFeeBps`.
+2. **Know when it can settle.** You (the proposer) may settle 1 h after execute; anyone may settle once `executedAt + strategyDuration` has passed. For a stock Portfolio, settle outside the weekend gap (§1 item 6).
+3. **Pre-simulate the settle** a day before: `sherwood proposal simulate --vault $VAULT_ADDRESS --id <id>`.
+4. **Settle promptly** — every hour of lock is an hour LPs cannot exit:
    ```bash
-   sherwood vault info $VAULT_ADDRESS
-   cast call $VAULT_ADDRESS "totalAssets()(uint256)" --rpc-url $RPC_URL
+   sherwood proposal settle --vault $VAULT_ADDRESS --id <id>          # routes to settleProposal
    ```
-
-2. **Check if strategy duration is approaching expiry:**
-   ```bash
-   # Get executedAt + strategyDuration to find expiry
-   cast call $GOVERNOR_ADDRESS "getProposal(uint256)((uint256,address,address,string,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint256,uint8))" <PROPOSAL_ID> --rpc-url $RPC_URL
-   ```
-
-3. **Simulate settlement calls before expiry:**
-   ```bash
-   # Dry-run the full proposal (includes settlement calls)
-   sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID>
-   ```
-
-4. **If settlement might fail** (liquidity dried up, position liquidated, slippage too high):
-   - Prepare owner-supplied unwind calls
-   - Open `emergencySettleWithCalls` (bonded + guardian-reviewed) before the window is hopeless — calls do **not** run until `finalizeEmergencySettle`
-
-5. **When strategy expires — ensure settlement happens promptly:**
-   ```bash
-   # Proposer / permissionless settle (pre-committed settlementCalls)
-   sherwood proposal settle --id <PROPOSAL_ID> --vault $VAULT_ADDRESS
-
-   # Direct on-chain settlement of the voted batch
-   cast send $GOVERNOR_ADDRESS "settleProposal(uint256)" <PROPOSAL_ID> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-   ```
-
-   If `settleProposal` reverts, do **not** invent a custom-call force-settle. Follow **Recovering a stuck Executed proposal** below.
+   `StrategyNotSettled(strategy)`: the voted calls ran but the strategy still reports `executed()`, so capital would stay on the clone. Retrying replays the same calls and reverts again; go to §5. `SettlePriceBelowFloor`: price per share fell below the drawdown the proposal declared (capped at 90%); the same emergency path applies.
+5. **Do not pause to "protect" an Executed vault**: pause blocks `executeGovernorBatch`, so execute and settle both revert until you unpause.
 
 ---
 
-## 4. Emergency Actions
+## 4. Owner powers
 
-As vault owner, you have these emergency powers:
+### Vault
 
-### Proposal-level
+| Action | Command | Notes |
+|---|---|---|
+| Pause / unpause | `cast send $VAULT_ADDRESS "pause()"` / `"unpause()"` | Freezes deposit, mint, withdraw, redeem, both queue requests, queue deposit claims **and governor batches**. Rescues, queue `cancel` and queue redeem claims still work |
+| Set the agent fee | `sherwood vault set-agent-fee --vault $VAULT_ADDRESS --bps <n>` | Default 2000 (20%), max 2500 (`AgentFeeTooHigh`). Snapshotted onto each proposal at propose, clamped at settle to the governor's `maxPerformanceFeeBps` (default 2000) |
+| Min buffer | `sherwood vault set-min-buffer-bps --vault $VAULT_ADDRESS --bps <n>` | ≤ 5000; see §0 |
+| Depositors | `sherwood vault approve-depositor` / `remove-depositor` | §0. `setOpenDeposits(bool)` (`cast send`) only takes effect once the factory's `depositsRestricted` lifts |
+| Register / remove an agent | `sherwood vault add --vault $VAULT_ADDRESS --wallet 0xAgent --agent-id <id>` / `cast send $VAULT_ADDRESS "removeAgent(address)" 0xAgent` | Max 32 agents. The agent must own the ERC-8004 id (or you must). At launch a non-owner agent still cannot propose |
+| Rescue | `cast send $VAULT_ADDRESS "rescueEth(address,uint256)" <to> <wei>`, `"rescueERC721(address,uint256,address)" <token> <id> <to>`, `"rescueERC20(address,address,uint256)" <token> <to> <amt>` | All revert `RedemptionsLocked` while any proposal is open. `rescueERC20` cannot move the vault asset (`CannotRescueAsset`) and `to` must be one of **this vault's own strategy clones** (`RescueRecipientNotStrategy`) |
+| Rotate owner | `cast send $SYNDICATE_FACTORY "rotateOwner(address,address)" $VAULT_ADDRESS <newOwner>` | `transferOwnership` on the vault always reverts (`NotFactory`). Gates: `VaultStillStaked` while an owner stake is bound (`requestUnstakeOwner(vault)` on sWOOD → 7 d → `claimUnstakeOwner`, both refused while a proposal is open or active); no open proposal for a new owner; the new owner must have a prepared stake and have called `approveOwnerStakeBinding(vault)`. Rotation drains the agent roster |
 
-| Action | Command | When to use |
-|--------|---------|-------------|
-| **Veto** | `cast send $GOVERNOR_ADDRESS "vetoProposal(uint256)" <id>` (no CLI command) | Reject a `Pending` proposal only (sets state to Rejected). Reverts once `GuardianReview` begins; block-quorum is the `guardian` skill |
-| **Emergency cancel** | `sherwood proposal cancel --vault <vault> --id <id> --emergency` | Cancel a `Draft` or `Pending` proposal only. Reverts once `GuardianReview` begins — from there only the proposer can cancel |
-| **Emergency settle** | `emergencySettleWithCalls` → review → `finalizeEmergencySettle` | Owner-supplied unwind; bonded + guardian-reviewed; calls do **not** run until finalize |
-
-### Vault-level
-
-| Action | Command | When to use |
-|--------|---------|-------------|
-| **Pause** | `sherwood vault pause` | Halt all deposits and withdrawals immediately |
-| **Unpause** | `sherwood vault unpause` | Resume normal vault operations |
-| **Remove agent** | `sherwood vault remove-agent <address>` | Revoke a compromised agent's access |
-| **Rescue ETH** | `sherwood vault rescue-eth <to> <amount>` | Recover stuck ETH from the vault |
-| **Rescue ERC-721** | `sherwood vault rescue-erc721 <token> <id> <to>` | Recover stuck NFTs from the vault |
-
-### Vault parameters (owner only)
-
-The agent's performance fee is a **vault property**, not a per-proposal value. You set one fee for the whole vault; proposals do not carry a fee.
+### Governor (owner only, frozen while any proposal is open — Drafts count)
 
 ```bash
-# Set the agent performance fee (default 2000 = 20%, vault cap 2500 = 25%)
-sherwood syndicate set-agent-fee --bps 2000
-
-# On-chain equivalent
-cast send $VAULT_ADDRESS "setAgentFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+sherwood governor set-voting-period    --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 3 d (default 24 h)
+sherwood governor set-execution-window --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 7 d (default 24 h)
+sherwood governor set-veto-threshold   --vault $VAULT_ADDRESS --bps <n>       # 2000 – 8000 (default 2000)
+sherwood governor set-max-fee          --vault $VAULT_ADDRESS --bps <n>       # ≤ 2500 (default 2000)
+sherwood governor set-max-duration     --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 30 d (default 30 d)
+sherwood governor set-cooldown         --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 30 d (default 1 h)
+# cast only:
+cast send $GOVERNOR_ADDRESS "setMinStrategyDuration(uint256)" <s>   # 1 h – max duration (default 1 h)
+cast send $GOVERNOR_ADDRESS "setMaxCapitalBps(uint256)" <bps>       # 1 – 10000 (unset reads 10000)
+cast send $GOVERNOR_ADDRESS "setTier2CallCapBps(uint256)" <bps>     # 1 – 10000 (unset reads 10000)
 ```
 
-The governor snapshots `agentFeeBps` from the vault onto each proposal at propose time (immutable for that proposal — a later change can't alter an already-created proposal); at settlement it uses that snapshot, clamped to its own `maxPerformanceFeeBps`, so the effective fee is `min(snapshotted agentFeeBps, governor.maxPerformanceFeeBps())`. Lower the vault fee here to change the cut on **future** proposals if an agent's cut is too high — there is no proposal to veto for fee reasons.
+Each applies instantly and emits `ParameterChangeFinalized`. `set-mgmt-split` / `set-perf-split` are protocol-owner only (ProtocolConfig); as vault owner you receive 10% of the performance fee by the launch split.
 
-### Recovering a stuck Executed proposal (LP funds locked)
+---
 
-**Symptom.** A proposal is in state `Executed` (6), its `strategyDuration` has elapsed, `redemptionsLocked()` on the vault returns `true`, and `settleProposal(id)` reverts. LPs cannot withdraw because this vault's governor still reports the stale id from **zero-arg** `getActiveProposal()` (not `getActiveProposal(vault)` — the governor is already per-vault).
+## 5. Recovering a stuck Executed proposal
+
+**Symptom.** State `Executed` (6), `strategyDuration` elapsed, `redemptionsLocked()` true, and `settleProposal(id)` reverts.
 
 ```bash
-cast call $GOVERNOR_ADDRESS "getProposalState(uint256)(uint8)" <ID> --rpc-url $RPC_URL   # expect 6 = Executed
-cast call $GOVERNOR_ADDRESS "getActiveProposal()(uint256)" --rpc-url $RPC_URL           # expect <ID>
-cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL                 # expect true
+cast call $GOVERNOR_ADDRESS "getProposalState(uint256)(uint8)" <id> --rpc-url $RPC_URL   # 6
+cast call $GOVERNOR_ADDRESS "getActiveProposal()(uint256)"        --rpc-url $RPC_URL   # <id>
+cast call $GOVERNOR_ADDRESS "settleProposal(uint256)" <id>         --rpc-url $RPC_URL --trace 2>&1 | tail -30
 ```
 
-Common root causes: pre-committed `settlementCalls` hit a broken adapter/router, a pool/position that no longer exists, or calldata encoded against a replaced contract.
-
-**`StrategyNotSettled(strategy)`.** The settlement calls ran, but the proposal's strategy still reports `executed()`: no leg called its `settle()`, so capital would stay on the clone. `settleProposal` and `unstick` both run this check after the voted batch and revert, and both replay the same pre-committed calls, so retrying either reverts again. **Your bonded emergency settle is the only exit:** commit unwind calls that bring the capital back to the vault (the strategy's `settle()`, if it can still run) with `emergencySettleWithCalls`, then `finalizeEmergencySettle` after the review period (Steps 4–6 below). `finalizeEmergencySettle` is exempt from this check.
-
-**Live owner paths — `GovernorEmergency` (protocol pin `c9e3d8c6`).** There is no owner transaction that immediately runs arbitrary fallback calls. Owner-supplied calldata is committed, reviewed, then finalized.
+There is no owner transaction that immediately runs arbitrary calls. Owner-supplied calldata is committed, reviewed by staked guardians, then finalized.
 
 | Function | What it does | Owner bond | Guardian review |
-|----------|----------------|------------|-----------------|
-| `unstick(proposalId)` | Replays the **already-voted** `settlementCalls` under the same coverage-scaled caps as `settleProposal`. Instant. If that batch reverts, this reverts too. | Not required (calls were already voted) | No |
-| `emergencySettleWithCalls(proposalId, calls)` | Commits **new** unwind calldata and **opens** a review window. Calls do **not** execute in this tx. | Must cover `requiredOwnerBond(vault)` and be strictly `> 0` | Yes — required |
-| `cancelEmergencySettle(proposalId)` | Owner recalls the open window before it resolves. No slash. | — | Closes the window |
-| `finalizeEmergencySettle(proposalId)` | After the review period, executes the committed calls **if not blocked**, then finishes settlement and clears `getActiveProposal()`. | Bond must still be nonzero | Reverts if guardians blocked (owner bond burned) |
+|---|---|---|---|
+| `unstick(id)` | Replays the **already-voted** settlement calls with the same caps and zero egress budget. Past duration only. Same `StrategyNotSettled` check as settle | Not required | No |
+| `emergencySettleWithCalls(id, calls)` | Commits **new** unwind calldata and opens a registry emergency review for `reviewPeriod` (24 h). Calls do **not** run in this tx | `ownerStake(vault) >= requiredOwnerBond(vault)` (10,000 WOOD at launch), read **after** the review opens so a prior blocked round slashes first; else `OwnerBondInsufficient` | Yes |
+| `cancelEmergencySettle(id)` | Recalls the open window (`EmergencyNotProposed` if none) | — | Closes it |
+| `finalizeEmergencySettle(id)` | After `reviewPeriod`: reverts `EmergencySettleBlocked` if guardians blocked, else runs the committed calls uncapped with zero net egress and finishes settlement. **Exempt from `StrategyNotSettled`** | Stake must be nonzero | Resolves |
 
-**Bonded owner stake (required for `emergencySettleWithCalls`).** The governor reads stake and the requirement through the registry:
+A guardian block of the emergency review burns the **whole** owner bond (`slashOwnerBond`) and deletes the slot: `ownerBondLive` turns false and you cannot propose or execute until you re-bond (`prepareOwnerStake` + `approveOwnerStakeBinding(vault)` on sWOOD, then `factory.rotateOwner(vault, <yourself>)`; a same-owner rotation is allowed mid-proposal). Never open this path with drain-shaped calldata.
 
 ```bash
 REG=$(cast call $GOVERNOR_ADDRESS "guardianRegistry()(address)" --rpc-url $RPC_URL)
-cast call $REG "ownerStake(address)(uint256)" $VAULT_ADDRESS --rpc-url $RPC_URL
+cast call $REG "ownerStake(address)(uint256)"        $VAULT_ADDRESS --rpc-url $RPC_URL
 cast call $REG "requiredOwnerBond(address)(uint256)" $VAULT_ADDRESS --rpc-url $RPC_URL
-cast call $REG "reviewPeriod()(uint256)" --rpc-url $RPC_URL
+cast call $REG "reviewPeriod()(uint256)"                             --rpc-url $RPC_URL   # 86400
 ```
 
-`emergencySettleWithCalls` reverts `OwnerBondInsufficient` unless `ownerStake(vault) > 0` **and** `>= requiredOwnerBond(vault)`. A guardian **block** of the emergency review burns the owner bond (100% slash via `slashOwnerBond`). Do not open this path with drain-shaped calldata.
+### Playbook
 
-**Guardian review.** Staked network guardians review the committed unwind and may `voteBlockEmergencySettle(governor, proposalId)`. Silence does not execute the calls — the owner still has to `finalizeEmergencySettle` after `reviewPeriod`. If block quorum is reached, finalize reverts and the bond is already burned.
-
-The CLI has **no** `emergency-settle` subcommand and **no** finalize wrapper. `sherwood proposal settle --id <ID> --vault $VAULT_ADDRESS --calls unwind.json` broadcasts `emergencySettleWithCalls` (opens the window only — it does not settle). Prefer the `cast send` forms below so the contract surface is explicit.
-
-#### Recovery playbook
-
-**Step 1 — Preconditions.** Caller is the vault owner. State is `Executed` (6). `block.timestamp >= executedAt + strategyDuration`. Zero-arg `getActiveProposal()` equals this id.
-
-**Step 2 — Diagnose the pre-committed revert.**
-
+**Step 1 — Replay the voted batch** if it is still the right unwind (not a place to inject new calldata):
 ```bash
-cast call $GOVERNOR_ADDRESS "settleProposal(uint256)" <ID> --rpc-url $RPC_URL --trace 2>&1 | tail -30
+cast send $GOVERNOR_ADDRESS "unstick(uint256)" <id> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+# or: sherwood proposal unstick --vault $VAULT_ADDRESS --id <id> [--dry-run]
 ```
+If it reverts (including `StrategyNotSettled`), the voted batch is the problem; continue.
 
-**Step 3 — If the voted settlement batch is still correct:** replay it with `unstick`. This is the owner-instant path when nobody has triggered a still-valid unwind. It is **not** a place to inject new calldata.
-
-```bash
-cast send $GOVERNOR_ADDRESS "unstick(uint256)" <ID> \
-  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-```
-
-If `unstick` reverts (including `StrategyNotSettled`), the voted batch is the problem — go to Step 4. Do not expect a no-op view call to mark the proposal Settled.
-
-**Step 4 — Build real unwind calls** (the calldata guardians will review). Examples:
-
-- Moonwell `mToken` stuck → `[mToken.redeem(mToken.balanceOf(vault))]`
-- Aerodrome LP stuck → `[gauge.withdraw(balance), router.removeLiquidity(..., deadline)]`
-- Uniswap V3 position NFT stuck → `[nftManager.decreaseLiquidity(...), nftManager.collect(...)]`
-- Vault already holds the deposit asset and nothing is trapped → submit the smallest honest unwind that returns the asset to the vault. Guardians review **calldata**, not a dummy `balanceOf`.
-
-Write a JSON file matching `BatchExecutorLib.Call[]`:
-
-```json
-[
-  { "target": "0x...", "data": "0x...", "value": "0" }
-]
-```
-
-Dry-run before opening the window:
-
+**Step 2 — Build the real unwind** that guardians will review: the strategy's `settle()` if it can still run, a Morpho withdraw, a Uniswap position decrease + collect, or the smallest honest batch that returns the asset to the vault. Targets must be the vault asset or this vault's registered strategy clones. Write `unwind.json` as `[{ "target": "0x…", "data": "0x…", "value": "0" }]` and dry-run it:
 ```bash
 sherwood proposal simulate --vault $VAULT_ADDRESS --settle-calls unwind.json
 ```
 
-**Step 5 — Open the bonded, guardian-reviewed window.** Calls still do not run.
-
+**Step 3 — Open the bonded window** (calls still do not run):
 ```bash
-cast send $GOVERNOR_ADDRESS \
-  "emergencySettleWithCalls(uint256,(address,bytes,uint256)[])" \
-  <ID> "[($TARGET,$DATA,0)]" \
+cast send $GOVERNOR_ADDRESS "emergencySettleWithCalls(uint256,(address,bytes,uint256)[])" <id> "[($TARGET,$DATA,0)]" \
   --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+# or: sherwood proposal settle --vault $VAULT_ADDRESS --id <id> --calls unwind.json   (opens the window only)
+cast call $REG "isEmergencyOpen(address,uint256)(bool)" $GOVERNOR_ADDRESS <id> --rpc-url $RPC_URL
 ```
+Wrong calldata? `cast send $GOVERNOR_ADDRESS "cancelEmergencySettle(uint256)" <id> …` before it resolves (no slash).
 
-Or, if you already have a JSON file, the CLI wrapper that exists:
-
+**Step 4 — Finalize after `reviewPeriod`** (owner only, no CLI wrapper):
 ```bash
-sherwood proposal settle --id <ID> --vault $VAULT_ADDRESS --calls unwind.json
+cast send $GOVERNOR_ADDRESS "finalizeEmergencySettle(uint256)" <id> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+cast call $GOVERNOR_ADDRESS "getActiveProposal()(uint256)" --rpc-url $RPC_URL   # 0
+cast call $VAULT_ADDRESS "redemptionsLocked()(bool)"       --rpc-url $RPC_URL   # false
 ```
 
-Confirm the window:
+**Step 5 — Let LPs exit**: `sherwood vault redeem --vault $VAULT_ADDRESS [--shares <n>]` from each holder, and have anyone with a queued redeem claim it (`sherwood queue claim --vault $VAULT_ADDRESS --id <requestId>`).
 
-```bash
-cast call $REG "isEmergencyOpen(address,uint256)(bool)" $GOVERNOR_ADDRESS <ID> --rpc-url $RPC_URL
-```
+### What this path cannot recover
 
-Wrong calldata? Recall before the window resolves (no slash):
+| State | Exit |
+|---|---|
+| `Draft` (0) / `Pending` (1) | Proposer `cancel`; owner `vetoProposal` (Pending) or `--emergency` cancel. The proposal expires on its own after the collaboration deadline or the execution window |
+| `GuardianReview` (2) | Proposer `cancel` (until review end / quorum) or guardian block quorum. Owner veto reverts |
+| `Approved` (3) | Proposer `cancel`, or let the execution window pass → `Expired` |
+| `Rejected` (4) / `Expired` (5) / `Cancelled` (8) | Terminal; nothing locked. Reclaim the bond. **Unstamped queued redeems must be cancelled by their owners** (§1 item 8) |
+| **`Executed` (6)** | **This section**, after the duration |
+| `Settled` (7) | Done. Bond reclaimable after the 14-day challenge window |
 
-```bash
-cast send $GOVERNOR_ADDRESS "cancelEmergencySettle(uint256)" <ID> \
-  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-```
-
-**Step 6 — After `reviewPeriod`, finalize** (owner only). There is no CLI for this — use the contract:
-
-```bash
-cast send $GOVERNOR_ADDRESS "finalizeEmergencySettle(uint256)" <ID> \
-  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-```
-
-If guardians blocked: finalize reverts and the owner bond is burned. There is no same-tx fallback.
-
-Verify the vault unlocked:
-
-```bash
-cast call $GOVERNOR_ADDRESS "getActiveProposal()(uint256)" --rpc-url $RPC_URL   # expect 0
-cast call $VAULT_ADDRESS "redemptionsLocked()(bool)" --rpc-url $RPC_URL         # expect false
-```
-
-**Step 7 — Let LPs exit.**
-
-```bash
-# From each holder's wallet
-sherwood vault redeem --vault $VAULT_ADDRESS           # redeem full balance
-sherwood vault redeem --vault $VAULT_ADDRESS --shares 0.5
-```
-
-#### What this path cannot recover
-
-Emergency unwind only applies to `Executed` after duration. Other states use their normal exits (indices match the `ProposalState` table in §6):
-
-| State | Recovery path | Notes |
-|---|---|---|
-| `Draft` (0) | `cancelProposal(id)` by proposer, or wait for the collaboration window | Not locked — no funds at risk |
-| `Pending` (1) | `vetoProposal(id)` (owner, Pending only) or `cancelProposal(id)` | Veto reverts once `GuardianReview` begins |
-| `GuardianReview` (2) | Guardian block-quorum (`guardian` skill). Owner `vetoProposal` reverts here | Approve/Block is not a veto |
-| `Approved` (3) | Let the execution window expire → `Expired` | Vault not yet locked by execute; veto already reverted |
-| `Rejected` (4) | Nothing — never executed | N/A |
-| `Expired` (5) | Nothing — vault was never locked | N/A |
-| **`Executed` (6)** | **`unstick` or `emergencySettleWithCalls` → `finalizeEmergencySettle` — this section** | Duration must have elapsed |
-| `Settled` (7) | Already settled | N/A |
-| `Cancelled` (8) | Already cancelled | N/A |
-
-### Governor parameter changes (owner only)
-
-```bash
-# Adjust voting period (min: per-deployment immutable MIN_VOTING_PERIOD, max: 3 days)
-cast send $GOVERNOR_ADDRESS "setVotingPeriod(uint256)" <seconds> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-
-# Adjust veto threshold (min: 2000 = 20%, max: 8000 = 80%)
-cast send $GOVERNOR_ADDRESS "setVetoThresholdBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-
-# Adjust max performance fee (cap: 2500 = 25%, MAX_PERFORMANCE_FEE_CAP)
-cast send $GOVERNOR_ADDRESS "setMaxPerformanceFeeBps(uint256)" <bps> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-
-# Adjust max strategy duration (min: 1 hour, max: 30 days)
-cast send $GOVERNOR_ADDRESS "setMaxStrategyDuration(uint256)" <seconds> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-
-# Adjust cooldown between proposals (min: per-deployment immutable MIN_COOLDOWN_PERIOD, max: 30 days)
-cast send $GOVERNOR_ADDRESS "setCooldownPeriod(uint256)" <seconds> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-
-# Adjust execution window (min: 1 hour, max: 7 days)
-cast send $GOVERNOR_ADDRESS "setExecutionWindow(uint256)" <seconds> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
-```
+A proposal that is terminal but still counted open (`propose` reverts `VaultHasOpenProposal`) needs a flush: `cast send $GOVERNOR_ADDRESS "resolveProposalState(uint256)" <id>`.
 
 ---
 
-## 5. Heartbeat Schedule
+## 6. Heartbeat
 
-Run these checks on a recurring basis. Proposal monitoring is the highest priority.
-
-| Interval | Check | Priority |
-|----------|-------|----------|
-| **Every 15 minutes** | New pending proposals — fetch, decode, simulate, decide | CRITICAL |
-| **Every hour** | Live strategy health — vault balance, position status, approaching expiry | HIGH |
-| **Every 6 hours** | Governor parameters — voting period, thresholds, anomalies | MEDIUM |
-| **Daily** | Full audit — all proposal states, all settlements, vault TVL trend, agent roster | LOW |
-
-### 15-minute heartbeat (proposal watch)
-
-```bash
-# 1. Check for pending proposals
-sherwood proposal list --vault $VAULT_ADDRESS --state pending
-
-# 2. For each: simulate via Tenderly and notify the operator
-sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --notify <syndicate-name>
-
-# 3. Check output for risk codes:
-#    - CRITICAL RISKS → VETO immediately
-#    - WARNINGS → fetch metadata, review carefully
-#    - RISK ASSESSMENT: CLEAN → no veto on simulation grounds alone;
-#      still read metadata and decoded calls before letting it pass
-# 4. Log results
-```
-
-### Hourly heartbeat (strategy health)
-
-```bash
-# 1. Check executed (live) strategies
-sherwood proposal list --vault $VAULT_ADDRESS --state executed
-
-# 2. Compare vault balance to capital snapshots
-cast call $VAULT_ADDRESS "totalAssets()(uint256)" --rpc-url $RPC_URL
-
-# 3. Check for strategies approaching expiry
-# 4. Pre-simulate settlement calls for expiring strategies
-```
-
-### Daily audit
-
-```bash
-# Full proposal history
-sherwood proposal list --vault $VAULT_ADDRESS
-
-# Vault TVL
-sherwood vault info $VAULT_ADDRESS
-
-# Registered agents
-cast call $VAULT_ADDRESS "getAgentOperators()(address[])" --rpc-url $RPC_URL
-
-# Governor params
-cast call $GOVERNOR_ADDRESS "getGovernorParams()((uint256,uint256,uint256,uint256,uint256,uint256))" --rpc-url $RPC_URL
-```
+| Interval | Check |
+|---|---|
+| Hourly | Executed strategies: `totalAssets()` vs snapshot, time to duration, weekend gap ahead, settle as soon as allowed |
+| Every 15 min, once `ownerOnlyProposals` lifts | New Pending proposals: show, simulate, decide (§2). The vote closes 24 h after propose |
+| Before every propose | §1 checklist; `queue list` for unstamped redeems; governor params still as seeded |
+| Daily | `sherwood proposal list --vault $VAULT_ADDRESS`, `sherwood vault info --vault $VAULT_ADDRESS`, `sherwood governor info --vault $VAULT_ADDRESS`, owner stake still live (`ownerBondLive`) |
 
 ---
 
-## 6. Key Contract Interfaces
-
-### ProposalState enum
+## 7. Reference
 
 ```
-0 = Draft           (collaborative proposal awaiting co-proposer consent)
-1 = Pending         (voting active — owner CAN VETO)
-2 = GuardianReview  (voting passed, guardian review window active — veto reverts; block via guardian quorum)
-3 = Approved        (review ended without block quorum)
-4 = Rejected        (voting ended, veto threshold reached OR guardians blocked)
-5 = Expired         (execution window passed without execution)
-6 = Executed        (strategy is live — can be settled after duration elapses)
-7 = Settled         (P&L calculated, fee distributed)
-8 = Cancelled       (proposer or owner cancelled)
+0 Draft  1 Pending (owner can veto)  2 GuardianReview (veto reverts)  3 Approved  4 Rejected
+5 Expired  6 Executed (settle after duration)  7 Settled  8 Cancelled
 ```
+Read the state with `getProposalState(id)`; `state` is a mid-struct `uint8` in `getProposal`, so do not rely on tuple position.
 
-`state` is a `uint8` member in the middle of the `StrategyProposal` struct returned by `getProposal(id)`, not the last field. Prefer `getProposalState(id)` when you only need the enum. **Always read the integer against this table, not position order** — the canonical source is `ISyndicateGovernor.sol`.
+`BatchExecutorLib.Call { address target; bytes data; uint256 value; }`
 
-### BatchExecutorLib.Call
+| Parameter | Min | Max | Default |
+|---|---|---|---|
+| Voting period | 1 h | 3 d | 24 h |
+| Execution window | 1 h | 7 d | 24 h |
+| Veto threshold | 2000 bps | 8000 bps | 2000 |
+| Max performance fee | — | 2500 bps | 2000 |
+| Strategy duration | 1 h | 30 d | 1 h – 30 d |
+| Cooldown | 1 h | 30 d | 1 h |
+| Review period (registry) | 6 h | 3 d | 24 h |
 
-```solidity
-struct Call {
-    address target;   // contract to call
-    bytes data;       // encoded calldata
-    uint256 value;    // ETH value to send
-}
-```
+Errors you will meet as owner: `ParamsFrozenDuringProposal` (setter while a proposal is open), `OwnerBondNotLive` (owner unstake requested or bond burned), `OwnerBondInsufficient`, `EmergencySettleBlocked`, `StrategyNotSettled`, `SettlePriceBelowFloor`, `RedemptionsLocked` (rescue while open), `RescueRecipientNotStrategy`, `AgentFeeTooHigh`, `BufferTooHigh` / `BufferBreached`, `MaxCapitalExceedsCeiling` / `MaxCapitalCeilingRegressed`, `Tier2CallCapExceedsCeiling(i)`, `NotSettled` (an LP claiming an unstamped redeem). Full table: [ERRORS.md](../../ERRORS.md).
 
-### Governor parameter bounds
+## Further reading
 
-Read the live values off the governor — the two floors below are per-deployment
-immutables (`MIN_VOTING_PERIOD()`, `MIN_COOLDOWN_PERIOD()`), not constants.
-
-| Parameter | Min | Max |
-|-----------|-----|-----|
-| Voting period | `MIN_VOTING_PERIOD()` (24 h on mainnet impls) | 3 days |
-| Execution window | 1 hour | 7 days |
-| Veto threshold | 2000 bps (20%) | 8000 bps (80%) |
-| Max performance fee | — | 2500 bps (25%) |
-| Strategy duration | 1 hour | 30 days |
-| Cooldown period | `MIN_COOLDOWN_PERIOD()` (1 h on mainnet impls) | 30 days |
-
----
-
-## 7. Known Safe Protocols
-
-When evaluating proposal call targets, verify against known protocol addresses **for the chain your syndicate is deployed on**. Addresses differ across chains.
-
-### Base
-
-| Protocol | Address | Notes |
-|----------|---------|-------|
-| USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` | 6 decimals |
-| WETH | `0x4200000000000000000000000000000000000006` | Wrapped ETH |
-| Moonwell Comptroller | `0xfBb21d0380beE3312B33c4353c8936a0F13EF26C` | Lending |
-| Moonwell mUSDC | `0xEdc817A28E8B93B03976FBd4a3dDBc9f7D176c22` | Lending market |
-| Moonwell mWETH | `0x628ff693426583D9a7FB391E54366292F509D457` | Lending market |
-| Aerodrome Router | `0xcF77a3Ba9A5CA399B7c97c74d54e5b1Beb874E43` | ve(3,3) DEX |
-| Aerodrome Factory | `0x420DD381b31aEf6683db6B902084cB0FFECe40Da` | Pool factory |
-| AERO Token | `0x940181a94A35A4569E4529A3CDfB74e38FD98631` | Gauge rewards |
-| Uniswap V3 SwapRouter | `0x2626664c2603336E57B271c5C0b26F421741e481` | DEX |
-| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` | Batching |
-
-**Strategy template contracts** (deployed per-proposal as ERC-1167 clones) are also valid call targets. Verify the template implementation matches known Sherwood strategy contracts (`MoonwellSupplyStrategy`, `AerodromeLPStrategy`).
-
-### Robinhood L2
-
-| Protocol | Address | Notes |
-|----------|---------|-------|
-| WETH | `0x7943e237c7F95DA44E0301572D358911207852Fa` | Wrapped ETH |
-| SyndicateFactory | `0xB9E71Fb33075328d6e94eCFFf8a8629D6d057cce` | Sherwood |
-| GovernorBeacon | `0x11B726c49E0bAc95bEafF8d648cf3030Dc11B73a` | Sherwood — governor impl beacon |
-| ProtocolConfig | `0xEe6DfE03353CEf1d80F38FbDdD30ce5Fb0531929` | Sherwood — protocol fee config |
-
-> No Moonwell, Uniswap, or Aerodrome on Robinhood L2. Only Sherwood contracts and WETH are deployed. There is no singleton `SyndicateGovernor` — each vault's governor is a per-vault `BeaconProxy` resolved via `factory.governorOf(vault)`.
-
-Calls to addresses NOT in the known list for your chain require extra scrutiny. Verify the contract on the appropriate block explorer before allowing.
-
----
-
-## Further Reading
-
-- [Governance Overview](https://docs.sherwood.sh/protocol/governance/overview) — Optimistic governance model and proposal lifecycle
-- [Settlement](https://docs.sherwood.sh/protocol/governance/settlement) — Settlement paths, emergency actions, P&L calculation
-- [Economics](https://docs.sherwood.sh/protocol/governance/economics) — Fee structure and distribution
-- [Deployments](https://docs.sherwood.sh/reference/deployments) — Contract addresses by chain
+- [Governance overview](https://docs.sherwood.sh/protocol/governance/overview) · [Settlement](https://docs.sherwood.sh/protocol/governance/settlement) · [Deployments](https://docs.sherwood.sh/reference/deployments)
+- Guardian skill (staked review, a different job): [`skills/guardian/SKILL.md`](../guardian/SKILL.md)

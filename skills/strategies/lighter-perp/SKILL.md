@@ -1,21 +1,20 @@
 ---
 name: lighter-perp
-description: Agent-traded perpetuals on Lighter (zkLighter) through a LighterPerpStrategy clone that owns the Lighter account — agent key, guardrails, and the three-step exit (initiate-return, queue-withdraw, settle). NOT deployed yet on any chain Sherwood runs. Triggers on Lighter, zkLighter, perps on Robinhood, lighter keygen, initiate-return, queue-withdraw, prepare-settle, residual margin.
-allowed-tools: Read, Glob, Grep, Bash(sherwood *), Bash(npm *), Bash(npx *), Bash(pip *), WebFetch, WebSearch, AskUserQuestion
-model: sonnet
+description: Agent-traded perpetuals on Lighter (zkLighter) through a LighterPerpStrategy clone that owns the Lighter account — agent key, guardrails, and the three-step exit (initiate-return, queue-withdraw, settle). NOT deployed on Robinhood Chain (4663) yet, where Sherwood is live; open audit findings G-1/G-2 gate it. Triggers on Lighter, zkLighter, perps on Robinhood, lighter keygen, initiate-return, queue-withdraw, prepare-settle, residual margin.
+allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) Bash(pip:*) WebFetch WebSearch AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.1'
+  version: '0.2.0'
 ---
 
 # Lighter Perp Strategy
 
-> **Not deployed yet.** The `LighterPerpStrategy` template is not deployed on any chain Sherwood runs today. Lighter lives on Robinhood mainnet (4663), and the template will deploy there. The CLI keeps mainnet coordination-only for now, so `sherwood strategy propose lighter-perp` cannot run anywhere yet. `sherwood strategy list` shows it under "Not available" until it ships. Tell the user this plainly if they ask for Lighter perps.
+> **Not deployed on Robinhood Chain (4663), where Sherwood is live.** `LighterPerpStrategy` comes from `sherwood-strategies`, which has no deployment book for 4663 yet, and the audit's G-1/G-2 findings (SHE-365) must be closed before the template is approved there. Lighter itself runs on 4663, so this is where the template will deploy. Until then `sherwood strategy propose lighter-perp` cannot run and `sherwood strategy list` shows it under "Not available". Tell the user this plainly if they ask for Lighter perps.
 
-> **Unaudited.** `LighterPerpStrategy` comes from `sherwood-strategies` (`src/lighter/`), which has not been audited. Before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk.
+> **Unaudited.** `LighterPerpStrategy` comes from `sherwood-strategies` (`src/lighter/`), which has not been audited. Before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk. As an uncertified tier-2 template, each Lighter proposal books 2× its capital in guardian coverage.
 
-A `LighterPerpStrategy` clone owns its own Lighter perp account, funded with USDG from the vault. The agent trades that account off-chain through Lighter's API with a **trade-only L2 key** the contract registers. The proposer and the vault owner keep an on-chain kill switch: cancel orders, close positions, rotate the key, and drain the account. Requires CLI ≥ 0.89.0.
+A `LighterPerpStrategy` clone owns its own Lighter perp account, funded with USDG from the vault. The agent trades that account off-chain through Lighter's API with a **trade-only L2 key** the contract registers. The proposer and the vault owner keep an on-chain kill switch: cancel orders, close positions, rotate the key, and drain the account. Requires `@sherwoodagent/cli@0.93.0` or later.
 
 ```
 Vault (USDG)
@@ -156,10 +155,10 @@ While the proposal is open, instant deposits and redemptions are closed. Queued 
 
 ## Addresses
 
-| Contract | Robinhood mainnet (4663) |
+| Contract | Robinhood Chain (4663) |
 | --- | --- |
-| zkLighter proxy | `0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d` |
-| USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
-| LighterPerpStrategy template | Not deployed |
+| USDG (vault asset) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` (`chains/4663.json`) |
+| zkLighter proxy | Lighter's own contract; take it from the sherwood-strategies spec below and verify on the block explorer before use |
+| LighterPerpStrategy template | Not deployed; see [ADDRESSES.md](../../../ADDRESSES.md) once it ships |
 
 Contract spec: sherwood-strategies `docs/lighter/LighterPerpStrategy.md`. Docs: https://docs.sherwood.sh/protocol/strategies/lighter-perp

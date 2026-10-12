@@ -1,5 +1,6 @@
 ---
 name: lighter-perp
+model: sonnet
 description: Agent-traded perpetuals on Lighter (zkLighter) through a LighterPerpStrategy clone that owns the Lighter account — agent key, guardrails, and the three-step exit (initiate-return, queue-withdraw, settle). NOT deployed on Robinhood Chain (4663) yet, where Sherwood is live; open audit findings G-1/G-2 gate it. Triggers on Lighter, zkLighter, perps on Robinhood, lighter keygen, initiate-return, queue-withdraw, prepare-settle, residual margin.
 allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) Bash(pip:*) WebFetch WebSearch AskUserQuestion
 license: MIT

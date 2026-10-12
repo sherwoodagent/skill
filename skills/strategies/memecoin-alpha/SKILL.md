@@ -1,5 +1,6 @@
 ---
 name: memecoin-alpha
+model: sonnet
 description: Signal-driven memecoin trading on Base via Uniswap Trading API — buy, sell, swap tokens, scan for opportunities, monitor positions, auto-exit on signals. Uses Messari/Nansen research, Venice inference for sentiment. NOT available on Robinhood Chain (4663), where Sherwood is live — the Base-only `sherwood trade` commands exit with an error there; retained for reference only. Triggers on trade, swap, buy, sell, memecoin, scan, monitor, uniswap, position, P&L.
 allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch WebSearch AskUserQuestion
 license: MIT

@@ -1,5 +1,6 @@
 ---
 name: vault-owner
+model: sonnet
 description: Instructs an AI agent acting as the owner of a Sherwood vault on Robinhood Chain (4663) — seeds the post-create caps, reviews its own proposal before sending it, monitors governance and live strategies, vetoes or emergency-cancels a bad proposal, sets vault and governor parameters, pauses, rescues, and recovers a stuck Executed proposal through unstick or the bonded emergency unwind (emergencySettleWithCalls → finalizeEmergencySettle). Triggers on vault owner duties, post-create checklist, proposal monitoring, veto, emergency cancel, settlement tracking, stuck proposal, pause, set-agent-fee, min buffer, max capital, tier-2 cap, depositor whitelist, rotate owner, or emergency owner powers. Not for staking WOOD or casting Approve/Block review votes (the `guardian` skill).
 allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch WebSearch AskUserQuestion
 license: MIT
@@ -56,9 +57,9 @@ Three owner setters, in this order, **before the first propose**. The governor s
 
 ```bash
 # Per-call cap on tier-2 (uncertified) calls: 2% of totalAssets per call at propose (Tier2CallCapExceedsCeiling(i))
-cast send $GOVERNOR_ADDRESS "setTier2CallCapBps(uint256)" 200  --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+sherwood governor set-tier2-call-cap-bps --vault $VAULT_ADDRESS --bps 200
 # Ceiling on --max-capital: 80% of totalAssets, checked at propose and again at execute
-cast send $GOVERNOR_ADDRESS "setMaxCapitalBps(uint256)" 8000   --private-key $PRIVATE_KEY --rpc-url $RPC_URL
+sherwood governor set-max-capital-bps --vault $VAULT_ADDRESS --bps 8000
 # Idle float the vault must keep after every governor batch: 5% (max 5000 = 50%, BufferTooHigh)
 sherwood vault set-min-buffer-bps --vault $VAULT_ADDRESS --bps 500
 # or: cast send $VAULT_ADDRESS "setMinBufferBps(uint16)" 500 --private-key $PRIVATE_KEY --rpc-url $RPC_URL
@@ -210,8 +211,8 @@ sherwood governor set-max-duration     --vault $VAULT_ADDRESS --seconds <n>   # 
 sherwood governor set-cooldown         --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 30 d (default 1 h)
 # cast only:
 cast send $GOVERNOR_ADDRESS "setMinStrategyDuration(uint256)" <s>   # 1 h – max duration (default 1 h)
-cast send $GOVERNOR_ADDRESS "setMaxCapitalBps(uint256)" <bps>       # 1 – 10000 (unset reads 10000)
-cast send $GOVERNOR_ADDRESS "setTier2CallCapBps(uint256)" <bps>     # 1 – 10000 (unset reads 10000)
+sherwood governor set-max-capital-bps --vault $VAULT_ADDRESS --bps <bps>       # 1 – 10000 (unset reads 10000)
+sherwood governor set-tier2-call-cap-bps --vault $VAULT_ADDRESS --bps <bps>     # 1 – 10000 (unset reads 10000)
 ```
 
 Each applies instantly and emits `ParameterChangeFinalized`. `set-mgmt-split` / `set-perf-split` are protocol-owner only (ProtocolConfig); as vault owner you receive 10% of the performance fee by the launch split.

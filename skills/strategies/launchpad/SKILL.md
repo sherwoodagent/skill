@@ -1,5 +1,6 @@
 ---
 name: launchpad
+model: sonnet
 description: Launch a fund token ("IPO") on Sushi Launchpad V2 or StonkBrokers with vault capital via a governance proposal, then run the claim window, fee collection and settlement. A launch settles as a vault-asset LOSS of about the capital spent, by design. Triggers on launch a token, fund token, IPO, launchpad, Sushi launchpad, StonkBrokers, reserve claim, claim launch tokens, collect launch fees.
 allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch WebSearch AskUserQuestion
 license: MIT

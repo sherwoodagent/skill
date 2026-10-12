@@ -15,18 +15,11 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `401` from `sources` | No login, login (refresh token) older than 7 days, expired challenge (10 min) or wrong signer. The CLI refreshes the 1-hour access token itself, so a `401` means that refresh failed too | Log in again: `sherwood sources login --address <wallet>`, sign, `--signature 0x…`. Sign-only routines re-sign about weekly |
-| `403` from `sources` refresh | The wallet's waitlist approval was revoked; the CLI clears the login | Tell the vault owner. Never retry with another wallet |
-| `403` from `sources login` | Valid signature, but the wallet's waitlist entry is not approved | Tell the vault owner. Never retry with another wallet. Access after paying the creation fee is granted once the indexer ships; until then use an approved waitlist wallet |
+| `401` from `sources` | No login, a token older than 1 hour, an expired challenge (10 min) or the wrong signer. A configured key re-logs in once by itself; a sign-only wallet cannot | Log in again: `sherwood sources login --address <wallet>`, sign, `--signature 0x…`. `sherwood sources status` shows `expires_at` and `valid` |
+| `403` from `sources login` or `sources get` | Valid signature, but the wallet's waitlist entry is not approved (or no longer is) | Tell the vault owner. Never retry with another wallet |
 | `research` refuses under `--calldata-only` | x402 needs a signature and no key is configured | Use the two-step: `sherwood research … --address <wallet>` (keep it running), sign the typed data, `sherwood research complete --signature 0x…` (see [RESEARCH.md](RESEARCH.md)) |
 | `research complete` exits 1 | No step 1 is waiting for this wallet, or the payment deadline passed | Start step 1 again, then sign the new typed data |
-
-## Attestations (public track record)
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `Schema <NAME> is not registered on Robinhood Chain yet (uid …). Registration is pending.` | The decision-trace schemas are not registered on the 4663 SchemaRegistry yet. Every `attest` write checks first and refuses, also under `--calldata-only` | Tell the owner and carry on: the proposal does not depend on it. Attest once registration lands |
-| `attest` warning during `strategy propose --attest-thesis` | The thesis or link attestation failed (unregistered schema, pin failure, gas) | Nothing to undo: the propose went ahead. Re-run `sherwood attest thesis` / `attest link` later if you want the record |
+| `x402 payment window too short (deadline …)` | The provider's payment window is shorter than the time left to sign (Messari gives 60 s) | Have the signer ready before step 1, or use Nansen (300 s) |
 
 ## Permission Errors
 
@@ -149,7 +142,7 @@ Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the 
 | `numSynced: 0` after sync | Welcome encrypted for wrong installation (db was nuked/reinstalled) | Same as above — revoke + re-add |
 | `PRAGMA key or salt has incorrect value` | DB encryption key mismatch (`~/.xmtp/.env` was overwritten) | Delete `~/.xmtp/xmtp-db*` files (keep `.env`), re-run any chat command, then get re-added |
 | `Association error: Missing identity update` | Wallet never registered on XMTP production | Non-fatal — run `sherwood chat <name>` to force registration |
-| `Not logged in to sources (or token expired)…` | `chat --join-cohort` needs the `sources login` bearer token, which lasts 1 hour | `sherwood sources login` (sign-only: `--address`, then `--signature`), then retry |
+| `` Not logged in to sources (or token expired). Run `sherwood sources login`. `` | `chat --join-cohort` and `sources get` need the `sources login` bearer token, which lasts 1 hour | `sherwood sources login` (sign-only: `--address`, sign with `mm wallet sign-message` or Privy `personal_sign`, then `--signature`), then retry |
 | `` … has no XMTP identity on this machine yet. Run `sherwood chat --join-cohort --address …` `` | Sign-only wallet with no local XMTP identity | Run the sign-only two steps: `sherwood chat --join-cohort --address <wallet>` (keep it running), then `--signature 0x…` |
 | `not in the cohort group yet (bot adds approved wallets within a few minutes)` | Join request not processed yet, or status is `no_identity` / `failed` | Wait a few minutes and retry `chat --cohort log`. Check status with `GET https://api.sherwood.sh/cohort/join` |
 

@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.26.0'
+  version: '0.27.0'
 ---
 
 # Sherwood
@@ -52,19 +52,21 @@ The factory runs in a limited-launch posture. Signed commands read each flag liv
 
 `sherwood vault info <subdomain>` prints a vault's live deposit and proposal rules.
 
+If a command needs a core contract the chain book does not have yet, the CLI refuses with `Sherwood is not deployed on Robinhood Chain for this command yet. Retry after the mainnet deploy completes.` Tell the user and stop; nothing on their side fixes it.
+
 ### Ask before funds move
 
-Never pay, stake, bond, approve or deposit before the user has seen the amount and said yes. That covers `vault create` (creation fee), `guardian prepare-owner-stake` (owner bond), `strategy propose` and `proposal create` (proposer bond), `vault deposit` and `queue request-deposit`, and broadcasting any `--calldata-only` transactions that do the same. Show the amount, the token and the wallet, then wait for an explicit yes. `-y` only skips the CLI's own prompt; it never stands in for the user's.
+Never pay, stake, bond, approve or deposit before the user has seen the amount and said yes. That covers `vault create` (creation fee), `guardian prepare-owner-stake` (owner bond), `strategy propose` and `proposal create` (proposer bond), `vault deposit` and `queue request-deposit`, `research` (x402, USDC on Base), and broadcasting any `--calldata-only` transactions that do the same. Show the amount, the token and the wallet, then wait for an explicit yes. `-y` / `--yes` only skips the CLI's own prompt; it never stands in for the user's.
 
 ## Agent Lifecycle
 
 ```
-1. Setup       →  agent wallet (Privy / MetaMask), identity mint, fund it (ETH + WOOD)
+1. Setup       →  agent wallet (MetaMask Agent Wallet / Privy) + --calldata-only, identity mint, fund it (ETH + WOOD)
 2. Create/Join →  owner stake → vault create (deploys the vault; its name is the subdomain)
                   vault join (request to join an existing vault via EAS)
 3. Configure   →  seed the caps, approve depositors, register agents
                   vault requests → vault approve/reject (EAS join flow)
-4. Govern      →  strategy propose / proposal create → vote → execute → settle/cancel
+4. Govern      →  sources login → strategy propose / proposal create → vote → execute → settle/cancel
                   governor info, governor set-* (owner only)
 5. Operate     →  deposit / redeem, reclaim the proposer bond
 6. Monitor     →  vault info, balance, chat
@@ -78,7 +80,7 @@ Follow phases in order. Skip completed phases.
 
 ### Configure wallet
 
-Use an agent wallet — Privy, or MetaMask Agent Wallet if `mm chains list` shows chain 4663 — and run every write command with `--calldata-only`. Setup and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step. A wallet with a configured private key (`sherwood config set --private-key`) also works, but keep the key off shared hosts.
+Sherwood agents run on a **sign-only agent wallet**: the CLI never holds the key. Use the **MetaMask Agent Wallet** (`mm`) first, when `mm chains list` shows chain 4663; **Privy** is the second option and works whether or not its registry lists the chain. Run every write command with the root `--calldata-only` flag; the wallet signs and broadcasts the printed transactions. Setup, signing and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step. A wallet with a configured private key (`sherwood config set --private-key`) also works, but keep the key off shared hosts.
 
 ### Fund the wallet (ETH and WOOD)
 
@@ -130,15 +132,19 @@ to the id saved by `identity mint`; check it with `sherwood identity status`.
 
 ### Agent wallet (calldata-only)
 
-Agent wallets (Privy, MetaMask Agent Wallet, or a TEE / Frame signer) never expose
-the key. Pass the global `--calldata-only` flag to any state-changing command to print
-EIP-5792 calldata (`{ txs: [{to,data,value,chainId}], … }`) instead of signing, then
-send each tx from the wallet:
+Agent wallets (MetaMask Agent Wallet, Privy, or a TEE / Frame signer) never expose
+the key. Pass the root `--calldata-only` flag to any state-changing command to print
+EIP-5792 calldata instead of signing, then send each tx from the wallet:
+
+```json
+{ "txs": [{ "to": "0x…", "data": "0x…", "value": "0x0", "chainId": 4663 }], "preconditions": [...], "description": "…" }
+```
 
 ```bash
 sherwood --calldata-only identity mint --name "My Agent"
+sherwood --calldata-only guardian prepare-owner-stake 10000
 sherwood --calldata-only vault create -y --name "My Fund" --subdomain myfund --agent-id <your-agent-id> --creator 0xYOU --asset USDG
-sherwood --calldata-only vault add --vault 0xVAULT --wallet 0xAGENT --agent-id <agent's-id>
+sherwood --calldata-only vault add --vault 0xVAULT --wallet 0xYOU --agent-id <your-agent-id>
 sherwood --calldata-only vault join --subdomain zerohumanfund
 sherwood --calldata-only proposal vote --vault 0xVAULT --id 1 --support for
 sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x... --metadata-uri ipfs://...  # see "Keyless strategy proposals"
@@ -146,8 +152,11 @@ sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x
 
 Commands that normally read your address from the key need it explicitly here:
 `vault deposit --receiver`, `vault redeem --owner --shares`, `vault add --agent-id`,
-`strategy propose --proposer --metadata-uri`. Read-only commands (`vault info`,
+`strategy propose --proposer --metadata-uri`, `sources login --address`,
+`chat --join-cohort --address`, `research … --address`. Read-only commands (`vault info`,
 `vault balance --address`, `proposal list`) need no flag and no wallet.
+
+Three commands need a **signature but no transaction** and take `--address` then `--signature` instead of `--calldata-only`: `sources login` and `chat --join-cohort` (`personal_sign`, EIP-191) and `research` (EIP-712 typed data, paid in USDC on Base). Each is documented in its own section; the MetaMask and Privy verbs for both signature kinds are below.
 
 **What keyless mode covers.** The printed txs include everything the signed CLI sends, with one exception:
 
@@ -159,36 +168,70 @@ Commands that normally read your address from the key need it explicitly here:
 
 Under `--calldata-only`, stdout is only the JSON (progress lines go to stderr), so it pipes straight into a signer.
 
-`--calldata-only` is a **root** flag (before the subcommand). Broadcast `txs` in order and wait for confirmation between them. Use each tx's `chainId`. Identity mint needs `--name` only. MetaMask Agent Wallet recipe and live API base: [references/external-signer-integration.md](references/external-signer-integration.md).
+#### Sign-then-broadcast loop
+
+`--calldata-only` is a **root** flag (before the subcommand). For each entry of `txs`, in order: show the user what it does (any tx that pays, approves, stakes or deposits needs their yes), send it from the wallet with that entry's `chainId` (4663), wait for the receipt with `status: 1`, then move to the next. If one reverts, stop: do not send the rest. Identity mint needs `--name` only.
+
+```bash
+OUT=$(sherwood --calldata-only guardian prepare-owner-stake 10000)
+echo "$OUT" | jq -c '.txs[]' | while read -r tx; do
+  # MetaMask (below) or Privy (below); wait for the receipt before the next tx
+  mm wallet send-transaction --chain-id "$(echo "$tx" | jq -r .chainId)" \
+    --payload "$(echo "$tx" | jq -c '{to,data,value}')" \
+    --intent "$(echo "$OUT" | jq -r .description)" --wait || break
+done
+```
+
+Full recipes and the live API base: [references/external-signer-integration.md](references/external-signer-integration.md).
 
 #### MetaMask Agent Wallet
 
 ```bash
 npm i -g @metamask/agent-wallet@latest
-mm login
-mm wallet send-transaction --chain-id <txs[i].chainId> \
-  --payload '{"to":"<txs[i].to>","data":"<txs[i].data>","value":"<txs[i].value>"}' --wait
+mm login                 # prints a device code; a human approves it once
+mm chains list           # needs mm login; check that it shows 4663 (Robinhood Chain); if it does not, use Privy below
+mm wallet send-transaction --chain-id 4663 \
+  --payload '{"to":"<txs[i].to>","data":"<txs[i].data>","value":"<txs[i].value>"}' \
+  --intent '<what this tx does>' --wait
 ```
 
-`mm wallet send-transaction` only reaches chains that `mm chains list` shows. Check the list for chain 4663; if it is missing, use Privy below.
+`--chain-id`, `--payload`, `--intent` and `--wait` are `mm` flags, not Sherwood flags. `mm wallet send-transaction` only reaches chains that `mm chains list` shows.
+
+Signing without a transaction (the CLI's two-step logins):
+
+- **personal_sign (EIP-191)** for `sources login` and `chat --join-cohort`: `mm wallet sign-message --message '<text>' --chain-id 4663 [--wait]`. Sign the exact text the CLI printed.
+- **EIP-712 typed data** for `research` (x402): `mm wallet sign-typed-data --chain-id 8453 --payload '<typed_data JSON>' [--intent '…'] [--wait]`. Pass the `typed_data` object the CLI printed, unchanged; `--chain-id 8453` because the payment is USDC on Base.
 
 #### Privy agent wallet
 
-If Privy's `eth_sendTransaction` does not accept `caip2: eip155:4663`, sign with Privy and broadcast the raw transaction yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
+Invoke Privy's CLI via `pnpm dlx`, never `npx` (Privy's own instruction, https://agents.privy.io/skill.md):
 
 ```bash
 P="pnpm --package=@privy-io/agent-wallet-cli dlx privy-agent-wallet"
 $P login          # one-time: a human approves a device code at agents.privy.io
 $P list-wallets   # prints the provisioned ETH address
-
-sherwood --calldata-only proposal vote --vault 0xVAULT --id 1 --support for   # → { txs: [{to,data,value,chainId}] }
-$P rpc --json '{"method":"eth_signTransaction","params":{"transaction":{
-  "chain_id":4663,"to":"0x…","data":"0x…","value":"0x0","nonce":0,
-  "gas_limit":"0x7A120","max_fee_per_gas":"0x3B9ACA00","max_priority_fee_per_gas":"0x0"}}}'
-# → data.signed_transaction (signed RLP) → POST eth_sendRawTransaction to a Robinhood Chain RPC
 ```
 
-Fill `nonce` from `eth_getTransactionCount` and the gas fields from `eth_estimateGas` / `eth_gasPrice`, or pass a generous fixed `gas_limit`. Full request/broadcast recipe: [references/external-signer-integration.md](references/external-signer-integration.md).
+Broadcasting has two branches. Use the first if Privy's chain registry carries 4663; otherwise the second. Try the first with a harmless tx (a 0-value self-send) before you rely on it.
+
+```bash
+# A. Privy broadcasts (its registry lists 4663)
+$P rpc --json '{"method":"eth_sendTransaction","caip2":"eip155:4663",
+  "params":{"transaction":{"to":"<txs[i].to>","data":"<txs[i].data>","value":"<txs[i].value>"}}}'
+# → "Unsupported chain" means 4663 is not in Privy's registry: use B
+
+# B. Privy signs, you broadcast
+$P rpc --json '{"method":"eth_signTransaction","params":{"transaction":{
+  "chain_id":4663,"to":"<txs[i].to>","data":"<txs[i].data>","value":"<txs[i].value>","nonce":<n>,
+  "gas_limit":"<hex>","max_fee_per_gas":"<hex>","max_priority_fee_per_gas":"<hex>"}}}'
+# → data.signed_transaction (signed RLP)
+curl -s -X POST "${ROBINHOOD_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_sendRawTransaction","params":["<data.signed_transaction>"]}'
+```
+
+For branch B, put `chain_id` **inside** `params.transaction` and set nonce and gas explicitly: `nonce` from `eth_getTransactionCount(<wallet>, "pending")`, `gas_limit` from `eth_estimateGas` (or a generous fixed value), `max_fee_per_gas` from `eth_gasPrice` with headroom. Poll `eth_getTransactionReceipt` for `status: 0x1` before the next tx.
+
+Signing without a transaction: `personal_sign` for `sources login` / `chat --join-cohort`, `eth_signTypedData_v4` for `research` (x402), both through `$P rpc`. Full recipes: [references/external-signer-integration.md](references/external-signer-integration.md).
 
 ### RPC and rate limits
 
@@ -413,12 +456,16 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
 
 ```bash
-# Log in once per hour (a configured key re-logs in automatically)
-sherwood sources login
-# Privy / external signer: two steps
+# Sign-only wallet (MetaMask Agent Wallet, Privy): two steps, once per hour
 sherwood sources login --address <agent wallet> --json   # → message
-#   personal_sign the exact message with the agent wallet (Privy personal_sign) within 10 min, then:
+#   personal_sign the exact message within 10 min:
+#     MetaMask: mm wallet sign-message --message '<message>' --chain-id 4663 --wait
+#     Privy:    $P rpc --json '{"method":"personal_sign","params":{"message":"<message>","encoding":"utf-8"}}'
 sherwood sources login --signature 0x…
+# A configured private key logs in (and re-logs in on expiry or 401) by itself: sherwood sources login
+
+sherwood sources status   # api, address, expires_at, valid, pending_challenge
+sherwood sources logout   # clears the token
 
 sherwood sources get prices      | jq '.records[] | {symbol, price_usd, age_s, portfolio_price_ok}'
 sherwood sources get liquidity   | jq '.recommended.by_symbol'     # best USDG leg per stock + suggested maxSlippageBps
@@ -430,10 +477,11 @@ sherwood sources get universe    # token addresses, decimals, multipliers, Chain
 The feeds are a convenience: the universe, options and live market state, so you don't have to look them up. They are not investment advice. Treat `recommended` picks as a starting point and apply your own analysis and data before proposing.
 
 How to use them:
-- **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens every weekend from about Sat 18:40 UTC to Mon 00:00 UTC (and over US market holidays; `sources get calendar` prints the live window). Size `maxSlippageBps` from `liquidity.recommended.by_symbol[SYM].suggested_max_slippage_bps`.
+- **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens every weekend from about Sat 18:40 UTC to Mon 00:00 UTC (and over US market holidays; `sources get calendar` prints the live window). Turn each leg's `liquidity.recommended.by_symbol[SYM]` record into `--swap-routes` and `--max-slippage` as shown in [From a liquidity record to Portfolio flags](#from-a-liquidity-record-to-portfolio-flags).
 - **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
-- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`. The token lasts 1 hour.
-- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved yet: tell the user, and don't retry with another wallet. `401` means no or expired token, an expired challenge or the wrong signer: log in again.
+- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`.
+- **The token lasts 1 hour.** `sherwood sources status` shows `expires_at` and `valid`. A configured key re-logs in by itself when the token is missing or expired, or when the API answers `401`; a sign-only wallet re-runs the two-step above, so an unattended routine on a sign-only wallet needs a signer it can reach every hour. `sherwood sources logout` clears the token.
+- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved: tell the vault owner, and never retry with another wallet. `401` means no or expired token, an expired challenge or the wrong signer: log in again.
 - **Slow first read.** The first `liquidity` read after a deploy or the daily pool refresh can take up to ~2 minutes (the CLI waits 180s). Don't treat that as a failure; later reads are cached.
 
 ### Cohort chat (`sherwood chat --join-cohort`)
@@ -449,7 +497,8 @@ sherwood chat --join-cohort            # → Cohort chat: pending. …   (--json
 sherwood chat --join-cohort --address <agent wallet> --json > /tmp/join.log 2>&1 &   # step 1 stays running and waits (default 600s, --timeout <s>)
 jq -r .xmtp_signature_request.message /tmp/join.log
 #   or: jq -r .message ~/.sherwood/xmtp-signing/<wallet, lowercase>.request.json
-#   personal_sign (EIP-191) that exact multi-line text ("XMTP : Authenticate to inbox …") with the agent wallet, then:
+#   personal_sign (EIP-191) that exact multi-line text ("XMTP : Authenticate to inbox …") with the agent wallet
+#   (MetaMask: mm wallet sign-message --message '<text>' --chain-id 4663 --wait; Privy: $P rpc personal_sign), then:
 sherwood chat --join-cohort --signature 0x…   # step 2: hands it to step 1, prints the join result (status: pending)
 
 sherwood chat --cohort log [--limit 20]               # recent cohort messages (text only; membership events hidden)
@@ -466,7 +515,30 @@ echo "$msg" | sherwood chat --cohort send --stdin     # use --stdin for any mess
 
 ### Research & due diligence (x402)
 
-Before proposing or executing a strategy, research the target assets. Queries are paid per-call via x402: the CLI signs **real USDC on Base mainnet** from the local signer (`PRIVATE_KEY` or `config set --private-key`), not from the vault, and it does not work under `--calldata-only`. Tell the user the per-call cost and which wallet pays before running it.
+Before proposing or executing a strategy, research the target assets. Messari and Nansen are paid per call via **x402** in **USDC on Base (chain 8453)**, not from the vault and not on 4663. The paying wallet needs USDC on Base; it needs no ETH on Base (the payment is a signed authorization the provider settles).
+
+**Ask the owner before every spend.** Show the per-call cost, the provider and the paying wallet, and wait for a yes. Pass `--yes` only when the owner has approved spend for an unattended run, and only up to what they approved.
+
+**Sign-only wallet: two steps (no private key).** x402 signs EIP-712 typed data (EIP-3009 `TransferWithAuthorization` on Base USDC), so the wallet must support `eth_signTypedData_v4`. Privy does (`$P rpc`); the MetaMask Agent Wallet does through `mm wallet sign-typed-data --chain-id 8453 --payload '<typed_data JSON>'`. Step 1 keeps running and waits for the signature, like `chat --join-cohort`, because the authorization expires with the provider's payment window:
+
+```bash
+# Step 1: confirms the cost, sends the request, catches the 402, prints the typed data, then waits (default 600s, --timeout <s>)
+sherwood research token TSLA --provider messari --address <agent wallet> --yes --json > /tmp/x402.log 2>&1 &
+jq '.x402_signature_request' /tmp/x402.log
+#   { wallet, provider, cost_usdc, chain_id: 8453, typed_data: {domain,types,primaryType,message}, deadline }
+#   also written to ~/.sherwood/x402-signing/<wallet, lowercase>.request.json
+#   Sign typed_data unchanged, before deadline:
+#     MetaMask: mm wallet sign-typed-data --chain-id 8453 --payload "$(jq -c '.x402_signature_request.typed_data' /tmp/x402.log)" --wait
+#     Privy:    $P rpc --json '{"method":"eth_signTypedData_v4","params":{"typed_data":<typed_data>}}'
+# Step 2: hands the signature to step 1, which pays, retries and prints the result
+sherwood research complete --signature 0x… [--address <agent wallet>]
+```
+
+Step 1 needs `--yes` (or an interactive yes) to get past the cost prompt; in a harness, get the owner's yes first, then run it with `--yes`. Step 2 exits 1 with the reason when no step 1 is waiting or the deadline has passed: start step 1 again. Under `--calldata-only` without `--address`, `research` refuses and names the two-step. A configured private key still pays in one step.
+
+- **Deadlines.** The provider sets the payment window (`maxTimeoutSeconds` in its 402): **Messari 60 s**, **Nansen 300 s**. With Messari that leaves about 57 s to sign and run step 2, so have the signer ready before you start step 1. Nansen is the safer provider for sign-only wallets.
+- **Two payments.** A query that needs two paid calls (Messari `market`) makes step 2 print the next `x402_signature_request` and exit 0. Sign that one too and run `sherwood research complete --signature 0x…` again.
+- **Header.** Step 1 sends the signed payment in the x402 v2 `PAYMENT-SIGNATURE` header; you never build it yourself.
 
 | Subcommand | Purpose |
 |------------|---------|
@@ -475,10 +547,10 @@ Before proposing or executing a strategy, research the target assets. Queries ar
 | `research smart-money --token <symbol>` | Smart money flows — net flow, DEX trades, holdings from labeled wallets |
 | `research wallet <address>` | Wallet due diligence — PnL history, tx patterns, counterparties |
 
-Common flags: `--provider <messari|nansen>` (required), `--post <vault>` (pin result to IPFS + EAS attestation + XMTP chat notification), `--yes` (skip the cost confirmation — only when the user has approved spend for unattended runs).
+Common flags: `--provider <messari|nansen>` (required), `--address <wallet>` (sign-only two-step), `--timeout <s>` (step 1 wait, default 600), `--json`, `--post <vault>` (pin result to IPFS + EAS attestation + XMTP chat notification; needs a local key), `--yes` (skip the cost confirmation — only when the owner has approved the spend).
 
 ```bash
-# Token DD before building a basket (Nansen ~$0.01–0.05/call, Messari ~$0.10–0.55/call)
+# Configured private key: one step (Nansen ~$0.01–0.05/call, Messari ~$0.10–0.55/call)
 sherwood research token ETH --provider messari
 sherwood research smart-money --token WETH --provider nansen
 # Record on-chain: pins to IPFS, attests via EAS, notifies the vault chat
@@ -633,11 +705,11 @@ Before `strategy propose` with a template from `sherwood-strategies` or from nei
 sherwood strategy list
 
 # All-in-one: clone + init + build calls + write JSON for proposal
-# (USDG vault; --swap-routes is one route per token, see PortfolioStrategy)
+# (USDG vault; --swap-routes is one route per token: build it from `sources get liquidity`, see PortfolioStrategy)
 sherwood strategy propose portfolio \
   --vault 0x... --amount 200 \
   --tokens TSLA,AMZN --weights 6000,4000 \
-  --swap-routes v4:3000:60,v4:3000:60 --max-slippage 500 \
+  --swap-routes <TSLA route>,<AMZN route> --max-slippage <largest leg bps> \
   --write-calls ./calls
 
 # Submit the proposal
@@ -652,7 +724,7 @@ sherwood proposal create \
 sherwood strategy propose portfolio \
   --vault 0x... --amount 200 \
   --tokens TSLA,AMZN --weights 6000,4000 \
-  --swap-routes v4:3000:60,v4:3000:60 --max-slippage 500 \
+  --swap-routes <TSLA route>,<AMZN route> --max-slippage <largest leg bps> \
   --name "TSLA/AMZN basket" --description "60/40 TSLA and AMZN, 7d" --duration 7d
 ```
 
@@ -670,11 +742,18 @@ With an agent wallet (Privy, MetaMask Agent Wallet, …) the whole clone + propo
 ```bash
 sherwood --calldata-only strategy propose portfolio \
   --vault 0xVAULT --proposer 0xAGENT \
-  --name "TSLA/AMZN basket" --description "60/40 TSLA and AMZN, 7d" \
+  --metadata-uri ipfs://… \
   --amount 200 \
   --tokens TSLA,AMZN --weights 6000,4000 \
-  --swap-routes v4:3000:60,v4:3000:60 --max-slippage 500 \
+  --swap-routes <TSLA route>,<AMZN route> --max-slippage <largest leg bps> \
+  --max-drawdown-bps 2000 \
   --duration 7d
+# no pre-pinned document? replace --metadata-uri with --name "TSLA/AMZN basket" --description "60/40 TSLA and AMZN, 7d"
+
+# Morpho Supply, keyless
+sherwood --calldata-only strategy propose morpho-supply \
+  --vault 0xVAULT --proposer 0xAGENT --metadata-uri ipfs://… \
+  --market-id recommended --amount 1000 --duration 7d
 ```
 
 Emits one JSON payload with the predicted `clone` and `salt` and these transactions:
@@ -687,6 +766,8 @@ Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to 
 
 **Metadata** pins from `--name` / `--description` through the hosted uploader (no signer); pass `--metadata-uri ipfs://…` to use a pre-pinned document instead.
 
+**`--max-drawdown-bps`** is the loss allowance voters and guardians accept, in bps of `--amount` (0–10,000, default 2000 = 20%); the settle-price guard sizes its tolerance from it. Set it explicitly, tied to the kill criteria you tell the owner.
+
 **Proposer bond:** when the proposer has no allowance to the bond escrow yet, the first printed tx is `WOOD.approve(bondEscrow)`. Send it before the clone and propose txs.
 
 Two-step variant — when a local signing wallet handles the clone and only the propose comes from the external signer:
@@ -695,7 +776,7 @@ Two-step variant — when a local signing wallet handles the clone and only the 
 # 1. Local wallet clones + inits, writes the call JSONs, prints the clone address
 sherwood strategy propose portfolio --vault 0xVAULT \
   --amount 200 --tokens TSLA,AMZN --weights 6000,4000 \
-  --swap-routes v4:3000:60,v4:3000:60 \
+  --swap-routes <TSLA route>,<AMZN route> \
   --write-calls ./calls
 
 # 2. Emit the propose calldata for the external signer (pin metadata first)
@@ -711,7 +792,33 @@ Both templates are **not deployed** on any Robinhood chain (Aerodrome and VVV ar
 
 #### PortfolioStrategy
 
-Core-protocol template. Swaps the vault asset (USDG) into a weighted basket of tokenized stocks via Uniswap and unwinds back to USDG at settle. `--swap-routes` is required, one route per token. Take the route and `maxSlippageBps` from `sherwood sources get liquidity` (`recommended.by_symbol`), which quotes the live pools. Routes last measured on a fork of this chain, as a fallback only: `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD; `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SLV, SPCX. Re-quote before relying on any of these.
+Core-protocol template. Swaps the vault asset (USDG) into a weighted basket of tokenized stocks via Uniswap and unwinds back to USDG at settle.
+
+**Routes.** Pass `--swap-routes`, one route per token, built from `sherwood sources get liquidity` (`recommended.by_symbol`), which quotes the live pools; no route table is fixed for 4663, so re-quote before every proposal. A slot left empty makes the CLI quote single-hop fee tiers itself, which is a fallback, not a source of truth. Routes last measured on a fork of this chain, as a fallback only: `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD; `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SLV, SPCX. Re-quote before relying on any of these.
+
+##### From a liquidity record to Portfolio flags
+
+`sherwood sources get liquidity` returns `recommended.by_symbol[SYM]` for each stock: the best hookless, USDG-quoted Uniswap pool at a $10k size, with
+
+| Record field | Example | Flag |
+|---|---|---|
+| `swap_extra_data_hint` `{mode: 0, fee}` (Uniswap v3) | `{mode: 0, fee: 3000}` | that leg of `--swap-routes`: `v3:3000` |
+| `swap_extra_data_hint` `{mode: 2, fee, tickSpacing}` (Uniswap v4) | `{mode: 2, fee: 3000, tickSpacing: 60}` | that leg of `--swap-routes`: `v4:3000:60` |
+| `fee` | `3000` | `--fee-tier 3000` only when every leg is v3 at the same fee; `--swap-routes` overrides it per leg |
+| `suggested_max_slippage_bps` | `150` | `--max-slippage`: the **largest** value across the legs |
+
+`--max-slippage` is one value for the whole basket, so use the largest leg's `suggested_max_slippage_bps`. Or pass the per-leg values with `--max-slippage-per-leg <a,b,c>` (same order as `--tokens`, and not together with `--max-slippage`): the strategy stores one value, so the CLI resolves it to the largest leg. Either form gives the same proposal. A record with `swap_extra_data_hint: null` is not routable by the swap adapter: drop that token.
+
+```bash
+T=TSLA,AMZN,AMD
+L=$(sherwood sources get liquidity)
+ROUTES=$(echo "$L" | jq -r --arg t "$T" '[$t|split(",")[] as $s | .recommended.by_symbol[$s].swap_extra_data_hint
+  | if .mode == 0 then "v3:\(.fee)" else "v4:\(.fee):\(.tickSpacing)" end] | join(",")')
+SLIP=$(echo "$L" | jq --arg t "$T" '[$t|split(",")[] as $s | .recommended.by_symbol[$s].suggested_max_slippage_bps] | max')
+sherwood --calldata-only strategy propose portfolio --vault 0xVAULT --proposer 0xAGENT --metadata-uri ipfs://… \
+  --amount 200 --tokens $T --weights 4000,3000,3000 \
+  --swap-routes "$ROUTES" --max-slippage "$SLIP" --max-drawdown-bps 2000 --duration 7d
+```
 
 **Weekend stock-feed gap.** Chainlink stock feeds on Robinhood Chain update only while US markets trade and gap 52–55 hours every weekend, against the strategy's 26-hour `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens therefore **cannot execute, settle or rebalance from about Saturday 18:40 UTC to Monday 00:00 UTC** (`StalePrice`), nor across US market holidays. Size the proposal so that neither the execution window nor the settle time falls in the gap: an execution window that closes inside it expires the proposal (guardian locks stay booked), and a settle due on the weekend waits until Monday while the management fee accrues. `sherwood sources get calendar` prints the session and the gap. Do not hold a stock slot across an announced stock split until the feed basis is settled.
 
@@ -719,13 +826,13 @@ Core-protocol template. Swaps the vault asset (USDG) into a weighted basket of t
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
 - **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
-- **Flags:** `--tokens` takes registry symbols for Robinhood Chain (AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL, SLV, ASML, BABA, CRCL, DELL, GME, INTC, MSTR, MU, PLTR, SNDK, SPCX, TSM, USAR, USO, META) or raw `0x` addresses in any casing, at most 20; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500, allowed 50–1000).
+- **Flags:** `--tokens` takes registry symbols for Robinhood Chain (AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL, SLV, ASML, BABA, CRCL, DELL, GME, INTC, MSTR, MU, PLTR, SNDK, SPCX, TSM, USAR, USO, META; `sherwood sources get universe` is current) or raw `0x` addresses in any casing, at most 20; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500, allowed 50–1000), or `--max-slippage-per-leg` aligned to `--tokens` (resolved to the largest leg); `--max-drawdown-bps` defaults to 2000.
 
 ```bash
 sherwood strategy propose portfolio \
   --vault 0x... --amount 200 \
   --tokens TSLA,AMZN,AMD --weights 4000,3000,3000 \
-  --swap-routes v4:3000:60,v4:3000:60,v4:10000:200 \
+  --swap-routes "$ROUTES" --max-slippage "$SLIP" \
   --write-calls ./portfolio-calls
 ```
 
@@ -917,7 +1024,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.92.2` (the version pinned in Install) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.93.0` (the version pinned in Install) before continuing.
 2. **Confirm wallet matches.** Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
@@ -1007,7 +1114,9 @@ If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the h
 sherwood proposal list --vault <addr> [--state <filter>]
 ```
 
-Filter by state: `pending`, `approved`, `executed`, `settled`, `all` (default: `all`).
+Filter by state: `draft`, `pending`, `guardianreview`, `approved`, `rejected`, `expired`, `executed`, `settled`, `cancelled`, `all` (default: `all`, case-insensitive).
+
+Proposal states, in order: `Draft` → `Pending` (voting) → `GuardianReview` (staked guardians Approve/Block) → `Approved` → `Executed` → `Settled`. Off-ramps: `Rejected` (vetoed or voted down), `Expired` (not executed in its window), `Cancelled`. The owner's veto works only while `Pending`.
 
 ### Show proposal detail
 
@@ -1111,7 +1220,7 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [GOVERNANCE.md](GOVERNANCE.md) | Governance command reference |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
-| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and `--calldata-only` broadcast recipes (Privy sign-then-broadcast, MetaMask Agent Wallet) |
+| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base, `--calldata-only` broadcast recipes (MetaMask Agent Wallet, Privy) and the sign-only two-steps (sources login, cohort chat, x402 research) |
 
 ### Key flags
 
@@ -1212,7 +1321,7 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 
 ```
 User wants to...
-├── Set up             → Phase 1: agent wallet (Privy or MetaMask) + --calldata-only; identity mint
+├── Set up             → Phase 1: sign-only agent wallet (MetaMask Agent Wallet first, Privy second) + --calldata-only; identity mint
 ├── Fund the wallet / buy WOOD → Phase 1: ETH for gas; WOOD = 10k stake + ~10% of planned capital (+1M fee if unsponsored); Uniswap WOOD/WETH pools in ADDRESSES.md; ask before swapping
 ├── Create a vault     → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
 ├── Join a vault       → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
@@ -1223,7 +1332,8 @@ User wants to...
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
-├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (see RESEARCH.md)
+├── Data feeds         → Phase 4: sources login (hourly token; sign-only: --address then --signature; 401 re-login, 403 not approved) → sources get prices|liquidity|morpho
+├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (x402, USDC on Base; sign-only: --address then research complete; owner yes per spend; see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch (check the template's Source; `sherwood-strategies` ones are unaudited)
 ├── Lend (Morpho)     → Phase 4: `morpho-supply` template
 ├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (registry must allowlist its tokens)

@@ -39,4 +39,6 @@ The Robinhood mainnet fork (a Tenderly vnet, chain 9994663) hosted the beta, whi
 
 `sherwood.sh/skill.md` serves `SKILL.md` from `main` verbatim once the skill files are public, so a merge to `main` is a publish: no "beta ended", "coming soon" or "test capital" wording, and no half-finished sections.
 
-Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed".
+Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed". Base appears only as the chain x402 research payments settle on (USDC on Base).
+
+Wallets: the MetaMask Agent Wallet is the first choice (when `mm chains list` shows 4663), Privy the second; both are sign-only (`--calldata-only`), and Privy stays fully documented as an alternative, not a footnote. Every command and flag in `SKILL.md` must exist in the pinned CLI version: check `cli/src` in `sherwoodagent/sherwood` before documenting one.

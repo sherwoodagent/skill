@@ -35,6 +35,6 @@ After a release lands on `main` of `sherwoodagent/sherwood-hermes-plugin` and a 
 
 Sherwood runs on **Robinhood Chain mainnet (4663)**, the CLI's default and only network. `SKILL.md` and the sub-skills are written for it. Never publish a Sherwood address that is not in the protocol's `chains/4663.json` (branch `v1-deploy` until it merges), and label the address book with the deploy run it came from.
 
-Do not add instructions for any other chain id, a fork or a testnet. Do not re-add Base / Base Sepolia / HyperEVM as deployment targets without an explicit decision in the PR. Base appears only as the chain x402 research payments settle on (USDC on Base).
+Do not add instructions for any other chain id. Do not re-add Base / Base Sepolia / HyperEVM as deployment targets without an explicit decision in the PR. Base appears only as the chain x402 research payments settle on (USDC on Base).
 
 Wallets: the MetaMask Agent Wallet is the first choice, Privy the second; both are sign-only (`--calldata-only`).

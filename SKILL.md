@@ -754,7 +754,7 @@ Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to 
 
 **Proposer bond:** when the proposer has no allowance to the bond escrow yet, the first printed tx is `WOOD.approve(bondEscrow)`. Send it before the clone and propose txs.
 
-**Track record (opt-in):** add `--attest-thesis <file>` to attest your thesis with the proposal, and run `attest link` after it confirms. Proposals never depend on it. See [Public track record](#public-track-record).
+**Track record (opt-in):** add `--attest-thesis <file>` to attest your thesis with the proposal, and run `attest link` after it confirms (sign-only: take the thesis UID from `sherwood attest uid --tx <thesis tx hash>`). Proposals never depend on it. See [Public track record](#public-track-record).
 
 Two-step variant — when a local signing wallet handles the clone and only the propose comes from the external signer:
 
@@ -1024,6 +1024,8 @@ It is **opt-in and never required**. Proposals never depend on it: an attestatio
 Schema <NAME> is not registered on Robinhood Chain yet (uid 0x…). Registration is pending.
 ```
 
+`--skip-schema-check` (on every `attest` write verb) builds the attestation anyway. It is for **previews only**: EAS reverts `InvalidSchema` if the tx is broadcast before registration, so never broadcast a preview.
+
 Tell the owner, carry on with the proposal, and attest once registration lands.
 
 #### When to attest
@@ -1040,13 +1042,14 @@ Tell the owner, carry on with the proposal, and attest once registration lands.
 #### The verbs
 
 ```bash
-# Thesis: pins the text through the hosted uploader, hashes it, attests. Prints { uid, hash, thesisURI, thesisHash }
+# Thesis: pins the JSON document {"schema":"sherwood.decision-thesis/1","thesis":…} through the hosted uploader,
+# hashes the pinned bytes (keccak256), attests. Prints { uid, hash, thesisURI, thesisHash }
 sherwood attest thesis --vault <vault> --asset <symbol|address> --direction long|short|neutral \
   --horizon 30d --confidence <bps> --thesis <file|-> \
   [--encrypt --key-file <path>] [--model-config <file>] [--data-snapshot <file>] [--license none|aggregate|full]
 
 # Link the thesis to the governor proposal
-sherwood attest link --vault <vault> --proposal-id <id> --thesis-uid <uid> [--provenance-class <n>|auto] [--license …]
+sherwood attest link --vault <vault> --proposal-id <id> --thesis-uid <uid> [--provenance-class auto|<n>|<name>] [--license …]
 
 # Executions (one or more tx hashes) and realized slippage
 sherwood attest execution --vault <vault> --proposal-id <id> --thesis-uid <uid> --tx <hash>... [--slippage-bps <n>] [--license …]
@@ -1059,25 +1062,31 @@ sherwood attest kill --vault <vault> --proposal-id <id> --reason risk_check|vote
 sherwood attest outcome --vault <vault> --proposal-id <id> --pnl-bps <n> --max-drawdown-bps <n> [--note "…"] [--thesis-uid <uid>] [--license …]
 
 # Agent version: your ERC-8004 id and a hash of your model/config
-sherwood attest version --agent-id <id> --model-config <file> [--label "…"] [--license …]
+sherwood attest version --agent-id <id> --model-config <file> [--label "…"] [--agent <wallet>] [--license …]
 
-# Read a vault's record
+# UID(s) from a mined attest tx (how keyless flows learn the thesis UID). Prints { uid, schema, attester, recipient }
+sherwood attest uid --tx <hash>
+
+# Read a vault's record from the 4663 EAS indexer, with UIDs. Without --agent: every attester to the vault
 sherwood attest list --vault <vault> [--agent <wallet>] [--json]
 ```
 
 - `--horizon` takes a duration (`30d`, `7d`, …). `--confidence` is in bps (`7000` = 70%).
 - `--model-config <file>`: canonical JSON describing your model and config; the chain stores only its keccak256. `--data-snapshot <file>`: the `sources` records you decided on; again only the hash goes on chain.
 - `kill --proposal-id 0` records a thesis you abandoned before proposing.
-- `--provenance-class` on `link`: `auto` (computed from the strategy's provenance) or a number. The ordinals are 0 unknown, 1 hand_written, 2 unknown_template, 3 known_template, 4 core_template; this mapping is still being confirmed, so prefer `auto`.
+- `--provenance-class` on `link` defaults to `auto` (read from the StrategyFactory). It also accepts a number or a name: 0 unknown, 1 hand_written, 2 unknown_template, 3 known_template, 4 core_template. This mapping is still being confirmed, so keep `auto`.
+- `attest version --agent <wallet>`: the attestation recipient. It defaults to your wallet and is required with `--calldata-only`.
+- Every write verb takes `--license` and `--skip-schema-check` (preview only, see above).
 
 #### Attest as part of the proposal
 
-`strategy propose … --attest-thesis <file> [--direction … --horizon … --confidence …]` does the thesis attestation for you.
+`strategy propose … --attest-thesis <file> [--direction … --horizon … --confidence … --thesis-asset <symbol|address>]` does the thesis attestation for you. `--thesis-asset` defaults to the vault asset and `--horizon` defaults to `--duration`.
 
 - **Configured private key:** the CLI runs thesis attest → propose → link attest, in that order.
-- **Sign-only wallet (`--calldata-only`):** the printed `txs` hold the thesis `attest` tx followed by the propose txs. The proposal id is unknown until the propose confirms, so the `note` tells you to run the link yourself afterwards:
+- **Sign-only wallet (`--calldata-only`):** the printed `txs` hold the thesis `attest` tx followed by the propose txs. The proposal id is unknown until the propose confirms, so the `note` tells you to run the link yourself afterwards: broadcast the thesis `attest` tx, read its UID, then link.
 
 ```bash
+sherwood attest uid --tx <thesis attest tx hash>      # → { uid, schema, attester, recipient }
 sherwood --calldata-only attest link --vault <vault> --proposal-id <id> --thesis-uid <uid>
 ```
 
@@ -1110,9 +1119,9 @@ The license is on chain with the record; pick it once per agent and keep it cons
 
 #### Public by default, encryption optional
 
-The thesis is **public by default**: the plaintext is pinned to IPFS through Sherwood's hosted uploader, and the URI plus its keccak256 hash go on chain.
+The thesis is **public by default**: the plaintext is pinned to IPFS through Sherwood's hosted uploader inside the JSON document `{"schema":"sherwood.decision-thesis/1","thesis":…}` (the uploader pins JSON only), and the URI plus the keccak256 of that pinned document go on chain.
 
-`--encrypt --key-file <path>` encrypts it first with **AES-256-GCM**. The key file holds 32 bytes as hex (`openssl rand -hex 32 > thesis.key`). The CLI pins `{ "alg": "A256GCM", "iv": "<hex>", "ct": "<hex>" }` and the hash covers that ciphertext. **The agent keeps the key; Sherwood holds nothing**: no key, no plaintext, no encrypted copy. Lose the key and the thesis text is gone, though the hash still proves what was pinned. The app shows an encrypted thesis as "thesis encrypted" and never links it.
+`--encrypt --key-file <path>` encrypts it first with **AES-256-GCM**. The key file holds 32 bytes as hex (`openssl rand -hex 32 > thesis.key`). The CLI pins `{ "alg": "A256GCM", "iv": "<hex>", "ct": "<hex>" }` instead, and the hash is the keccak256 of that pinned JSON document. **The agent keeps the key; Sherwood holds nothing**: no key, no plaintext, no encrypted copy. Lose the key and the thesis text is gone, though the hash still proves what was pinned. The app shows an encrypted thesis as "thesis encrypted" and never links it.
 
 #### Gas
 

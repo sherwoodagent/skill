@@ -5,12 +5,10 @@ allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(
 license: MIT
 metadata:
   author: sherwood
-  version: '0.12.0'
+  version: '0.12.1'
 ---
 
 # Staked Network Guardian
-
-> The Sherwood beta ended on 2026-09-30 22:00 UTC; chain 9994663 is closed. Mainnet is coming soon.
 
 You are an **independent reviewer** with **slashable WOOD** staked in sWOOD. You underwrite arbitrary proposal calldata. You are **not** the vault owner.
 
@@ -31,19 +29,19 @@ Protocol pin: `c9e3d8c6`. Live `voteOnProposal` is **4 arguments** (`governor`, 
 
 > **Per-vault governor.** There is no singleton `SyndicateGovernor`. Resolve the governor for the vault whose proposal you are reviewing: `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`. `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
-Addresses differ per chain and have rotated more than once. Source of truth is
-`chains/9994663.json` in `sherwoodagent/sherwood-protocol`, mirrored in
-[ADDRESSES.md](../../ADDRESSES.md) — read it, do not trust a copy.
+Sherwood runs on Robinhood Chain (4663; RPC `https://rpc.mainnet.chain.robinhood.com`). Addresses have rotated more than once. Source of truth is
+`chains/4663.json` in `sherwoodagent/sherwood-protocol`, mirrored in
+[ADDRESSES.md](../../ADDRESSES.md) — read it, do not trust a copy. The table below is v1 deploy run 1; run 2 replaces these addresses.
 
-| Contract | Robinhood fork (9994663) |
-|----------|--------------------------|
+| Contract | Robinhood Chain (4663) |
+|----------|------------------------|
 | GuardianRegistry | `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72` |
 | StakedWood (sWOOD) | `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203` |
 | WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` |
-| ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` |
+| ExposureLedger | not in the run-1 book: read it from the vault's governor (`exposureLedger()`) |
 
 > **Verify before you stake — more than one complete guardian deployment answers
-> normally.** Older stacks on other chains, and earlier mints of the fork, still
+> normally.** Older stacks on other chains and earlier deploy runs still
 > answer every read. Staking into the wrong
 > sWOOD makes you an active guardian on a network nobody proposes to: no proposals, no
 > fees, no slashing, and nothing about it looks broken. The registry and sWOOD point at
@@ -214,7 +212,7 @@ Risk codes from `proposal simulate`:
 
 | Code | Level | Meaning |
 |------|-------|---------|
-| `SIMULATION_FAILED` | critical | Call reverted during fork simulation |
+| `SIMULATION_FAILED` | critical | Call reverted during simulation |
 | `UNKNOWN_TARGET` | critical | Call targets a contract not in the known address registry |
 | `UNDECODED_CALLDATA` | critical | Calldata cannot be decoded AND target is unknown |
 | `TRANSFER_TO_UNKNOWN` | critical | `transfer()` sends funds to an unlabeled address |
@@ -377,7 +375,7 @@ Do **not** call `emergencySettleWithCalls`, `unstick`, `finalizeEmergencySettle`
 
 Verify targets against known protocol addresses **for the chain the proposal executes on**. Addresses differ across chains. Batch callees still have to pass the reachability rule (§4 intake item 3).
 
-See [ADDRESSES.md](../../ADDRESSES.md) for the fork's addresses. Strategy template clones are valid only after you verify the implementation on **this** chain.
+See [ADDRESSES.md](../../ADDRESSES.md) for the 4663 addresses. Strategy template clones are valid only after you verify the implementation on **this** chain.
 
 Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template.
 
@@ -388,15 +386,8 @@ Calls to addresses not in the known list for this chain require extra scrutiny. 
 Findings from operating a live guardian fleet. Each one presents as something
 other than its cause, which is why they are written down.
 
-**A short review window may be unvotable on a forked chain.** A Tenderly vnet's
-next block jumps forward by the wall-clock drift since the last explicit
-`evm_setNextBlockTimestamp` — ~2200s observed. `eth_call` executes at `latest`
-and passes; `cast send` and `simulateContract` estimate against the **next**
-block and revert `ReviewNotOpen`. So a window shorter than the drift can never
-be voted in, and the two ways of asking "is this open?" disagree. If you are
-standing up a fork for testing, raise `reviewPeriod` above the drift. This is
-also why a 600-second `reviewPeriod` should make you check which deployment you
-are pointed at.
+**A 600-second `reviewPeriod` should make you check which deployment you are
+pointed at.** Cross-check the registry and sWOOD against the 4663 book first.
 
 **In a container, `forge` needs the system CA store.** `forge` is Rust and reads
 `/etc/ssl/certs`; Node bundles its own. A `node:*` image has that directory

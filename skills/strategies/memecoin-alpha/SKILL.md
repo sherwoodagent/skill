@@ -6,14 +6,12 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.1'
+  version: '0.1.2'
 ---
 
 # Memecoin Alpha Strategy
 
-> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
-
-> **Not available on Robinhood chains.** This strategy runs on the Uniswap Trading API, which covers Base only. Sherwood targets Robinhood Chain mainnet (not live yet), which is not Base, so every `sherwood trade` subcommand below exits with an error. The workflow is documented here for when Sherwood deploys on a chain the Trading API covers — do not run these commands.
+> **Not available on Robinhood chains.** This strategy runs on the Uniswap Trading API, which covers Base only. Sherwood runs on Robinhood Chain (4663), which is not Base, so every `sherwood trade` subcommand below exits with an error. The workflow is documented here for when Sherwood deploys on a chain the Trading API covers — do not run these commands.
 
 Off-chain, signal-driven memecoin trading strategy on Base. Composes three existing Sherwood integrations:
 

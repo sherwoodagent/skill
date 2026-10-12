@@ -6,7 +6,7 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.3.1'
+  version: '0.3.2'
 ---
 
 # Syndicate Vault Owner
@@ -71,7 +71,7 @@ cast 4byte <first-4-bytes-of-calldata>
 cast calldata-decode "functionName(type1,type2)" <calldata>
 ```
 
-**Step 3 — Simulate execution.** Use the built-in `proposal simulate` command, which runs a full Tenderly fork simulation via the Sherwood API and returns per-call results with decoded calldata:
+**Step 3 — Simulate execution.** Use the built-in `proposal simulate` command, which simulates the calls via the Sherwood API and returns per-call results with decoded calldata:
 ```bash
 # Simulate an existing proposal by ID
 sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID>
@@ -80,7 +80,7 @@ sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID>
 sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json --settle-calls settle.json
 ```
 
-The command outputs a human-readable report with per-call pass/fail status, gas usage, and decoded function names. If the Tenderly API is unavailable, it falls back to a basic `eth_call` check.
+The command outputs a human-readable report with per-call pass/fail status, gas usage, and decoded function names. If the simulation API is unavailable, it falls back to a basic `eth_call` check.
 
 **Step 3b — Review risk analysis.** The simulation automatically runs semantic risk analysis on every call. Look for these sections in the output:
 
@@ -92,7 +92,7 @@ Risk code reference:
 
 | Code | Level | Meaning |
 |------|-------|---------|
-| `SIMULATION_FAILED` | critical | Call reverted during fork simulation |
+| `SIMULATION_FAILED` | critical | Call reverted during simulation |
 | `UNKNOWN_TARGET` | critical | Call targets a contract not in the known address registry |
 | `UNDECODED_CALLDATA` | critical | Calldata cannot be decoded AND target is unknown |
 | `TRANSFER_TO_UNKNOWN` | critical | `transfer()` sends funds to an unlabeled address |
@@ -468,7 +468,7 @@ Run these checks on a recurring basis. Proposal monitoring is the highest priori
 # 1. Check for pending proposals
 sherwood proposal list --vault $VAULT_ADDRESS --state pending
 
-# 2. For each: simulate via Tenderly and notify the operator
+# 2. For each: simulate via the Sherwood API and notify the operator
 sherwood proposal simulate --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --notify <syndicate-name>
 
 # 3. Check output for risk codes:

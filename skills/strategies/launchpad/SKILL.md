@@ -6,18 +6,16 @@ model: sonnet
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.1'
+  version: '0.2.2'
 ---
 
 # Launchpad Strategy
-
-> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
 
 > **Unaudited.** `LaunchpadStrategy` and its launch adapters come from `sherwood-strategies` (`src/launchpad/`), which has not been audited. Before proposing or approving a launch, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) on the template and the adapter for the venue, and tell the user it is used at their own risk.
 
 A `LaunchpadStrategy` proposal launches a token for the fund with vault capital. It holds back a **reserve** of that token, and the fund's share holders **claim a pro-rata slice** of the reserve during a claim window. Shares are not burned. Two venues: **Sushi Launchpad V2** (`--venue sushi`, default) and **StonkBrokers** Smart Launch V2 (`--venue stonk`).
 
-Requires CLI ≥ 0.89.2. Was deployed on `robinhood-fork` (chain 9994663), which is closed. Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed before proposing.
+Requires CLI ≥ 0.93.0. The Launchpad template is not in the Robinhood Chain (4663) address book yet: run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed before proposing. Until it is, tell the user it is not available.
 
 ```
 Vault (USDG or WETH)
@@ -156,14 +154,14 @@ Settle:  [clone.settle()]
 
 The CLI builds both. The launch and swap adapters are counterparties the clone calls, checked against the vault's TierRegistry at init and execute. Settlement and claims never consult the registry.
 
-## Addresses (chain 9994663, closed; historical)
+## Addresses (Robinhood Chain, 4663)
 
 | Contract | Address |
 | --- | --- |
-| LaunchpadStrategy template | `0x4435Aae199907f60588902Bcd7c4363a13Bb2951` |
-| SushiLaunchAdapter | `0x20348e428050031647d671F0e24752C01D4b7379` |
-| StonkLaunchAdapter | `0x36C45dC52FbC267d8536E8456ADe5255eC83A5ab` |
-| Sushi Launchpad V2 (proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
-| StonkBrokers lens (V2) | `0x25b5Df581f4b2Ed450203f375ad8A28b17F115B3` |
+| LaunchpadStrategy template | Not in the 4663 book yet (`sherwood strategy list`) |
+| SushiLaunchAdapter | Not in the 4663 book yet (`sherwood launchpad status <clone>` prints it once a clone exists) |
+| StonkLaunchAdapter | Not in the 4663 book yet |
+| Sushi Launchpad V2 (proxy, third-party) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
+| StonkBrokers lens (V2, third-party) | `0x25b5Df581f4b2Ed450203f375ad8A28b17F115B3` |
 
-Source of truth: sherwood-strategies `deployments/9994663.json`. Docs: https://docs.sherwood.sh/protocol/strategies/launchpad
+Source of truth: sherwood-strategies `deployments/4663.json` once the template deploys. Docs: https://docs.sherwood.sh/protocol/strategies/launchpad

@@ -1,6 +1,6 @@
 # External signer and HTTP API
 
-> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
+Sherwood v1 runs on Robinhood Chain mainnet (chain id **4663**). Every transaction here moves real value; show the user what a transaction does and get a yes before broadcasting it.
 
 ## HTTP API base
 
@@ -11,7 +11,7 @@ That host is already v1. Use root paths:
 ```bash
 curl -s 'https://api.sherwood.sh/'
 curl -s 'https://api.sherwood.sh/chains'
-curl -s 'https://api.sherwood.sh/prepare/identity-mint?chainId=8453&name=Test'
+curl -s 'https://api.sherwood.sh/prepare/identity-mint?chainId=4663&name=Test'
 ```
 
 Do **not** add a `/v1` prefix on this host (`https://api.sherwood.sh/v1/...` 404s — the subdomain already rewrites `/` → `/api/v1`). `https://www.sherwood.sh/api/v1` also 404s.
@@ -24,7 +24,7 @@ Global flag (before the subcommand). Prints unsigned EIP-5792 `PreparedAction` J
 sherwood --calldata-only identity mint --name "Hermes Agent"
 ```
 
-Output shape: `{ txs: [{ to, data, value, chainId }], preconditions, description }`. Broadcast `txs` in order; wait for confirmation between them. Use each tx's `chainId`. Show the user any tx that pays, approves, stakes or deposits, and broadcast it only after they say yes.
+Output shape: `{ txs: [{ to, data, value, chainId }], preconditions, description }`. Broadcast `txs` in order; wait for confirmation between them. Use each tx's `chainId` (4663 for every Sherwood call). Show the user any tx that pays, approves, stakes or deposits, and broadcast it only after they say yes.
 
 ### MetaMask Agent Wallet
 
@@ -40,17 +40,15 @@ mm wallet send-transaction \
 
 `--chain-id`, `--payload`, `--intent`, and `--wait` are `mm` flags, not Sherwood flags.
 
-`mm wallet send-transaction` only reaches chains that `mm chains list` shows; check that the vault's chain is listed. (It never listed chain 9994663, the closed fork.)
+`mm wallet send-transaction` only reaches chains that `mm chains list` shows; check that chain 4663 is listed before relying on it. If it is not, use the Privy recipe below.
 
-Commands that normally read your address from the configured key need it explicitly: `vault deposit --receiver`, `vault redeem --owner --shares`, `syndicate add --agent-id`, `strategy propose --proposer`.
+Commands that normally read your address from the configured key need it explicitly: `vault deposit --receiver`, `vault redeem --owner --shares`, `vault add --agent-id`, `vault create --creator`, `strategy propose --proposer`.
 
-## Privy agent wallet (historical: chain 9994663, closed)
+## Privy agent wallet
 
-> Historical: this recipe targeted chain 9994663, which is closed. Do not follow it until mainnet instructions are published.
+Privy's own skill: https://agents.privy.io/skill.md (it instructs `pnpm dlx`, never `npx`).
 
-The wallet API verified to work on chain 9994663 (supports it as a custom chain). Privy's own skill: https://agents.privy.io/skill.md (it instructs `pnpm dlx`, never `npx`).
-
-Privy **cannot broadcast** to this fork, so the pattern is sign-then-self-broadcast.
+Try the direct path first. If Privy's chain registry carries Robinhood Chain, `eth_sendTransaction` with `caip2: eip155:4663` signs, fills gas and nonce, and broadcasts in one call. If it answers `Unsupported chain`, fall back to sign-then-self-broadcast below.
 
 ### 1. Provision the wallet (one-time, needs a human)
 
@@ -63,20 +61,20 @@ $P list-wallets   # prints the provisioned ETH address
 ### 2. Build the calldata
 
 ```bash
-sherwood --calldata-only syndicate create -y --name "My Fund" --subdomain myfund --agent-id <your-agent-id> --creator 0xYOU
+sherwood --calldata-only vault create -y --name "My Fund" --subdomain myfund --agent-id <your-agent-id> --asset USDG --creator 0xYOU
 # → { txs: [{ to, data, value, chainId }], preconditions, description }
 ```
 
 ### 3. Sign each tx
 
-Pass `chain_id` **inside** `params.transaction` and set the gas fields explicitly. Privy auto-fills gas and nonce only for chains it knows, and 9994663 is not one of them:
+Pass `chain_id` **inside** `params.transaction` and set the gas fields explicitly when Privy does not know the chain:
 
 ```bash
 $P rpc --json '{
   "method": "eth_signTransaction",
   "params": {
     "transaction": {
-      "chain_id": 9994663,
+      "chain_id": 4663,
       "to": "0x619af1488F32B4797f6faDa3C3a8De72a5B693E0",
       "data": "0x...",
       "value": "0x0",
@@ -89,7 +87,7 @@ $P rpc --json '{
 }'
 ```
 
-Response carries the signed RLP at `data.signed_transaction` (per https://docs.privy.io/wallets/using-wallets/ethereum/sign-a-transaction). Source the fields from the fork RPC:
+Response carries the signed RLP at `data.signed_transaction` (per https://docs.privy.io/wallets/using-wallets/ethereum/sign-a-transaction). Source the fields from a Robinhood Chain RPC:
 
 - `nonce` → `eth_getTransactionCount` with `"pending"`
 - `gas_limit` → `eth_estimateGas`, or a generous fixed value
@@ -98,24 +96,16 @@ Response carries the signed RLP at `data.signed_transaction` (per https://docs.p
 ### 4. Broadcast it yourself
 
 ```bash
-curl -s -X POST https://api.sherwood.sh/tenderly/rpc \
+RPC=${ROBINHOOD_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}
+curl -s -X POST "$RPC" \
   -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"eth_sendRawTransaction","params":["<data.signed_transaction>"]}'
 ```
 
-Then poll `eth_getTransactionReceipt` and wait for `status: 0x1` before signing the next tx in `txs`.
+Then poll `eth_getTransactionReceipt` and wait for `status: 0x1` before signing the next tx in `txs`. The public RPC sits behind Cloudflare and throttles scripts; for unattended use set `ROBINHOOD_RPC_URL` to a dedicated endpoint and never print a URL that carries a key.
 
-Proof the pattern works: dust self-send `0xb3e608fe664b51126e9ec0b421a0b6d1341afc1cbb0738780593a63f40d9299d` on the fork (status 1, 21k gas).
+This sign-then-broadcast pattern was verified end to end on a Tenderly fork of this chain (chain 9994663, now closed); the only differences on 4663 are the chain id and the RPC.
 
-### Do not use `eth_sendTransaction` here
+### `personal_sign`
 
-```bash
-# FAILS: {"error":"Unsupported chain"}
-$P rpc --json '{"method":"eth_sendTransaction","caip2":"eip155:9994663","params":{"transaction":{...}}}'
-```
-
-Privy's chain registry does not carry 9994663, so the `caip2` send path is unavailable on this fork. `personal_sign` works normally.
-
-### Identity mint on Robinhood mainnet (4663)
-
-`sherwood identity mint` is the one step that touches Robinhood **mainnet** and needs a small amount of **real** ETH. The signing shape is the same, with `chain_id: 4663` and the broadcast pointed at `https://rpc.mainnet.chain.robinhood.com`. **This path was not separately smoke-tested** — only the 9994663 fork flow above was verified end to end.
+`sherwood sources login --address` and `sherwood chat --join-cohort --address` need an EIP-191 signature, not a transaction: sign the exact message with `personal_sign` through the same `$P rpc` interface and pass it back with `--signature`.

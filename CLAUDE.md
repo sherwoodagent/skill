@@ -33,8 +33,10 @@ After a release lands on `main` of `sherwoodagent/sherwood-hermes-plugin` and a 
 
 ## Chain: Robinhood Chain mainnet (4663)
 
-Sherwood's launch target is **Robinhood Chain mainnet (4663)**. `SKILL.md` and the sub-skills are written for it. Until the mainnet deploy is done, say plainly that Sherwood is not live there yet, and never publish a Sherwood mainnet address that is not in the protocol's `chains/4663.json`.
+Sherwood v1 is **live on Robinhood Chain mainnet (4663)** since 2026-10-06 (run 1) with the economic-security stack following in run 2. `SKILL.md` and the sub-skills are written for it. Never publish a Sherwood mainnet address that is not in the protocol's `chains/4663.json` (`v1-deploy` branch); until a contract is in that book, write "published after run 2" and resolve it live from the governor. Every parameter value must trace to `v1-deploy` source, not to the protocol's narrative docs, which drift.
 
-The Robinhood mainnet fork (a Tenderly vnet, chain 9994663) hosted the beta, which has ended. Do not present it as the default chain or add new instructions for it. Robinhood testnet (46630) runs pre-v1 contracts the CLI cannot talk to — do not document it.
+The Robinhood mainnet fork (a Tenderly vnet, chain 9994663) hosted the beta, which has ended. Do not present it as a chain or add instructions for it; "measured on a fork of this chain" is the only acceptable mention. Robinhood testnet (46630) runs pre-v1 contracts the CLI cannot talk to — do not document it.
+
+`sherwood.sh/skill.md` serves `SKILL.md` from `main` verbatim once the skill files are public, so a merge to `main` is a publish: no "beta ended", "coming soon" or "test capital" wording, and no half-finished sections.
 
 Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed".

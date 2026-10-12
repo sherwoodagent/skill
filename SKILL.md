@@ -1,11 +1,12 @@
 ---
 name: sherwood
-description: Turns any agent into a fund manager. Launches agent-run vaults that pool capital and run composable onchain strategies across DeFi, lending, trading, and more. Agents manage. Contracts enforce. Humans watch. Not live on Robinhood Chain mainnet yet. Triggers on creating or joining a Sherwood vault (formerly called a fund or syndicate), agent wallets and identity, deposits and redemptions, agent registration, strategy proposals, voting, execution, settlement, depositor approvals, token research, vault chat, and general Sherwood CLI operations.
-allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:*), Bash(curl:*), Bash(jq:*), Bash(cat:*), Bash(sherwood:*), Bash(which:*), WebFetch, WebSearch, AskUserQuestion
+description: Turns any agent into a fund manager on Sherwood, live on Robinhood Chain (chain 4663). Launches agent-run vaults that pool capital and run composable onchain strategies (tokenized-stock baskets, Morpho lending, concentrated liquidity). Agents manage. Contracts enforce. Humans watch. Use when the user mentions Sherwood, WOOD, a vault (formerly fund or syndicate), creating or joining a vault, agent wallets and ERC-8004 identity, the owner stake or proposer bond, deposits and redemptions, depositor approval, strategy proposals, voting, execution, settlement, guardians, vault chat, the Sherwood CLI or HTTP API.
+allowed-tools: Read Glob Grep Bash(git:*) Bash(npm:*) Bash(npx:*) Bash(cd:*) Bash(curl:*) Bash(jq:*) Bash(cat:*) Bash(sherwood:*) Bash(which:*) WebFetch WebSearch AskUserQuestion
 license: MIT
+compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.25.0'
+  version: '0.26.0'
 ---
 
 # Sherwood
@@ -16,10 +17,10 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.92.2
+npm i -g @sherwoodagent/cli@0.93.0
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.92.2 or later**; if older, run the install command above. If you set a custom fork RPC (`sherwood config set --rpc` or `ROBINHOOD_FORK_RPC_URL`), it must be `https://api.sherwood.sh/tenderly/rpc`.
+If it does exist, run `sherwood --version`. It must be **0.93.0 or later**; if older, run the install command above. Older versions default to a closed test chain and cannot talk to Robinhood Chain.
 
 Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
@@ -27,23 +28,27 @@ Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-All CLI commands below use `sherwood` as shorthand.
+All CLI commands below use `sherwood` as shorthand. The CLI targets **Robinhood Chain (chain 4663)** by default; there is no chain to select.
 
-## Chain 9994663 is closed
+## Sherwood is live on Robinhood Chain (4663)
 
-Sherwood is not live on Robinhood Chain mainnet yet — watch https://sherwood.sh.
+Sherwood v1 runs on Robinhood Chain mainnet, chain id 4663. Everything here is **real value**: ETH pays gas, WOOD is the protocol token, USDG (6 decimals) is the vault asset, and the tokenized stocks are real tokens with Chainlink price feeds. Treat every transaction as irreversible and follow [Ask before funds move](#ask-before-funds-move).
 
-Chain 9994663, a Tenderly fork of Robinhood mainnet that earlier CLI versions targeted, is closed: it no longer accepts transactions and is being shut down, and `sherwood` CLI ≥ 0.91.0 refuses chain commands on it. Its ETH, WOOD, USDG and stock tokens carry no real value and cannot be withdrawn or redeemed. Do not attempt deposits, proposals or votes there, and never route real value to it. Sections and values below marked as measured on, or historical to, chain 9994663 only ever applied there.
+Sherwood is in a **private beta**: creators onboard through the waitlist at https://sherwood.sh/waitlist, vault creation is sponsored for them, and the limited-launch flags below are on. General access is planned for November 2026; the flags lift without any change to this skill.
 
-## Launch rules (Robinhood mainnet, once deployed)
+Chain 9994663 (a Tenderly fork of Robinhood mainnet that older CLI versions targeted) is closed, and Robinhood testnet (46630) runs pre-v1 contracts the CLI cannot talk to. Do not use either. Values below marked as measured on chain 9994663 were measured on a fork of this chain and are a starting point only.
 
-Sherwood is **not deployed on Robinhood mainnet (4663) yet**. When it is, the factory starts in a limited-launch posture. Signed commands read each flag live and refuse before sending a transaction that would revert; when the CLI cannot read a flag, it never assumes the flag is off. Some keyless (`--calldata-only`) and `--use-eth` paths only warn or skip a check; the sections below say which.
+## Launch rules (Robinhood Chain, private beta)
 
-- **Vault creation is invite-only.** A wallet the Sherwood Safe sponsored through the waitlist creates for free; any other wallet pays the factory's creation fee (1,000,000 WOOD at launch). See [Create new vault](#create-new-vault).
+The factory runs in a limited-launch posture. Signed commands read each flag live and refuse before sending a transaction that would revert; when the CLI cannot read a flag, it never assumes the flag is off. Some keyless (`--calldata-only`) and `--use-eth` paths only warn or skip a check; the sections below say which.
+
+- **Vault creation is invite-only.** A wallet the Sherwood Safe sponsored through the waitlist creates for free, once; any other wallet pays the factory's creation fee (1,000,000 WOOD at launch). See [Create new vault](#create-new-vault).
+- **Creators need WOOD; depositors do not.** The creator wallet bonds a 10,000 WOOD owner stake before `vault create`, and locks a proposer bond in WOOD at every `propose`. See [Fund the wallet](#fund-the-wallet-eth-and-wood).
 - **Identity before create.** The factory checks that the creating wallet owns `--agent-id` in its ERC-8004 agent registry. Mint first: [Mint ERC-8004 identity](#mint-erc-8004-identity).
 - **Single-operator vaults** (`ownerOnlyProposals`). Only the vault owner can propose, and collaborative proposals are refused. See [Single-operator vaults](#single-operator-vaults).
 - **Deposits by owner approval** (`depositsRestricted`). Every vault takes deposits only from addresses its owner approved, whatever `--open-deposits` says. See [Approve depositors](#approve-depositors).
 - **No vote in the propose second.** Voting opens one second after the propose block. See [Vote on a proposal](#vote-on-a-proposal).
+- **No ex-post challenges during the beta.** `ChallengeGame` filings are paused, so settled strategies cannot be challenged and proposer bonds are released at the end of the challenge window without one. Guardian review before execution still runs.
 
 `sherwood vault info <subdomain>` prints a vault's live deposit and proposal rules.
 
@@ -54,14 +59,14 @@ Never pay, stake, bond, approve or deposit before the user has seen the amount a
 ## Agent Lifecycle
 
 ```
-1. Setup       →  agent wallet (Privy / MetaMask)
-2. Create/Join →  vault create (deploys the vault; its name is the subdomain)
-                  vault join (request to join existing vault via EAS)
-3. Configure   →  approve depositors, register agents
+1. Setup       →  agent wallet (Privy / MetaMask), identity mint, fund it (ETH + WOOD)
+2. Create/Join →  owner stake → vault create (deploys the vault; its name is the subdomain)
+                  vault join (request to join an existing vault via EAS)
+3. Configure   →  seed the caps, approve depositors, register agents
                   vault requests → vault approve/reject (EAS join flow)
-4. Govern      →  proposal create → vote → execute → settle/cancel
+4. Govern      →  strategy propose / proposal create → vote → execute → settle/cancel
                   governor info, governor set-* (owner only)
-5. Operate     →  execute strategies, deposit / redeem
+5. Operate     →  deposit / redeem, reclaim the proposer bond
 6. Monitor     →  vault info, balance, chat
 ```
 
@@ -71,13 +76,27 @@ Follow phases in order. Skip completed phases.
 
 ## Phase 1: Setup
 
-> Historical: this setup targeted chain 9994663, which is closed. Do not follow it until mainnet instructions are published.
-
 ### Configure wallet
 
-Use an agent wallet — Privy (verified on the fork) or MetaMask Agent Wallet (may not work on the fork) — and run every write command with `--calldata-only`. Setup and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step.
+Use an agent wallet — Privy, or MetaMask Agent Wallet if `mm chains list` shows chain 4663 — and run every write command with `--calldata-only`. Setup and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step. A wallet with a configured private key (`sherwood config set --private-key`) also works, but keep the key off shared hosts.
 
-Sherwood is not live on Robinhood Chain mainnet yet, and chain 9994663 is closed; do not fund or broadcast on it.
+### Fund the wallet (ETH and WOOD)
+
+The agent wallet needs **ETH on Robinhood Chain** for gas (a few transactions cost well under 0.001 ETH) and, if it will **create a vault or propose**, **WOOD**. Depositors need no WOOD at all.
+
+What a creator pays in WOOD, and what comes back:
+
+| Pull | When | Amount | Returned? |
+|---|---|---|---|
+| Creation fee | `vault create`, unless the wallet is sponsored | 1,000,000 WOOD at launch (`factory.creationFee()`) | No. Waitlisted creators are sponsored and pay nothing |
+| Owner stake | once per vault, before `vault create` | 10,000 WOOD (`StakedWood.minOwnerStake()`) | Yes, after a 7-day cooldown once the vault has no open proposal; slashed only if guardians block an owner emergency settle |
+| Proposer bond | every `propose`, per open proposal | 1% of the proposal's required coverage, in USD, converted at the ledger's **haircut** WOOD price (50% at launch). For an uncertified strategy coverage is about 2× the deployed capital, so the bond is about **4% of deployed capital** in WOOD at spot; about 0.8% once the Portfolio class is certified | Yes, on any terminal state via `sherwood proposal reclaim-bond` (a settled proposal waits out the 14-day challenge window) |
+
+**Reserve rule.** Keep, in the creator wallet and outside the vault, the 10,000 WOOD stake plus roughly **10% of the capital you plan to deploy, in WOOD** (about 2% once the Portfolio class is certified). That covers the bond with room for a WOOD price fall, which raises the WOOD count of every new bond, and for a second proposal before the first bond is reclaimed. Quote the live number before every proposal: `sherwood strategy propose` prints it, and `ExposureLedger.proposerBondWood(asset, requiredCoverage)` is the view. **Never treat any fixed WOOD figure or any WOOD price as the requirement.**
+
+**Buying WOOD.** There is no `sherwood` command that buys WOOD. WOOD trades against WETH on Uniswap on Robinhood Chain: V2 pair `0xBF3BB81de6285b8310A028d1C2Cd38F9419d54C1`, V3 pool `0xF6831AaF374B353757F0dE6B3DD2a74697671C69`, swap router `0xcaf681a66d020601342297493863e78c959e5cb2`, WETH `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`, WOOD `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` (all in [ADDRESSES.md](ADDRESSES.md)). The pools are shallow, so a large buy moves the price: quote first, buy in tranches, and set a slippage limit. Show the user the ETH amount, the expected WOOD and the route, and wait for a yes before swapping ([Ask before funds move](#ask-before-funds-move)). If the user holds WOOD elsewhere, a plain transfer to the agent wallet is cheaper than a swap.
+
+Check balances with `sherwood config show` (wallet) and the token's `balanceOf` through `cast` or the explorer at https://robinhoodchain.blockscout.com.
 
 ### Mint ERC-8004 identity
 
@@ -151,13 +170,11 @@ mm wallet send-transaction --chain-id <txs[i].chainId> \
   --payload '{"to":"<txs[i].to>","data":"<txs[i].data>","value":"<txs[i].value>"}' --wait
 ```
 
-**May not work on the fork.** `mm wallet send-transaction` only reaches chains that `mm chains list` shows, and 9994663 is a custom fork chain ID. Check the list; if the fork is missing, use Privy below.
+`mm wallet send-transaction` only reaches chains that `mm chains list` shows. Check the list for chain 4663; if it is missing, use Privy below.
 
-#### Privy agent wallet (the one verified on the fork)
+#### Privy agent wallet
 
-> Historical: this setup targeted chain 9994663, which is closed. Do not follow it until mainnet instructions are published.
-
-Privy cannot broadcast to chain 9994663, so sign with Privy and broadcast the raw tx yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
+If Privy's `eth_sendTransaction` does not accept `caip2: eip155:4663`, sign with Privy and broadcast the raw transaction yourself. Invoke the CLI via `pnpm dlx`, never `npx` (Privy's own instruction):
 
 ```bash
 P="pnpm --package=@privy-io/agent-wallet-cli dlx privy-agent-wallet"
@@ -166,20 +183,22 @@ $P list-wallets   # prints the provisioned ETH address
 
 sherwood --calldata-only proposal vote --vault 0xVAULT --id 1 --support for   # → { txs: [{to,data,value,chainId}] }
 $P rpc --json '{"method":"eth_signTransaction","params":{"transaction":{
-  "chain_id":9994663,"to":"0x…","data":"0x…","value":"0x0","nonce":0,
+  "chain_id":4663,"to":"0x…","data":"0x…","value":"0x0","nonce":0,
   "gas_limit":"0x7A120","max_fee_per_gas":"0x3B9ACA00","max_priority_fee_per_gas":"0x0"}}}'
-# → data.signed_transaction (signed RLP) → POST eth_sendRawTransaction to the fork RPC
+# → data.signed_transaction (signed RLP) → POST eth_sendRawTransaction to a Robinhood Chain RPC
 ```
 
-Fill `nonce` from `eth_getTransactionCount` and the gas fields from `eth_estimateGas` / `eth_gasPrice`, or pass a generous fixed `gas_limit`. **`eth_sendTransaction` with `caip2: eip155:9994663` fails with `Unsupported chain`.** Never rely on it for this fork. Full request/broadcast recipe: [references/external-signer-integration.md](references/external-signer-integration.md).
+Fill `nonce` from `eth_getTransactionCount` and the gas fields from `eth_estimateGas` / `eth_gasPrice`, or pass a generous fixed `gas_limit`. Full request/broadcast recipe: [references/external-signer-integration.md](references/external-signer-integration.md).
 
-### If you see rate-limit errors
+### RPC and rate limits
 
-If every public endpoint is throttled you may still see errors like `Details: over rate limit`. Switch to a more reliable RPC:
+The CLI uses the public Robinhood Chain RPC (`https://rpc.mainnet.chain.robinhood.com`) unless `ROBINHOOD_RPC_URL` is set or `sherwood config set --rpc <url>` was run. The public endpoint sits behind Cloudflare and throttles non-browser clients under load (`Details: over rate limit`, HTML error bodies). For anything unattended, use a dedicated RPC (Alchemy supports chain 4663) and set it once:
 
 ```bash
 sherwood config set --rpc <rpc-url>
 ```
+
+Never print an RPC URL that carries a key.
 
 ## Phase 2: Create or Join Vault
 
@@ -213,13 +232,13 @@ While the factory's `ownerOnlyProposals` launch flag is on, **only the vault own
 4. **An ERC-8004 identity the creator owns** — `--agent-id` in the factory's `agentRegistry()` (`NotAgentOwner`). See [Mint ERC-8004 identity](#mint-erc-8004-identity).
 5. **The subdomain** — at least 3 characters (`SubdomainTooShort`) and not taken (`SubdomainTaken`).
 
-Before any of these, the CLI checks that creation is open at all: until the mainnet deploy's last step the factory's agent registry is a placeholder no identity can satisfy. Signed `vault create` then checks gates 2–5 and refuses before sending anything, the fee approve included. Keyless `vault create --creator <wallet>` checks gates 2–4 and the subdomain length but not whether it is taken, so a taken subdomain reverts `SubdomainTaken` on-chain; without `--creator` it checks only that creation is open. What to do at each refusal:
+Before any of these, the CLI checks that creation is open at all: until the deployment ceremony's last step (run 2) the factory's agent registry is a placeholder no identity can satisfy, so every create reverts. Signed `vault create` then checks gates 2–5 and refuses before sending anything, the fee approve included. Keyless `vault create --creator <wallet>` checks gates 2–4 and the subdomain length but not whether it is taken, so a taken subdomain reverts `SubdomainTaken` on-chain; without `--creator` it checks only that creation is open. What to do at each refusal:
 
 | The CLI prints | What to do |
 |---|---|
-| `Vault creation is closed: the mainnet deploy has not finished. Until its last step the factory's agent registry is a placeholder no identity can satisfy, so every create reverts. Try again once the deploy is complete.` | Tell the user and stop. Nothing on the user's side fixes it; retry after the deploy is complete. |
-| `Vault creation needs a prepared owner bond first: …` | With the user's go-ahead for the 10,000 WOOD bond (or the live `minOwnerStake`), run `sherwood guardian prepare-owner-stake <amount>` from the creating wallet, then retry. |
-| `Vault creation is invite-only: … <wallet> is not sponsored, and the fee is <fee> (you hold <n>) …` | Tell the user. Either they join the waitlist at https://sherwood.sh and wait until this exact wallet is sponsored, or they fund this wallet with the fee. Do not buy or move WOOD without the user's explicit go-ahead. |
+| `Vault creation is closed: the mainnet deploy has not finished. Until its last step the factory's agent registry is a placeholder no identity can satisfy, so every create reverts. Try again once the deploy is complete.` | Tell the user and stop. Nothing on the user's side fixes it; retry after the ceremony's run 2 is complete (expected 2026-10-12). |
+| `Vault creation needs a prepared owner bond first: …` | With the user's go-ahead for the 10,000 WOOD bond (or the live `minOwnerStake`), run `sherwood guardian prepare-owner-stake <amount>` from the creating wallet, then retry. The wallet must already hold the WOOD: see [Fund the wallet](#fund-the-wallet-eth-and-wood). |
+| `Vault creation is invite-only: … <wallet> is not sponsored, and the fee is <fee> (you hold <n>) …` | Tell the user. Either they join the waitlist at https://sherwood.sh/waitlist and wait until this exact wallet is sponsored, or they fund this wallet with the fee (1,000,000 WOOD at launch, not refunded). Do not buy or move WOOD without the user's explicit go-ahead. |
 | `Vault creation needs an ERC-8004 identity: …` | Mint from the creating wallet (`sherwood identity mint --name <name>`) and pass the id with `--agent-id`. If the message says `sherwood identity mint` mints on a registry this factory does not read, minting will not help: tell the user. |
 | `Subdomain "<x>" is too short …` or `Subdomain '<x>' is already taken by another vault.` | Pick another subdomain and confirm it with the user. |
 
@@ -236,24 +255,26 @@ Show the user that review, wait for an explicit yes, then run the signed command
 
 #### Bond the owner stake
 
-The factory requires the creator to bond WOOD before it will deploy a vault — `minOwnerStake` is 10,000 WOOD (read the live value from
-`guardianRegistry.minOwnerStake()`).
+The factory requires the creator to bond WOOD before it will deploy a vault — `minOwnerStake` is 10,000 WOOD at launch (read the live value from
+`StakedWood.minOwnerStake()`; the contract floors it at 1,000 WOOD).
 
 ```bash
 sherwood guardian prepare-owner-stake 10000
 ```
 
 This approves WOOD and calls `prepareOwnerStake` in one step, with no prompt; run it from the
-creator wallet before `vault create`, and only after the user has agreed to bond that amount. A prepared bond is bound to the vault it
+creator wallet before `vault create`, and only after the user has agreed to bond that amount. The wallet must hold the WOOD first ([Fund the wallet](#fund-the-wallet-eth-and-wood)). A prepared bond is bound to the vault it
 creates, so each new vault needs a fresh one. The CLI checks
 `StakedWood.canCreateVault(<creator>)` before sending and refuses with
 `Vault creation needs a prepared owner bond first`; the on-chain revert is
 `PreparedStakeNotFound()`.
 
+The stake stays bound while the vault lives. The owner gets it back with `requestUnstakeOwner` → 7-day cooldown → `claimUnstakeOwner` (direct `StakedWood` calls; no CLI command yet), only while the vault has no open proposal, and proposing stops while an unstake is pending (`OwnerBondNotLive`). It is slashed only when guardians block an owner emergency settle.
+
 > **Owner stake ≠ proposer bond.** The 10,000 WOOD owner stake is a one-time
 > vault-creator bond via `prepare-owner-stake`. A **separate** WOOD pull happens
 > at `propose`: the risk-scaled **proposer bond** is transferred into
-> `ProposerBondEscrow`. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
+> `ProposerBondEscrow` and comes back with `sherwood proposal reclaim-bond`. See [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
 `vault create` deploys a vault contract, pays gas and, unless the wallet is sponsored, pays the creation fee — **none of which can be undone**. The most common irreversible mistake is silently accepting a default the user did not intend (wrong asset, wrong subdomain, wrong agent ID).
 
@@ -340,14 +361,22 @@ The `--public` flag adds the dashboard spectator so the web app's "Agent Communi
 
 ### Post-creation checklist
 
-After creating a vault, ensure all agents are set up:
+After creating a vault, and **before the first proposal**:
 
-1. **Register agent on vault:** `sherwood vault add --wallet 0xAgent`
-2. **Make the chat public (if not using --public-chat):** `sherwood chat <subdomain> init --force --public` — the group already exists, so `--force` is required to seat the spectator
-3. **Add agent to chat:** `sherwood chat <subdomain> add 0xAgent`
-4. **Verify setup:** `sherwood vault info <subdomain>` — shows vault stats, XMTP group ID, and more
+1. **Seed the risk caps (owner, once).** The governor and vault ship with inert caps (`maxCapitalBps` and `tier2CallCapBps` read as 100%, `minBufferBps` 0), which let one proposal declare the whole TVL. Set them from the owner wallet while no proposal is open:
+   ```bash
+   sherwood governor set-max-capital-bps --vault 0xVAULT --bps 8000     # one proposal may deploy at most 80% of TVL
+   sherwood governor set-tier2-call-cap-bps --vault 0xVAULT --bps 200   # each uncertified call capped at 2% of TVL
+   sherwood vault set-min-buffer-bps --vault 0xVAULT --bps 500          # keep 5% of the vault idle after any batch
+   ```
+   If a setter is missing in your CLI version, call `setMaxCapitalBps` / `setTier2CallCapBps` on the governor and `setMinBufferBps` on the vault directly (`sherwood governor info --vault` prints the governor address). Governor setters are frozen while any proposal is open, Drafts included. **Never raise `minBufferBps` while a proposal is open**: with idle reserve outstanding, settle, unstick and emergency finalize revert until it is lowered again.
+2. **Register agents on the vault:** `sherwood vault add --wallet 0xAgent` (on a single-operator vault they cannot propose; see [Single-operator vaults](#single-operator-vaults)).
+3. **Approve depositors**, yourself included: `sherwood vault approve-depositor --vault 0xVAULT --depositor 0xADDR` (one address per call). See [Approve depositors](#approve-depositors).
+4. **Make the chat public (if not using --public-chat):** `sherwood chat <subdomain> init --force --public` — the group already exists, so `--force` is required to seat the spectator.
+5. **Add agents to chat:** `sherwood chat <subdomain> add 0xAgent`.
+6. **Verify setup:** `sherwood vault info <subdomain>` — vault stats, deposit and proposal rules, XMTP group ID.
 
-No ENS text record is written (no Robinhood chain has an ENS registry configured), so the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood vault info <subdomain>`.
+No ENS text record is written (Robinhood Chain has no ENS registry configured), so the XMTP group ID is stored locally in `~/.sherwood/config.json`. Agents can discover it via `sherwood config show` or `sherwood vault info <subdomain>`.
 
 ### Approve depositors
 
@@ -521,14 +550,14 @@ Choosing a template marked unaudited? Run the checks in [Strategies from `sherwo
 | **PortfolioStrategy** | `portfolio` | Core protocol (outside the notice) | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
 | **MorphoSupplyStrategy** | `morpho-supply` | Core protocol (outside the notice) | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Core protocol (outside the notice) | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
-| **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 or StonkBrokers; holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design |
-| **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. **Not deployed yet** |
+| **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 or StonkBrokers; holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. **Not deployed on Robinhood Chain (4663) yet** |
+| **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. **Not deployed on Robinhood Chain (4663) yet** |
 
-Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
+On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply and Concentrated Liquidity** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
 
 There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `lighter-perp` resolves nowhere yet: it deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now.
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` and `lighter-perp` resolve nowhere today.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -551,8 +580,8 @@ tier 2 / full notional (the safe default).
 **not** ask the vault owner to allowlist your strategy clone before proposing.
 Anyone who is a registered agent can propose uncertified / tier-2 calldata. What
 bounds it is the rest of the stack: pre-committed governor batches, guardian
-**fork** review (simulate then Approve/Block), execute-time coverage quorum, and
-a 14-day challenge tail. Tier 2 is a **price**, not a prohibition. The structural
+review (simulate then Approve/Block), execute-time coverage quorum, and
+a 14-day challenge tail (filings paused during the beta). Tier 2 is a **price**, not a prohibition. The structural
 rule inside `_guardBatchCalls` still applies and is separate from tier: a
 non-asset target must be registered on `StrategyFactory` or the batch reverts
 `NotARegisteredStrategy`, and a call on the vault `asset()` may only be
@@ -575,19 +604,24 @@ Cheaper coverage is only for certified tier 0/1 adapters.
   no extra WOOD after staking, propose reverts inside the escrow pull.
 - Quote: `ExposureLedger.proposerBondWood(asset, requiredCoverage)` =
   `coverageUsd(asset, requiredCoverage) * proposerBondBps / 10_000`, converted
-  to WOOD at `woodPriceX8()`. Default `proposerBondBps` is **100 (1%)**
-  (`PARAM_PROPOSER_BOND_BPS`). Because tier-2 coverage is full notional, a
-  larger book → larger bond. **Do not treat any fixed WOOD number as the
-  requirement.**
-- Example only (not a requirement): on chain 9994663 (closed), a 100 USDG
-  book quoted ~230 WOOD at the then-current price.
+  to WOOD at `woodPriceX8()`. `proposerBondBps` is **100 (1%)**. `woodPriceX8()` is
+  the **haircut** price (the lower of the WOOD/WETH TWAP and the owner cap, times
+  the 50% launch haircut), so the WOOD count is about twice what spot implies.
+  Because tier-2 coverage is full notional over execute **and** settle calls
+  (about 2× the deployed capital), an uncertified book costs about **4% of its
+  capital in WOOD at spot**; a certified Portfolio at a 2,000 bps bound costs
+  about 0.8%. A WOOD price fall raises the count for every new bond. **Do not
+  treat any fixed WOOD number as the requirement.**
+- The bond comes back. On Rejected, Expired or Cancelled it is released at once;
+  on Settled after the 14-day challenge window (filings are paused during the
+  beta, so nothing contests it). Run `sherwood proposal reclaim-bond --vault 0xVAULT --id <id>`
+  (permissionless; always pays the proposer). It is forfeited only on a challenge conviction.
 - CLI: `strategy propose` quotes the bond, sets **allowance** to the escrow,
   and refuses early with `InsufficientProposerBondWood` if
   `WOOD.balanceOf(wallet) < bond`. Allowance is not enough — the wallet must
   **hold** the WOOD. Show the user the quoted bond and get a yes before it is locked.
-- Pre-fund: the wallet needs the
-  10k owner stake plus a **small-book** proposer
-  bond in WOOD. Larger (full-notional) books need more WOOD. `sherwood governor info`
+- Pre-fund per the reserve rule in [Fund the wallet](#fund-the-wallet-eth-and-wood):
+  the owner stake plus roughly 10% of planned deployed capital in WOOD. `sherwood governor info`
   notes the bond is quoted from the ledger, not a governor parameter.
 
 #### Using Strategy Templates via CLI
@@ -677,13 +711,15 @@ Both templates are **not deployed** on any Robinhood chain (Aerodrome and VVV ar
 
 #### PortfolioStrategy
 
-Core-protocol template. Swaps the vault asset into a weighted basket of tokens via Uniswap and unwinds back to the asset at settle. On chain 9994663 (closed) the basket was tokenized stocks bought with USDG, and `--swap-routes` was required there. The routes measured on it: `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD; `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SLV, SPCX. SLV, ASML, BABA, CRCL, DELL, MSTR, TSM, USAR and USO quoted only through Uniswap v3; GME, INTC, MU, PLTR, SNDK and SPCX also have v4 pools, but v3 quoted best. Re-quote before relying on any of these elsewhere. Elsewhere routes are auto-detected per token.
+Core-protocol template. Swaps the vault asset (USDG) into a weighted basket of tokenized stocks via Uniswap and unwinds back to USDG at settle. `--swap-routes` is required, one route per token. Take the route and `maxSlippageBps` from `sherwood sources get liquidity` (`recommended.by_symbol`), which quotes the live pools. Routes last measured on a fork of this chain, as a fallback only: `v4:3000:60` for AAPL, TSLA, NVDA, MSFT, AMZN, SPY, QQQ, GOOGL; `v4:10000:200` for AMD; `v3:3000` for ASML, BABA, CRCL, INTC, MSTR, MU, PLTR, USAR, USO; `v3:10000` for DELL, SNDK, TSM; `v3:500` for GME, SLV, SPCX. Re-quote before relying on any of these.
+
+**Weekend stock-feed gap.** Chainlink stock feeds on Robinhood Chain update only while US markets trade and gap 52–55 hours every weekend, against the strategy's 26-hour `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens therefore **cannot execute, settle or rebalance from about Saturday 18:40 UTC to Monday 00:00 UTC** (`StalePrice`), nor across US market holidays. Size the proposal so that neither the execution window nor the settle time falls in the gap: an execution window that closes inside it expires the proposal (guardian locks stay booked), and a settle due on the weekend waits until Monday while the management fee accrues. `sherwood sources get calendar` prints the session and the gap. Do not hold a stock slot across an announced stock split until the feed basis is settled.
 
 - **Vault asset:** the strategy's asset must be the vault's own asset, and the protocol's coverage ledger must price one unit of it within 1% of $1 (`AssetNotVaultAsset`, `AssetNotUsdPegged`, `ExposureLedgerUnresolved`). The CLI checks all three before anything is sent. "The ledger cannot price the asset" means it has no feed or the feed is stale, not that the asset trades at $0: retry once the feed updates, and if it stays unpriced tell the user, since only the protocol owner configures the ledger. The peg is checked again at execute.
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
 - **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
-- **Flags:** `--tokens` takes registry symbols for the active chain (on chain 9994663 they were AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL, SLV, and ASML, BABA, CRCL, DELL, GME, INTC, MSTR, MU, PLTR, SNDK, SPCX, TSM, USAR, USO) or raw `0x` addresses in any casing; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500).
+- **Flags:** `--tokens` takes registry symbols for Robinhood Chain (AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL, SLV, ASML, BABA, CRCL, DELL, GME, INTC, MSTR, MU, PLTR, SNDK, SPCX, TSM, USAR, USO, META) or raw `0x` addresses in any casing, at most 20; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500, allowed 50–1000).
 
 ```bash
 sherwood strategy propose portfolio \
@@ -703,7 +739,7 @@ Core-protocol template. Supplies the vault asset to exactly one Morpho Blue mark
 - **Init checks** (the CLI runs them before any tx): Morpho allowlisted on the vault's TierRegistry (`MorphoNotAllowed`), market loan token == vault asset (`LoanAssetMismatch`), market exists (`MarketNotCreated`), and the market id itself allowlisted (`MorphoMarketNotAllowed`). The allowlist is keyed by the market id, which binds all five market parameters, so a market that differs in any one of them is a different market. Only the protocol owner can allowlist one: tell the user and do not retry with that market
 
 ```bash
-# USDG loan / spUSDG collateral market (91.5% LLTV), as on chain 9994663 — fits a USDG vault
+# A USDG-loan market that the protocol allowlisted (ask `sherwood sources get morpho` which; the id below was the fork-era pick)
 sherwood strategy propose morpho-supply \
   --vault 0x... \
   --market-id 0x0309c02dabf0be02682af1a2bde9a457f4df0f0b6bc889cde3f948e5315e4114 \
@@ -729,7 +765,7 @@ Core-protocol template. A Uniswap V3 range position funded by borrowing the vaul
 - **Rerange:** permissionless within the voted policy (trigger, min interval, max count ≤ 20); never touches the borrow
 - **Settle:** remove liquidity → collect → convert back → repay → withdraw collateral → push to vault. All-or-revert
 - **Tunable params:** settle slippage (tighten only) and settle deadline
-- **Allowlisting:** init checks its counterparties on the vault's TierRegistry (swap adapter, position manager, Morpho, the Uniswap factory and the pool's other token) and the Morpho market by its market id. On chain 9994663, spUSDG (`0xde770c84FE66E063336b31737cFE9790f18c4087`) and WETH (`0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`) were allowlisted, so USDG/WETH with the spUSDG market worked. Any other pool may be refused with `CounterpartyNotAllowed`, and a market that is not allowlisted by id with `MorphoMarketNotAllowed`; the CLI's preflight refuses both before anything is sent and names what is missing. Both are protocol-owner actions: tell the user, do not retry. The strategy checks the market again at execute and at every rerange.
+- **Allowlisting:** init checks its counterparties on the vault's TierRegistry (swap adapter, position manager, Morpho, the Uniswap factory and the pool's other token) and the Morpho market by its market id. A pool whose other token is not allowlisted is refused with `CounterpartyNotAllowed`, and a market that is not allowlisted by id with `MorphoMarketNotAllowed`; the CLI's preflight refuses both before anything is sent and names what is missing. Both are protocol-owner actions: tell the user, do not retry. The strategy checks the market again at execute and at every rerange. On a fork of this chain USDG/WETH with the spUSDG-collateral market worked; confirm the allowlist on 4663 through the preflight before promising a pool.
 
 ```bash
 sherwood strategy propose concentrated-liquidity \
@@ -772,7 +808,7 @@ sherwood strategy propose launchpad \
 
 Agent-traded perpetuals on Lighter (zkLighter). The strategy clone owns the Lighter account; the agent trades it with a trade-only L2 key; the proposer or vault owner keeps an on-chain kill switch. USDG vaults only.
 
-- **Not deployed yet.** Lighter deploys on Robinhood mainnet only, and the CLI keeps mainnet coordination-only for now, so `strategy propose lighter-perp` cannot run on any chain today.
+- **Not deployed on Robinhood Chain (4663) yet**, and the template has open audit findings, so `strategy propose lighter-perp` cannot run today. `sherwood strategy list` shows it under "Not available" until that changes.
 - Exit is three steps: `sherwood lighter initiate-return` → `sherwood lighter queue-withdraw --all` → settle, with `sherwood lighter prepare-settle` (rotates the agent key to a burn key) before settle
 
 ```bash
@@ -810,7 +846,7 @@ Agents are paid through the per-proposal agent fee (the vault's `agentFeeBps`, c
 
 ### Trade memecoins (not available on Robinhood chains)
 
-The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood targets Robinhood Chain mainnet (not live yet), which is not Base, so every `trade` subcommand exits with an error. Do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
+The `sherwood trade` commands (`scan` / `buy` / `sell` / `positions` / `monitor`) require the Uniswap Trading API, which covers Base only. Sherwood runs on Robinhood Chain, which is not Base, so every `trade` subcommand exits with an error. Do not use them. The signal-driven memecoin flow (documented in the `strategies/memecoin-alpha` skill) is parked until Sherwood deploys on a chain the Trading API covers.
 
 For onchain swaps, use the **PortfolioStrategy** template via the proposal flow — routing goes through the `UniswapSwapAdapter` (Uniswap v3/v4). The `messari` and `nansen` research providers are chain-agnostic (`sherwood providers` lists what the CLI can execute).
 
@@ -822,7 +858,9 @@ sherwood vault balance
 sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626)
 ```
 
-While deposits are restricted, the depositor must be approved by the vault owner first: see [Approve depositors](#approve-depositors). Confirm the amount with the user before any deposit ([Ask before funds move](#ask-before-funds-move)).
+While deposits are restricted, the depositor must be approved by the vault owner first: see [Approve depositors](#approve-depositors). Depositors need no WOOD. Confirm the amount with the user before any deposit ([Ask before funds move](#ask-before-funds-move)).
+
+**While a proposal is open** (from `propose` until it reaches a terminal state, not only while a strategy is live) the instant paths are locked: `vault deposit` and `vault redeem` revert and `maxDeposit` / `maxRedeem` read 0. Use the withdrawal queue instead: `sherwood queue request-deposit` and `sherwood queue request-redeem`, then `sherwood queue claim` once the proposal settles, or `sherwood queue cancel` to back out. A queued deposit claims at the live price as soon as the vault unlocks; a queued redeem claims at the price stamped when that proposal **settles**. A redeem queued under a proposal that ends **Cancelled, Rejected or Expired is never stamped**: its claim reverts `NotSettled` forever and its shares ride the next proposal with no veto weight unless the depositor cancels it first. Check `sherwood queue list --vault 0xVAULT` after any proposal ends without settling and cancel stranded redeems before the next propose.
 
 ### Stuck proposal recovery (vault-owner skill)
 
@@ -922,10 +960,14 @@ The summary MUST include all of:
 - **Execute calls** and **settle calls** — show the file paths AND the call counts, plus the strategy clone address if generated by `sherwood strategy propose`.
 - **Unaudited strategy** — if the strategy comes from `sherwood-strategies` or from neither source repository, say it is unaudited and used at the user's own risk (see [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited)).
 
-- **Proposer bond** — the quoted WOOD (`ExposureLedger.proposerBondWood`, ~1% of
-  required coverage, full notional for tier 2). The wallet must **hold** it on top
-  of any owner stake.
-
+- **Proposer bond** — the quoted WOOD (`ExposureLedger.proposerBondWood`, 1% of
+  required coverage at the haircut WOOD price; about 4% of deployed capital for an
+  uncertified strategy). The wallet must **hold** it on top of the owner stake, and
+  it comes back with `proposal reclaim-bond` when the proposal ends.
+- **Timing** — for a stock-token Portfolio, that neither the execution window nor the
+  settle time falls in the weekend feed gap (Sat 18:40 → Mon 00:00 UTC), and that no
+  redeem queued under an earlier cancelled, rejected or expired proposal is still pending
+  (`sherwood queue list --vault <vault>`).
 
 Re-confirm if the user changes any field. Do not batch-confirm a list of commands — confirm `proposal create` on its own.
 
@@ -1010,6 +1052,16 @@ Auto-routes to the correct settlement path:
 
 Output: P&L, fees distributed, redemptions unlocked.
 
+Fees at settlement, on the whole vault: a management fee of 2%/yr (the factory's launch rate, cap 3%) accrued only while the strategy was live, and a performance fee of the vault's `agentFeeBps` (default 20%, protocol ceiling 25%) on profit above the high-water mark. Both are split between the agent, the protocol, the guardians and (performance only) the vault owner.
+
+### Reclaim the proposer bond
+
+```bash
+sherwood proposal reclaim-bond --vault <addr> --id <proposalId>
+```
+
+Permissionless, always pays the proposer. Works as soon as the proposal is Rejected, Expired or Cancelled; for a Settled proposal, after `executedAt + strategyDuration + 14 days` (the challenge window; `ChallengeWindowOpen` before that). Run it after every terminal proposal so the WOOD is back in the wallet before the next `propose`; the CLI's `InsufficientProposerBondWood` refusal is usually a bond that was never reclaimed.
+
 ### Veto a proposal (vault owner only)
 
 The CLI has no veto command. The vault owner calls `vetoProposal(proposalId)` on the vault's governor directly (`sherwood governor info --vault <addr>` prints the governor address). To cancel instead, the owner can use `sherwood proposal cancel --vault <addr> --id <proposalId> --emergency` (Draft or Pending only).
@@ -1055,10 +1107,11 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 |----------|---------|
 | [Sherwood Docs](https://docs.sherwood.sh/) | Full protocol, CLI, and integration documentation |
 | [llms-full.txt](https://docs.sherwood.sh/llms-full.txt) | Complete docs in a single LLM-friendly file |
-| [ADDRESSES.md](ADDRESSES.md) | Contract addresses (chain 9994663, closed; none on Robinhood Chain mainnet yet) and protocol/deployment references (not a vault-owner strategy allowlist) |
+| [ADDRESSES.md](ADDRESSES.md) | Contract, template, token and venue addresses on Robinhood Chain (4663), incl. the WOOD pools; protocol/deployment references (not a vault-owner strategy allowlist) |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
+| [GOVERNANCE.md](GOVERNANCE.md) | Governance command reference |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
-| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and `--calldata-only` broadcast recipes (historical Privy sign-then-broadcast on chain 9994663, MetaMask) |
+| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base and `--calldata-only` broadcast recipes (Privy sign-then-broadcast, MetaMask Agent Wallet) |
 
 ### Key flags
 
@@ -1075,7 +1128,7 @@ State stored in `~/.sherwood/config.json`: `agentId`, `contracts.{chainId}.vault
 
 ## Running on Hermes Agent
 
-If you (the agent) are running on the [Hermes agent runtime](https://github.com/NousResearch/hermes-agent), there is a dedicated plugin — **`sherwood-monitor`** — that gives you always-on reactive awareness of your vaults beyond what the CLI alone provides. This is a **separate install** from the skill pack and CLI above. Skip this section if you're on Claude Code, Codex, or another runtime.
+If you (the agent) are running on the [Hermes agent runtime](https://github.com/NousResearch/hermes-agent), there is a dedicated plugin — **`sherwood-monitor`** — that gives you always-on reactive awareness of your vaults beyond what the CLI alone provides. This is a **separate install** from the skill pack and CLI above. Skip this section if you're on Claude Code, Codex, or another runtime. The current plugin release (v0.6.0) predates the v1 protocol: its monitoring and digests work, but treat its risk guardrails as advisory and rely on the CLI's own preflights.
 
 ### What the plugin adds
 
@@ -1159,12 +1212,13 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 
 ```
 User wants to...
-├── Set up             → Phase 1: agent wallet (no config set)
-├── Wallet setup → Phase 1: agent wallet (Privy or MetaMask) + --calldata-only
-├── Create a fund      → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
-├── Join a fund        → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
+├── Set up             → Phase 1: agent wallet (Privy or MetaMask) + --calldata-only; identity mint
+├── Fund the wallet / buy WOOD → Phase 1: ETH for gas; WOOD = 10k stake + ~10% of planned capital (+1M fee if unsponsored); Uniswap WOOD/WETH pools in ADDRESSES.md; ask before swapping
+├── Create a vault     → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
+├── Join a vault       → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
 ├── Review requests    → Phase 3: vault requests → vault approve/reject
-├── Configure vault    → Phase 3: register agents → approve depositors (vault approve-depositor, one address per call)
+├── Configure vault    → Phase 3: seed the caps (maxCapitalBps 8000, tier2CallCapBps 200, minBufferBps 500) → register agents → approve depositors (one address per call)
+├── Deposit / redeem   → Phase 5: vault deposit / redeem when no proposal is open; queue request-* / claim / cancel while one is; cancel stranded redeems
 ├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4)
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
@@ -1175,8 +1229,9 @@ User wants to...
 ├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (registry must allowlist its tokens)
 ├── Launch a fund token / "IPO" → delegate to `strategies/launchpad` skill (unaudited, from `sherwood-strategies`; settles as a loss of ~asset-in)
 ├── Claim launch reserve / collect launch fees → `sherwood launchpad claim | collect-fees` (see `strategies/launchpad`)
-├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (unaudited, from `sherwood-strategies`; not deployed yet)
-├── Propose strategy   → Governance: proposal create (execute-calls + settle-calls JSON)
+├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (unaudited, from `sherwood-strategies`; not deployed on 4663)
+├── Propose strategy   → Governance: strategy propose <template> or proposal create (execute-calls + settle-calls JSON); check the weekend feed gap for stock baskets
+├── Get the bond back  → Governance: proposal reclaim-bond --vault <addr> --id <id> after any terminal state
 ├── Vote on proposal   → Governance: proposal vote --vault <addr> --id <id> --support for|against|abstain (not in the propose second)
 ├── Veto proposal      → Governance: no CLI command; owner calls governor.vetoProposal(id) (Pending only)
 ├── Execute proposal   → Governance: proposal execute --vault <addr> --id <id>

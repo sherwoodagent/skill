@@ -26,30 +26,43 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `CapExceeded` | Batch exceeds vault caps | Lower amounts or update caps |
+| `CallCapExceeded(i, outflow, cap)` | Call `i` of the batch moved more of the vault asset out than its declared cap | Raise that call's cap in the proposal (re-propose) or reduce the amount the strategy pulls |
+| `MaxCapitalExceedsCeiling` / `MaxCapitalCeilingRegressed` | `--max-capital` is above `totalAssets() × maxCapitalBps / 10_000` at propose, or the vault shrank before execute | Lower `--max-capital`, or (owner) raise `governor set-max-capital-bps` while no proposal is open |
+| `BufferBreached` | After the batch, the vault held less idle asset than `minBufferBps` requires | Deploy less (`--max-capital`), or (owner) lower `vault set-min-buffer-bps` while no proposal is open; never raise it mid-proposal |
+| `CoveredTvlCapExceeded` | The proposal's required coverage in USD exceeds the ledger's per-proposal cap ($1M at launch) | Split the book or deploy less |
+| `CoverageHorizonExceeded` | `executeBy + strategyDuration` is more than 60 days out | Shorten `--duration` |
+| `OwnerBondNotLive` | The vault owner's stake is not bound, or an owner unstake is pending | Owner: cancel the unstake (`StakedWood.cancelUnstakeOwner`) or re-bond via `rotateOwner`; nobody can propose or execute until then |
+| `VaultHasOpenProposal` | One proposal per vault at a time | Wait for the open one to reach a terminal state (`sherwood proposal list --vault`) |
+| `CooldownNotElapsed` | Less than `cooldownPeriod` (1h default) since the last proposal ended | Wait; checked at propose |
 | `TierRegressed` | A `(target, selector)` pair was demoted on `TierRegistry` between propose and execute, so the live tier exceeds the proposal's envelope | Re-propose at the current tier; the envelope is snapshotted at propose and cannot be widened. |
 | `CoverageRegressed` | Live required coverage now exceeds what the proposal snapshotted | Re-propose. Coverage is re-resolved at execute and may only shrink. |
 | `Simulation failed` | Batch would revert on-chain | Check caps, `StrategyFactory.isRegisteredStrategy` on every non-asset target, the asset-leg shape, and token balances |
 | `ERC721InvalidReceiver` | Vault can't receive NFTs | Vault includes ERC721Holder — redeploy if on old version |
-| `Could not read decimals` | Invalid token address | Verify address is a valid ERC20 on Base |
+| `Could not read decimals` | Invalid token address | Verify the address is a valid ERC-20 on Robinhood Chain (4663); see ADDRESSES.md |
+| `StalePrice` | A Chainlink feed the strategy or ledger reads is older than its bound (26h for stock feeds, which pause over weekends) | Wait for the feed; for stock baskets avoid executing, settling or rebalancing from ≈ Sat 18:40 to Mon 00:00 UTC |
+| `NoWoodPrice` / `WoodPriceUnset` | The ledger cannot price WOOD (feed stale or unwired, or the owner cap is 0), so proposing, approving and filing halt | Nothing on the agent side fixes it; the keeper must roll the WOOD feed. Retry later and tell the user |
 | `IPFS upload failed` | Hosted Sherwood pinning API unreachable or errored | Non-fatal — CLI falls back to inline `data:` metadata; check network or set `SHERWOOD_API_URL` |
 
 ## Proposer Bond Errors
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `InsufficientProposerBondWood` | Wallet WOOD balance is below the quoted proposer bond (`ExposureLedger.proposerBondWood`) | The proposing wallet must hold more WOOD; tell the user, and do not buy or move WOOD without their go-ahead. This is **not** the 10k owner stake. The CLI sets escrow allowance but cannot mint WOOD. The amount **scales** with coverage and WOOD price — quote it; do not assume a fixed WOOD number. |
+| `InsufficientProposerBondWood` | Wallet WOOD balance is below the quoted proposer bond (`ExposureLedger.proposerBondWood`): 1% of required coverage at the haircut WOOD price, about 4% of deployed capital for an uncertified strategy. A CLI-side refusal, not an on-chain error | First reclaim any bond from an earlier proposal (`sherwood proposal reclaim-bond --vault <v> --id <id>`). Otherwise the wallet must hold more WOOD: tell the user, and do not buy or move WOOD without their go-ahead (see "Fund the wallet" in [SKILL.md](SKILL.md#fund-the-wallet-eth-and-wood)). This is **not** the 10k owner stake. The amount **scales** with coverage and WOOD price — quote it; do not assume a fixed WOOD number |
+| `ProposalNotTerminal` / `NoBondToReclaim` / `ChallengeWindowOpen` | `proposal reclaim-bond` ran before the proposal ended, on a proposal with no bond, or on a Settled proposal before `executedAt + strategyDuration + 14 days` | Wait for the terminal state or the challenge window; the bond is released then |
+| `ExposureLedgerUnset` / `LedgerEscrowMismatch` | The governor has no exposure ledger wired, or its bond escrow points at a different ledger | Protocol-owner wiring (`pushWiring`); tell the user |
 
 ## Governance Errors
 
 | Error | Cause | Fix |
 |-------|-------|-----|
 | `ProposalNotApproved` | Tried to execute a proposal that isn't approved | Wait for voting to end (optimistic = auto-passes) or check veto threshold |
-| `ProposalNotVetoable` | Tried to veto a proposal that is not `Pending` | Vault owner can veto only while `Pending`; the call reverts once the proposal enters `GuardianReview` |
-| `NotVaultOwner` | Non-owner tried to veto or emergency settle | Must use the vault owner wallet |
+| `ProposalNotCancellable` | Veto, cancel or emergency-cancel in a state that does not allow it (veto and owner cancel: `Pending` only; proposer cancel: Draft, Pending until voteEnd, GuardianReview, Approved) | Check the state with `sherwood proposal show <id> --vault <vault>`; after GuardianReview only guardian block-quorum stops a proposal |
+| `NotVaultOwner` | Non-owner tried to veto, emergency cancel, unstick or emergency settle | Must use the vault owner wallet |
 | `StrategyAlreadyActive` | Tried to execute while another strategy is live | Wait for current strategy to settle first |
-| `CooldownNotElapsed` | Tried to execute too soon after last settlement | Wait for cooldown period to pass |
-| `ExecutionWindowExpired` | Tried to execute after the window closed | Proposal expired — submit a new one |
+| `ProposalNotApproved` on an Approved-looking proposal | The execution window closed, so the proposal is `Expired` (there is no separate window error) | Submit a new proposal; reclaim the bond with `proposal reclaim-bond` |
+| `StrategyDurationNotElapsed` | The proposer tried to settle less than 1 hour after execute, or someone else before the strategy duration | Wait; the proposer may settle from 1h after execute, anyone after the duration |
+| `SettlePriceBelowFloor` | Settlement would leave the share price below the declared drawdown floor | Owner path: `unstick` applies the 90% rescue floor; otherwise tell the user |
+| `ParamsFrozenDuringProposal` | A governor setter ran while a proposal is open (Drafts count) | Wait for the terminal state, then retry |
 | `NotWithinVotingPeriod` | The proposal is not open for votes. Voting opens one second after the propose block (the governor refuses while `block.timestamp <= snapshotTimestamp + 1`) and closes when the voting period ends | Right after a propose, resend once the chain has produced a later block (signed `proposal vote` waits for this itself). Otherwise check the state with `sherwood proposal show <id> --vault <vault>` |
 | `ProposerNotOwner` | The vault is single-operator: the factory's `ownerOnlyProposals` launch flag is on, so only the vault owner can propose | Do not retry from this wallet. Tell the user; only the owner can propose, from the owner wallet |
 | `CollaborationDisabled` | Collaborative proposals are off while `ownerOnlyProposals` is on: the owner proposes alone. Also raised when a co-proposer approves a Draft opened before the flag went on | Drop the co-proposers and propose from the owner wallet. For a Draft opened before the flag went on, cancel it: the proposer with `sherwood proposal cancel --vault <vault> --id <id>`, or the vault owner with `--emergency` added |
@@ -64,10 +77,9 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `NotProposer` | Non-proposer tried to `updateParams()` | Only the original proposer can tune parameters |
 | `NotExecuted` | Tried to settle or update params before execution | Strategy must be in Executed state |
 | `AlreadyExecuted` | Tried to execute an already-executed strategy | Each strategy executes once |
-| `MintFailed` | Moonwell `mint()` returned non-zero error code | Check Moonwell market status, supply caps, approval |
-| `RedeemFailed` | Moonwell `redeem()` returned non-zero error code | Check mToken balance, market liquidity |
-| `GaugeMismatch` | Gauge's staking token doesn't match LP token | Verify gauge address corresponds to the correct pool |
-| `InvalidAmount` | Zero supply amount or redeem below minimum | Check amounts; for settlement, update `minRedeemAmount` via `updateParams()` |
+| `InvalidAmount` / `InvalidWeights` / `TooManyTokens` | Portfolio init with a zero amount, weights that do not sum to 10,000 bps, or more than 20 tokens | Fix the basket |
+| `InvalidSlippage` | Portfolio `--max-slippage` outside 50–1000 bps, or Concentrated Liquidity `--settle-slippage-bps` outside 50–1000 (fixed for the clone's life) | Choose a value in range |
+| `ProposerNoLongerAgent` | `updateParams` / rebalance from a proposer the owner has since removed from the vault | Only a registered agent can tune a live strategy; ask the owner to re-register, or wait for settlement |
 | `TierRegistryUnresolved` | Portfolio, Morpho Supply or Concentrated Liquidity could not resolve the TierRegistry (vault → governor → `tierRegistry`: the vault's `governor()`, then that governor's `tierRegistry()`), so it cannot check its counterparties and fails closed | Not fixable by the vault owner or the proposer. Only the factory can set a governor's registry; the protocol owner pushes it with `SyndicateFactory.pushWiring(governor)`. Tell the user |
 | `CounterpartyNotAllowed` | The Concentrated Liquidity strategy uses a counterparty that is not on the protocol's allowlist: its swap adapter, position manager, Morpho, the Uniswap factory, or the pool's other token | Use allowlisted counterparties; adding one is a protocol-owner action, so tell the user and do not retry |
 | `MorphoMarketNotAllowed` | The Morpho market is not on the protocol's allowlist. The allowlist is keyed by market id, which covers all five market parameters (loan token, collateral, oracle, rate model, LLTV). Raised by Morpho Supply and by Concentrated Liquidity | Choose an allowlisted market. Only the protocol owner can add one; do not retry the same market |
@@ -89,13 +101,26 @@ Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the 
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `PreparedStakeNotFound` | No prepared owner stake for the creator, or it is already bound to a vault | With the user's go-ahead to bond that WOOD, `sherwood guardian prepare-owner-stake <amount>` (at least `minOwnerStake`) from the creating wallet, then retry |
+| `PreparedStakeNotFound` | No prepared owner stake for the creator, or it is already bound to a vault | With the user's go-ahead to bond that WOOD, `sherwood guardian prepare-owner-stake <amount>` (at least `minOwnerStake`, 10,000 WOOD at launch) from the creating wallet, then retry. The wallet must hold the WOOD first ("Fund the wallet" in [SKILL.md](SKILL.md#fund-the-wallet-eth-and-wood)) |
+| `InsufficientStake` on `prepare-owner-stake` | Amount below `StakedWood.minOwnerStake()` | Use at least the live minimum |
+| `PreparedStakeAlreadyExists` | This wallet already holds an unbound prepared stake | Use it (`vault create`) or `StakedWood.cancelPreparedStake()` to get the WOOD back |
 | `ERC20InsufficientAllowance` | On `vault create`: the creator is not sponsored and did not approve the factory for the creation fee. (Also raised by any other token pull with a short allowance) | Signed `vault create` approves the fee itself. Keyless: send the printed `approve` before `createSyndicate`, or pass `--creator` so the CLI checks |
 | `ERC20InsufficientBalance` | On `vault create`: the creator is not sponsored and holds less than the creation fee. (Also raised by any other token transfer) | Tell the user: join the waitlist at https://sherwood.sh for sponsorship of this wallet, or fund it with the fee |
 | `NotAgentOwner` | The creator does not own `creatorAgentId` in the factory's `agentRegistry()` | Mint from the creating wallet (`sherwood identity mint --name <name>`) and pass that ID with `--agent-id` |
 | `ERC721NonexistentToken` | That agent ID was never minted on the registry this contract reads | Check the ID with `sherwood identity status`, or mint one |
 | `SubdomainTooShort` / `SubdomainTaken` | Subdomain under 3 characters, or already used by another vault | Pick another subdomain and confirm it with the user |
 | `InvalidSyndicateConfig` | Asset, name, symbol, subdomain or metadata URI is empty | Fill every field (the CLI does this; check hand-built calldata) |
+
+## Deposit / Withdrawal Queue Errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `DepositsLocked` / `RedemptionsLocked` | An instant deposit, redeem or rescue while a proposal is open (from propose until a terminal state) | Use the queue: `sherwood queue request-deposit` / `request-redeem`, then `claim` after settlement |
+| `NoOpenProposal` / `RedemptionsNotLocked` | `queue request-deposit` / `request-redeem` while no proposal is open | Use the instant path: `sherwood vault deposit` / `vault redeem` |
+| `NotSettled` on `queue claim` | A queued redeem whose proposal has not settled. If that proposal ended Cancelled, Rejected or Expired it will **never** settle | Wait for settlement, or `sherwood queue cancel` the request and redeem instantly once the vault unlocks |
+| `VaultLocked` on `queue claim` | The vault has another proposal open | Wait for it to end |
+| `AlreadySettled` on `queue cancel` | The redeem's proposal already stamped a price; the payout is fixed | `queue claim` instead |
+| `QueueReserveBreached` | A redeem or batch would dip into assets reserved for stamped queue claims | Claim or wait; the reserve clears as claims are paid |
 
 ## XMTP / Chat Errors
 
@@ -111,25 +136,6 @@ Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the 
 
 ### Stale installation fix (most common XMTP issue)
 
-```bash
-# 1. Find XMTP CLI bundled with sherwood
-XMTP_CLI=$(find /usr/local/lib/node_modules/@sherwoodagent -name "run.js" -path "*xmtp*cli*" | head -1)
+The CLI keeps its XMTP identity in `~/.sherwood/xmtp/xmtp.db3` (encryption key derived from the agent key, or `xmtpDbKey` in `~/.sherwood/config.json` for key-less wallets). Follow the ordered steps in "Chat troubleshooting (welcome not arriving)" in [SKILL.md](SKILL.md#chat-troubleshooting-welcome-not-arriving): `sherwood session check <name>` first, then confirm the wallet, then seed the group cache, then revoke orphan installations and get re-added.
 
-# 2. Get your current installation ID
-node $XMTP_CLI client info --log-level off --env production
-
-# 3. Check all installations — if >1 exists, stale ones must go
-node $XMTP_CLI inbox-states <inbox-id> --log-level off --env production
-
-# 4. Revoke stale installations (keep only current)
-node $XMTP_CLI revoke-installations <inbox-id> -i <stale-id> --force --env production
-
-# 5. Creator removes and re-adds you
-#    sherwood chat <name> add <your-address>
-
-# 6. Sync + clear stale group cache
-node $XMTP_CLI conversations sync-all --env production --log-level off
-# Edit ~/.sherwood/config.json → set "groupCache": {}
-```
-
-**Golden rule:** Never delete `~/.xmtp/` after being added to a group. Reinstalling the CLI (`npm i -g`) does NOT touch `~/.xmtp/`. If you must reset, only delete `xmtp-db*` files — never `.env` (contains your db encryption key). After any db reset you must get re-added to the group.
+**Golden rule:** never delete `~/.sherwood/xmtp/` after being added to a group, and never open that DB from another script (it creates a second installation under the same inbox). Reinstalling the CLI does not touch it. After any reset you must get re-added to the group.

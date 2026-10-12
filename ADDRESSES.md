@@ -1,38 +1,20 @@
 # Contract Addresses
 
-> Sherwood is not live on Robinhood Chain mainnet yet. Chain 9994663 is closed.
+Sherwood v1 is live on **Robinhood Chain mainnet (chain 4663)**. Source of truth:
+`chains/4663.json` in `sherwoodagent/sherwood-protocol` (branch `v1-deploy`). The
+CLI carries the same table (`sherwood strategy list` prints the templates it sees),
+and the rendered docs are at <https://docs.sherwood.sh/reference/deployments>.
 
-The **Robinhood mainnet fork — a Tenderly vnet, chain 9994663** — was the beta's
-chain of record; the beta ended 2026-09-30 22:00 UTC and the CLI (≥ 0.91.2) refuses
-chain commands on it. The vnet was ephemeral and carried no real value.
+> **Do not reuse addresses from any other chain.** The Tenderly fork (chain 9994663)
+> is closed and Robinhood testnet (46630) runs pre-v1 contracts. Both are retired.
 
-> See also: [Deployments reference](https://docs.sherwood.sh/reference/deployments)
+Chain facts: ETH is the gas token, **USDG** (6 decimals) is the vault asset (there is
+no USDC), official Uniswap v3 and v4, Morpho Blue, Chainlink **push** feeds (24h
+heartbeat, 26h staleness bound; stock feeds pause over weekends). Explorer:
+<https://robinhoodchain.blockscout.com>. Public RPC: `https://rpc.mainnet.chain.robinhood.com`
+(rate-limited; set `ROBINHOOD_RPC_URL` or `sherwood config set --rpc` for anything unattended).
 
-> **Robinhood mainnet (chain 4663) is not listed here.** No Sherwood core address
-> exists on it yet — the addresses land after the deployment ceremony. Do not reuse
-> this table on 4663. The one thing that
-> *is* live on 4663 is the canonical ERC-8004 IdentityRegistry, which is not a
-> Sherwood contract — see "Identity and names" below.
-
-## Robinhood mainnet fork — Tenderly vnet (chain 9994663, closed; historical)
-
-> **An ephemeral test network, not a public chain.** This vnet is a Tenderly fork of
-> Robinhood mainnet, reachable only through its own RPC URL. Every address below dies
-> when the vnet is re-minted, and a fresh fork gets a whole new table. Do not stake,
-> fund, or route real value here, and never treat these as Robinhood mainnet (4663)
-> addresses. Source of truth: `chains/9994663.json` in `sherwoodagent/sherwood-protocol`.
-
-Public RPC (a Sherwood proxy: reads and `eth_sendRawTransaction` only, no
-impersonation or cheat methods, batches capped at 50):
-`https://api.sherwood.sh/tenderly/rpc`
-
-Fork of Robinhood *mainnet*, so the venues and tokens are the real ones: USDG as the
-vault asset, official Uniswap v3/v4, Morpho Blue, Chainlink **push** feeds
-(`VERIFIER_PROXY = 0`, so PortfolioStrategy runs in push-feed mode and feed ids are
-AggregatorV3 proxy addresses). The WOOD/USD source is a **fork fixture** priced off
-the fork's own WOOD/WETH reserves times the live ETH/USD answer — not a market feed.
-
-### Core
+## Core (run 1, live since 2026-10-06)
 
 | Contract | Address |
 |----------|---------|
@@ -44,41 +26,65 @@ the fork's own WOOD/WETH reserves times the live ETH/USD answer — not a market
 | GuardianRegistry | `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72` |
 | StakedWood (sWOOD) | `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203` |
 | TierRegistry | `0x4614f058920941A0a9a852e62485fbDE692D75E1` |
-| ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` |
-| ChallengeGame | `0x7046FececcA6c0f5E66Cc998099593ae71A1bbee` |
-| TokenCourt | `0xC30bA62727be65fd867385Ce27Ff7C78bd66A897` |
-| ProposerBondEscrow | `0x7d25058c891d3AC5C8bc8Da6aA937DFeE648B5cF` |
 | StrategyFactory | `0xb06788F027268a9A06c3AD41a88559530D2E54b1` |
 | UniswapSwapAdapter | `0x54E6A7af53143556973493fDeC9d7837A77c67eF` |
-| WOOD/USD feed (fork fixture) | `0x0C2dA5FD01e42AE11CeB1d3149867b1896e23B6B` |
+| WOOD/USD feed (WoodPoolFeed) | `0xE031f1a5e8dBb5BAE98607BEC44c9fE91B608E09` |
 | Create3Factory | `0x231972653B1e4fc772fcF064F3FD2357d9Df371D` |
 
-As on every chain, there is no singleton `SyndicateGovernor`: each vault gets its own
-`BeaconProxy`, resolved via `factory.governorOf(vault)`.
+There is no singleton `SyndicateGovernor`: each vault gets its own `BeaconProxy`,
+resolved via `factory.governorOf(vault)` (`sherwood governor info --vault` prints it).
+Each vault also gets its own `VaultWithdrawalQueue`, read from `vault.withdrawalQueue()`.
 
-### Strategy templates
+## Run 2 (economic-security stack)
+
+Deployed in the second run of the launch ceremony (expected 2026-10-12), which also
+opens vault creation. Addresses land in `chains/4663.json` after the ceremony and are
+mirrored here and in the CLI then; until a key is in the book its CLI entry is zero.
+
+| Contract | Address |
+|----------|---------|
+| ExposureLedger | published after run 2 |
+| ProposerBondEscrow | published after run 2 |
+| ChallengeGame | published after run 2 (filings paused through the beta) |
+| TokenCourt | published after run 2 |
+
+Resolve them live instead of guessing: `governor.exposureLedger()`, `governor.bondEscrow()`
+on any vault's governor, and `exposureLedger.coverageFreezer()` for the game.
+
+## Strategy templates
 
 | Template | Address |
 |----------|---------|
 | PortfolioStrategy | `0xAA5872009c527cCb80343E41C52840CEdb095eb0` |
 | MorphoSupplyStrategy | `0x5B55E1Da361573CB0788e750038567D2569BE41d` |
 | ConcentratedLiquidityStrategy | `0xcba9C84F2d382729D1519c5F7f4a9AAaC075f8B5` |
-| LaunchpadStrategy | `0x4435Aae199907f60588902Bcd7c4363a13Bb2951` |
-| SushiLaunchAdapter | `0x20348e428050031647d671F0e24752C01D4b7379` |
-| StonkLaunchAdapter | `0x36C45dC52FbC267d8536E8456ADe5255eC83A5ab` |
 
-The Launchpad template and adapters come from sherwood-strategies
-`deployments/9994663.json`. `LighterPerpStrategy` is not deployed on any chain yet.
-Both come from `sherwood-strategies` and are unaudited: see
+`LaunchpadStrategy`, its Sushi / StonkBrokers launch adapters and `LighterPerpStrategy`
+come from `sherwood-strategies`, are unaudited, and are **not deployed on Robinhood
+Chain**; `sherwood strategy list` shows them under "Not available". See
 [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
 
-### Tokens
+## WOOD and where to buy it
+
+| Item | Address |
+|------|---------|
+| WOOD (ERC-20, 18 decimals) | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` |
+| WETH | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
+| WOOD/WETH Uniswap V2 pair | `0xBF3BB81de6285b8310A028d1C2Cd38F9419d54C1` |
+| WOOD/WETH Uniswap V3 pool | `0xF6831AaF374B353757F0dE6B3DD2a74697671C69` |
+| WOOD/WETH Uniswap V3 factory | `0xE51960f1B45f1C9FB6D166E6a884F866fC70433B` |
+
+The CLI has no command that buys WOOD. Swap WETH for WOOD through the Uniswap
+SwapRouter below (or the V2 pair directly); both pools are shallow, so quote first and
+size the trade in tranches. How much WOOD a creator needs: [Fund the wallet](SKILL.md#fund-the-wallet-eth-and-wood).
+The protocol prices WOOD from the lower of the two pools' 24h TWAPs (times Chainlink
+ETH/USD), capped by the owner and haircut 50%; that haircut price sizes the proposer bond.
+
+## Tokens
 
 | Token | Address |
 |-------|---------|
 | USDG (vault asset, 6-dec) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
-| WETH | `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73` |
-| WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` |
 | AAPL | `0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9` |
 | TSLA | `0x322F0929c4625eD5bAd873c95208D54E1c003b2d` |
 | NVDA | `0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC` |
@@ -105,7 +111,11 @@ Both come from `sherwood-strategies` and are unaudited: see
 | USAR | `0xd917B029C761D264c6A312BBbcDA868658eF86a6` |
 | USO | `0xa30FA36Db767ad9eD3f7a60fC79526fB4d56D344` |
 
-### External protocols
+Every stock has a Chainlink USD push feed (`CHAINLINK_<SYM>_USD_FEED` in the book);
+`sherwood sources get universe` prints token, decimals, multiplier and feed per symbol,
+and `sherwood strategy propose portfolio --tokens <SYMS>` resolves the feeds itself.
+
+## External protocols
 
 | Contract | Address |
 |----------|---------|
@@ -116,13 +126,13 @@ Both come from `sherwood-strategies` and are unaudited: see
 | Uniswap V4 PoolManager | `0x8366a39cc670b4001a1121b8f6a443a643e40951` |
 | Uniswap V4 Quoter | `0x8dc178efb8111bb0973dd9d722ebeff267c98f94` |
 | Morpho Blue | `0x9D53d5E3bd5E8d4Cbfa6DB1ca238AEA02E651010` |
-| Sushi Launchpad V2 (proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
-| StonkBrokers lens (V2) | `0x25b5Df581f4b2Ed450203f375ad8A28b17F115B3` |
-| zkLighter proxy (mainnet 4663; the fork has no sequencer) | `0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d` |
 | Chainlink ETH/USD | `0x78F3556b67E17Df817D51Ef5a990cDaF09E8d3A9` |
 | Chainlink USDG/USD | `0x61B7e5650328764B076A108EFF5fa7282a1B9aD2` |
+| EAS | `0x7d70441Bb10AcE5d9771dc0b6205D89ddf63205B` |
+| EAS SchemaRegistry | `0xdd7521Ba10773e556Defa6D6c133cB2F663b5c26` |
+| Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` |
 
-### Batch callees
+## Batch callees
 
 There is no callee allowlist and no adapter allowlist anywhere in the v1 stack —
 `TierRegistry` prices calls, it does not gate them. The structural rule lives in
@@ -135,18 +145,17 @@ call pass: `transfer`, `transferFrom` with `from == vault` (else
 `increaseApproval`, `decreaseAllowance`, `decreaseApproval`), whose first argument
 is the spender whose allowance is reset after the batch. Calldata shorter than 36
 bytes reverts `MalformedAssetCall`, and any other selector reverts
-`UnrecognizedAssetSelector`.
+`UnrecognizedAssetSelector`. Strategies check their own venues against the
+TierRegistry counterparty, Morpho-market and price-source allowlists
+(`CounterpartyNotAllowed`, `MorphoMarketNotAllowed`, `PriceSourceNotAllowed`).
 
 ## Identity and names
 
 - **Identity** — every agent mints on the canonical ERC-8004 IdentityRegistry
-  `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on Robinhood mainnet (4663), the
-  coordination chain. Once Sherwood is deployed there, this is the factory's `agentRegistry()`: `vault create`
-  needs the creator to own `--agent-id`, and `vault add` / `vault approve` need the agent
-  wallet or the vault owner to own the id (`NotAgentOwner`). See "Mint ERC-8004
-  identity" in [SKILL.md](SKILL.md#mint-erc-8004-identity).
+  `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on Robinhood Chain (ReputationRegistry
+  `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63`). After run 2 it is the factory's
+  `agentRegistry()`: `vault create` needs the creator to own `--agent-id`, and
+  `vault add` / `vault approve` need the agent wallet or the vault owner to own the id
+  (`NotAgentOwner`). See "Mint ERC-8004 identity" in [SKILL.md](SKILL.md#mint-erc-8004-identity).
 - **ENS names** — the factory does not register them; a vault's name is its subdomain
   (see "Vault names" in [SKILL.md](SKILL.md#vault-names)).
-- **Strategies on chain 9994663** — only Portfolio, Morpho Supply, Concentrated
-  Liquidity and Launchpad were deployed there. On any chain, `sherwood strategy list`
-  shows the rest under "Not available".

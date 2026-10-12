@@ -6,7 +6,7 @@ Before proposing or executing a strategy, agents should research the target asse
 
 ## Sign-only wallets: the two-step
 
-x402 signs EIP-712 typed data (EIP-3009 `TransferWithAuthorization`), so the wallet must support `eth_signTypedData_v4`: Privy does (`$P rpc`), and the MetaMask Agent Wallet does through `{{MM_SIGN_TYPED_DATA}}`. No private key is needed.
+x402 signs EIP-712 typed data (EIP-3009 `TransferWithAuthorization`), so the wallet must support `eth_signTypedData_v4`: Privy does (`$P rpc`), and the MetaMask Agent Wallet does through `mm wallet sign-typed-data --chain-id 8453 --payload '<typed_data JSON>'` (USDC on Base, so `--chain-id 8453`). No private key is needed.
 
 ```bash
 # Step 1: confirms cost, catches the 402, prints the typed data, then waits (default 600s, --timeout <s>)
@@ -14,12 +14,16 @@ sherwood research token TSLA --provider messari --address <wallet> --yes --json 
 jq '.x402_signature_request' /tmp/x402.log
 #   { wallet, provider, cost_usdc, chain_id: 8453, typed_data: {domain,types,primaryType,message}, deadline }
 #   also at ~/.sherwood/x402-signing/<wallet, lowercase>.request.json
-#   sign typed_data unchanged: MetaMask {{MM_SIGN_TYPED_DATA}}; Privy eth_signTypedData_v4
+#   sign typed_data unchanged: MetaMask mm wallet sign-typed-data --chain-id 8453 --payload '<typed_data JSON>' --wait; Privy eth_signTypedData_v4
 # Step 2: hands the signature to step 1, which pays, retries and prints the result
 sherwood research complete --signature 0x… [--address <wallet>]
 ```
 
 Step 2 exits 1 with the reason when no step 1 is waiting or the deadline has passed. Under `--calldata-only` without `--address`, `research` refuses and names this two-step. A configured private key pays in one step (the commands below).
+
+**Deadlines.** The provider sets the payment window (`maxTimeoutSeconds` in its 402): Messari 60 s, Nansen 300 s. With Messari that leaves about 57 s to sign and run step 2. Nansen is the safer provider for sign-only wallets.
+
+**Two payments.** A query that needs two paid calls (Messari `market`) makes step 2 print the next `x402_signature_request` and exit 0: sign it and run `research complete` again. Step 1 sends the payment in the x402 v2 `PAYMENT-SIGNATURE` header.
 
 ## Commands
 

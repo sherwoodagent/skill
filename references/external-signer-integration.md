@@ -33,7 +33,7 @@ Commands that normally read your address from the configured key need it explici
 ```bash
 npm i -g @metamask/agent-wallet@latest
 mm login          # prints a device code; a human approves it once
-mm chains list    # must list 4663 (Robinhood Chain); if it does not, use Privy
+mm chains list    # needs mm login; check that it shows 4663 (Robinhood Chain); if it does not, use Privy
 ```
 
 Send each `txs[i]`:
@@ -52,8 +52,10 @@ Sign without sending:
 
 | Need | Used by | MetaMask |
 |---|---|---|
-| personal_sign (EIP-191) | `sources login`, `chat --join-cohort` | `{{MM_SIGN_MESSAGE}}` |
-| EIP-712 typed data | `research` (x402) | `{{MM_SIGN_TYPED_DATA}}` |
+| personal_sign (EIP-191) | `sources login`, `chat --join-cohort` | `mm wallet sign-message --message '<text>' --chain-id 4663 [--wait]` |
+| EIP-712 typed data | `research` (x402) | `mm wallet sign-typed-data --chain-id 8453 --payload '<typed_data JSON>' [--intent '…'] [--wait]` |
+
+Verbs read from `@metamask/agent-wallet` 7.0.0 `--help`. x402 pays USDC on Base, hence `--chain-id 8453`.
 
 ## Privy agent wallet (second choice)
 
@@ -136,7 +138,7 @@ Three CLI commands need a signature but no transaction. Each prints what to sign
 
 ```bash
 sherwood sources login --address <wallet> --json   # → message (expires in 10 min)
-#   personal_sign the exact message: MetaMask {{MM_SIGN_MESSAGE}}, Privy personal_sign
+#   personal_sign the exact message: MetaMask mm wallet sign-message --message '<message>' --chain-id 4663, Privy personal_sign
 sherwood sources login --signature 0x…             # → 1-hour token
 ```
 
@@ -147,7 +149,7 @@ The token is a 1-hour JWT with no refresh: re-run both steps every hour, or on t
 ```bash
 sherwood chat --join-cohort --address <wallet> --json > /tmp/join.log 2>&1 &   # step 1 waits (default 600s)
 jq -r .xmtp_signature_request.message /tmp/join.log
-#   personal_sign that exact text: MetaMask {{MM_SIGN_MESSAGE}}, Privy personal_sign
+#   personal_sign that exact text: MetaMask mm wallet sign-message --message '<text>' --chain-id 4663, Privy personal_sign
 sherwood chat --join-cohort --signature 0x…
 sherwood chat --cohort log
 ```
@@ -161,8 +163,12 @@ sherwood research token TSLA --provider messari --address <wallet> --yes --json 
 jq '.x402_signature_request' /tmp/x402.log
 #   { wallet, provider, cost_usdc, chain_id: 8453, typed_data: {domain,types,primaryType,message}, deadline }
 #   also at ~/.sherwood/x402-signing/<wallet, lowercase>.request.json
-#   sign typed_data unchanged (EIP-712): MetaMask {{MM_SIGN_TYPED_DATA}}, Privy eth_signTypedData_v4
+#   sign typed_data unchanged (EIP-712): MetaMask mm wallet sign-typed-data --chain-id 8453 --payload '<typed_data JSON>', Privy eth_signTypedData_v4
 sherwood research complete --signature 0x… [--address <wallet>]
 ```
 
 The payment is an EIP-3009 `TransferWithAuthorization` on USDC on Base (8453): the wallet needs USDC on Base, not on 4663. Get the owner's yes for the shown cost before step 1 (`--yes` stands in only for an approval the owner already gave). Step 2 exits 1 if no step 1 is waiting or the deadline has passed: start step 1 again.
+
+**Deadlines.** The provider sets the payment window (`maxTimeoutSeconds` in its 402): Messari 60 s, Nansen 300 s. With Messari that leaves about 57 s to sign and run step 2. Nansen is the safer provider for sign-only wallets.
+
+**Two payments.** A query that needs two paid calls (Messari `market`) makes step 2 print the next `x402_signature_request` and exit 0: sign it and run `research complete` again. Step 1 sends the payment in the x402 v2 `PAYMENT-SIGNATURE` header.

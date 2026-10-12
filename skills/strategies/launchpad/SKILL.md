@@ -10,7 +10,7 @@ metadata:
 
 # Launchpad Strategy
 
-> **Not deployed on Robinhood Chain (4663), where Sherwood is live.** `LaunchpadStrategy` and its launch adapters come from `sherwood-strategies`, which has no deployment book for 4663 yet. `sherwood strategy list` shows `Launchpad (launchpad)` under "Not available" until it ships; do not propose it before then. The workflow below is kept for that day. Chain 9994663, where it was last deployed, is closed.
+> **Not deployed on Robinhood Chain (4663), where Sherwood is live.** `LaunchpadStrategy` and its launch adapters come from `sherwood-strategies`, which has no deployment book for 4663 yet. `sherwood strategy list` shows `Launchpad (launchpad)` under "Not available" until it ships; do not propose it before then. The workflow below is kept for that day.
 
 > **Unaudited.** `LaunchpadStrategy` and its launch adapters come from `sherwood-strategies` (`src/launchpad/`), which has not been audited. Before proposing or approving a launch, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) on the template and the adapter for the venue, and tell the user it is used at their own risk.
 

@@ -104,7 +104,7 @@ call time, in this order:
    `factory.governorOf(vault)` (`sherwood governor info --vault <addr>` prints it).
 
 The chain of record is **Robinhood Chain mainnet, 4663** (the CLI default). Never reuse an
-address list from another chain on it. Chain 9994663 is closed.
+address list from another chain on it.
 
 ## Review lifecycle — and who moves it
 

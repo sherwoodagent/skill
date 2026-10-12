@@ -46,7 +46,7 @@ Source of truth: `chains/4663.json` in `sherwoodagent/sherwood-protocol` (`v1-de
 | USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
 | Portfolio / Morpho Supply / Concentrated Liquidity templates | `0xAA5872009c527cCb80343E41C52840CEdb095eb0` / `0x5B55E1Da361573CB0788e750038567D2569BE41d` / `0xcba9C84F2d382729D1519c5F7f4a9AAaC075f8B5` |
 
-ExposureLedger, ProposerBondEscrow, ChallengeGame and TokenCourt are deployed in run 2; their addresses are published in ADDRESSES.md after the ceremony. Resolve the ledger live: `cast call $GOVERNOR_ADDRESS "exposureLedger()(address)"`. Launchpad and Lighter templates are not deployed on 4663. Chain 9994663 (the fork) is closed.
+ExposureLedger, ProposerBondEscrow, ChallengeGame and TokenCourt are deployed in run 2; their addresses are published in ADDRESSES.md after the ceremony. Resolve the ledger live: `cast call $GOVERNOR_ADDRESS "exposureLedger()(address)"`. Launchpad and Lighter templates are not deployed on 4663.
 
 ---
 
@@ -89,7 +89,7 @@ At launch you are the proposer. `sherwood strategy propose` / `proposal create` 
 1. **Provenance.** Core templates only (Portfolio, Morpho Supply, Concentrated Liquidity). `sherwood strategy list` shows what is deployed on 4663. Anything from `sherwood-strategies`, or hand-written, is unaudited: see [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
 2. **Simulate the call files** before proposing: `sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json --settle-calls settle.json`. Read the risk codes (§2).
 3. **The bond.** Quote it live; the CLI prints it. It is 1% of required coverage in USD, converted at the **haircut** WOOD price (50% haircut at launch), so an uncertified Portfolio bond is about 4% of deployed capital in WOOD at spot, about 0.8% once the class is certified. Never treat a fixed WOOD figure as the requirement. It comes back on any terminal state: `sherwood proposal reclaim-bond --vault $VAULT_ADDRESS --id <id>` (after a Settled proposal, only once the 14-day challenge window has closed; `ChallengeWindowOpen` until then).
-4. **Caps.** `--max-capital` ≤ 80% of `totalAssets()` (§0); each tier-2 call cap ≤ 2% of `totalAssets()`; Σ caps ≤ `--max-capital` (`CallCapsExceedMaxCapital`). Covered TVL cap is $1M per proposal (`CoveredTvlCapExceeded`).
+4. **Caps.** `--max-capital` ≤ 80% of `totalAssets()` (§0); each tier-2 call cap ≤ 2% of `totalAssets()`; Σ caps ≤ `--max-capital` (`CallCapsExceedMaxCapital`). Required coverage is capped at $1M per proposal (`CoveredTvlCapExceeded`); while uncertified that is about 2× the deployed capital.
 5. **Duration** 1 h – 30 d. Cooldown 1 h after the last proposal ended (`CooldownNotElapsed`).
 6. **The weekend feed gap.** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the Portfolio template's 26 h `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens **cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC** (`StalePrice`). With the default 24 h vote + 24 h review + 24 h execution window, an execution window that falls inside the gap expires the proposal. Propose so that both the execution window and the end of the strategy land on weekdays.
 7. **Splits.** Do not hold a stock slot across an announced split; the feed basis changes under the position.
@@ -237,7 +237,7 @@ There is no owner transaction that immediately runs arbitrary calls. Owner-suppl
 | `cancelEmergencySettle(id)` | Recalls the open window (`EmergencyNotProposed` if none) | — | Closes it |
 | `finalizeEmergencySettle(id)` | After `reviewPeriod`: reverts `EmergencySettleBlocked` if guardians blocked, else runs the committed calls uncapped with zero net egress and finishes settlement. **Exempt from `StrategyNotSettled`** | Stake must be nonzero | Resolves |
 
-A guardian block of the emergency review burns the **whole** owner bond (`slashOwnerBond`) and deletes the slot: `ownerBondLive` turns false and you cannot propose or execute until you re-bond (`prepareOwnerStake` + `approveOwnerStakeBinding(vault)` on sWOOD, then `factory.rotateOwner(vault, <yourself>)`; a same-owner rotation is allowed mid-proposal). Never open this path with drain-shaped calldata.
+A guardian block of the emergency review burns the **whole** owner bond (`slashOwnerBond`) and deletes the slot: `ownerBondLive` turns false and you cannot propose or execute until you re-bond (`prepareOwnerStake` + `approveOwnerStakeBinding(vault)` on sWOOD, then `factory.rotateOwner(vault, <yourself>)`; a same-owner rotation is allowed mid-proposal). Rotation drains the agent roster, so re-register yourself afterwards (`sherwood vault add --vault $VAULT_ADDRESS --wallet <owner> --agent-id <id>`) or propose reverts `NotRegisteredAgent`. Never open this path with drain-shaped calldata.
 
 ```bash
 REG=$(cast call $GOVERNOR_ADDRESS "guardianRegistry()(address)" --rpc-url $RPC_URL)

@@ -533,7 +533,7 @@ Its **Strategy** section prints the strategy's address and one of these (signed 
 Where the rest comes from:
 
 - **Template addresses before you propose.** `sherwood strategy list` prints `Template: <address>` for every template deployed on the active chain.
-- **Launchpad adapters.** The template calls a launch adapter for its venue (Sushi or StonkBrokers), and the adapter needs the same three checks. For an existing clone, including one a proposal names, `sherwood launchpad status <strategy>` prints `Launch adapter: <address>`. Before a clone exists, no CLI command prints the adapter addresses; this skill lists them only for the closed chain 9994663 ([ADDRESSES.md](ADDRESSES.md)), so ask the user or the vault owner for them on any other chain.
+- **Launchpad adapters.** The template calls a launch adapter for its venue (Sushi or StonkBrokers), and the adapter needs the same three checks. For an existing clone, including one a proposal names, `sherwood launchpad status <strategy>` prints `Launch adapter: <address>`. Before a clone exists, no CLI command prints the adapter addresses; the Launchpad template and its adapters are not deployed on Robinhood Chain (4663) yet, so until they appear in [ADDRESSES.md](ADDRESSES.md) ask the vault owner for them and verify each on the explorer.
 - **Explorer.** Use the block explorer of the chain the vault is on; the CLI prints links to it for the transactions it sends.
 - **Repository.** https://github.com/sherwoodagent/sherwood-strategies: Launchpad in `src/launchpad/` (template and adapters), Lighter in `src/lighter/`.
 

@@ -6,8 +6,19 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (Privy / MetaMask). (CLI ≥ 0.90.0 covers `guardian prepare-owner-stake` too) |
+| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (MetaMask Agent Wallet or Privy) |
 | `Agent identity required` | No agentId saved | `sherwood identity mint --name "..."` |
+| `Sherwood is not deployed on Robinhood Chain for this command yet. Retry after the mainnet deploy completes.` | A core contract this command needs is not in the CLI's 4663 address book yet | Tell the user and stop; retry after the deploy completes |
+| `… not a registered agent` (keyless `strategy propose`) | The creator was never registered on the vault: keyless `vault create` cannot do it | `sherwood vault info <subdomain>` for the vault address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id <id>` and broadcast |
+
+## Data feeds and research
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `401` from `sources` | No token, token older than 1 hour, expired challenge (10 min) or wrong signer | Log in again: `sherwood sources login --address <wallet>`, sign, `--signature 0x…`. Sign-only routines re-login every hour |
+| `403` from `sources login` | Valid signature, but the wallet's waitlist entry is not approved | Tell the vault owner. Never retry with another wallet. Access after paying the creation fee is granted once the indexer ships; until then use an approved waitlist wallet |
+| `research` refuses under `--calldata-only` | x402 needs a signature and no key is configured | Use the two-step: `sherwood research … --address <wallet>` (keep it running), sign the typed data, `sherwood research complete --signature 0x…` (see [RESEARCH.md](RESEARCH.md)) |
+| `research complete` exits 1 | No step 1 is waiting for this wallet, or the payment deadline passed | Start step 1 again, then sign the new typed data |
 
 ## Permission Errors
 

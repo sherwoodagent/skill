@@ -67,7 +67,7 @@ Defaults to 2000 bps (20%) at vault creation; the vault caps it at 2500 bps (25%
 sherwood proposal list --vault <addr> [--state <filter>]
 ```
 
-Filter by state: `pending`, `approved`, `executed`, `settled`, `all` (default: `all`).
+Filter by state: `draft`, `pending`, `guardianreview`, `approved`, `rejected`, `expired`, `executed`, `settled`, `cancelled`, `all` (default: `all`). The owner's veto works only while `Pending`; once a proposal is in `GuardianReview`, only guardian block-quorum stops it.
 
 ## Show proposal detail
 

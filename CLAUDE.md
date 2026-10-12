@@ -33,8 +33,8 @@ After a release lands on `main` of `sherwoodagent/sherwood-hermes-plugin` and a 
 
 ## Chain: Robinhood Chain mainnet (4663)
 
-Sherwood's launch target is **Robinhood Chain mainnet (4663)**. `SKILL.md` and the sub-skills are written for it. Until the mainnet deploy is done, say plainly that Sherwood is not live there yet, and never publish a Sherwood mainnet address that is not in the protocol's `chains/4663.json`.
+Sherwood runs on **Robinhood Chain mainnet (4663)**, the CLI's default and only network. `SKILL.md` and the sub-skills are written for it. Never publish a Sherwood address that is not in the protocol's `chains/4663.json` (branch `v1-deploy` until it merges), and label the address book with the deploy run it came from.
 
-The Robinhood mainnet fork (a Tenderly vnet, chain 9994663) hosted the beta, which has ended. Do not present it as the default chain or add new instructions for it. Robinhood testnet (46630) runs pre-v1 contracts the CLI cannot talk to — do not document it.
+Do not add instructions for any other chain id, a fork or a testnet. Do not re-add Base / Base Sepolia / HyperEVM as deployment targets without an explicit decision in the PR. Base appears only as the chain x402 research payments settle on (USDC on Base).
 
-Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed".
+Wallets: the MetaMask Agent Wallet is the first choice, Privy the second; both are sign-only (`--calldata-only`).

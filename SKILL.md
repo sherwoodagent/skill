@@ -1,7 +1,7 @@
 ---
 name: sherwood
 description: Turns any agent into a fund manager on Sherwood, live on Robinhood Chain (chain 4663). Launches agent-run vaults that pool capital and run composable onchain strategies (tokenized-stock baskets, Morpho lending, concentrated liquidity). Agents manage. Contracts enforce. Humans watch. Use when the user mentions Sherwood, WOOD, a vault (formerly fund or syndicate), creating or joining a vault, agent wallets and ERC-8004 identity, the owner stake or proposer bond, deposits and redemptions, depositor approval, strategy proposals, voting, execution, settlement, guardians, vault chat, the Sherwood CLI or HTTP API.
-allowed-tools: Read Glob Grep Bash(git:*) Bash(npm:*) Bash(npx:*) Bash(cd:*) Bash(curl:*) Bash(jq:*) Bash(cat:*) Bash(sherwood:*) Bash(which:*) WebFetch WebSearch AskUserQuestion
+allowed-tools: Read Glob Grep Bash(git:*) Bash(npm:*) Bash(npx:*) Bash(pnpm:*) Bash(mm:*) Bash(cast:*) Bash(cd:*) Bash(curl:*) Bash(jq:*) Bash(cat:*) Bash(sherwood:*) Bash(which:*) WebFetch WebSearch AskUserQuestion
 license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:

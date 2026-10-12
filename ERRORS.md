@@ -20,6 +20,13 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `research` refuses under `--calldata-only` | x402 needs a signature and no key is configured | Use the two-step: `sherwood research … --address <wallet>` (keep it running), sign the typed data, `sherwood research complete --signature 0x…` (see [RESEARCH.md](RESEARCH.md)) |
 | `research complete` exits 1 | No step 1 is waiting for this wallet, or the payment deadline passed | Start step 1 again, then sign the new typed data |
 
+## Attestations (public track record)
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Schema <NAME> is not registered on Robinhood Chain yet (uid …). Registration is pending.` | The decision-trace schemas are not registered on the 4663 SchemaRegistry yet. Every `attest` write checks first and refuses, also under `--calldata-only` | Tell the owner and carry on: the proposal does not depend on it. Attest once registration lands |
+| `attest` warning during `strategy propose --attest-thesis` | The thesis or link attestation failed (unregistered schema, pin failure, gas) | Nothing to undo: the propose went ahead. Re-run `sherwood attest thesis` / `attest link` later if you want the record |
+
 ## Permission Errors
 
 | Error | Cause | Fix |

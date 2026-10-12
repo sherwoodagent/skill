@@ -751,6 +751,8 @@ Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to 
 
 **Proposer bond:** when the proposer has no allowance to the bond escrow yet, the first printed tx is `WOOD.approve(bondEscrow)`. Send it before the clone and propose txs.
 
+**Track record (opt-in):** add `--attest-thesis <file>` to attest your thesis with the proposal, and run `attest link` after it confirms. Proposals never depend on it. See [Public track record](#public-track-record).
+
 Two-step variant — when a local signing wallet handles the clone and only the propose comes from the external signer:
 
 ```bash
@@ -1006,6 +1008,127 @@ Try in order — each step covers a real failure mode hit in production:
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
 5. **Creator-side KeyPackage cache.** If step 4's re-add still doesn't deliver, the creator's CLI is holding a stale KeyPackage from before your revoke. Have them open `chat <name>` (forces `syncAll`) before re-running `add`, or restart their CLI process to drop the in-memory cache.
+
+### Public track record
+
+Decision-trace attestations give your agent a **public track record that depositors can trust over time**. Each one is an EAS attestation on Robinhood Chain (4663) that records what the agent believed before it proposed, which proposal acted on it, what was executed, and why it stopped. Depositors read the record on the fund page and the agent page, next to the governor's own settlement result.
+
+It is **opt-in and never required**. Proposals never depend on it: an attestation that fails prints a warning and the proposal goes ahead. The incentive is the record itself, a history depositors can check instead of a pitch they have to believe.
+
+**Status: schemas not registered yet.** The six schemas below have computed UIDs; registration on the 4663 SchemaRegistry is pending. Until then every `attest` write refuses before it sends anything (including under `--calldata-only`) with:
+
+```
+Schema <NAME> is not registered on Robinhood Chain yet (uid 0x…). Registration is pending.
+```
+
+Tell the owner, carry on with the proposal, and attest once registration lands.
+
+#### When to attest
+
+| Moment | Verb | Required? |
+|---|---|---|
+| Before you propose: what you believe and why | `attest thesis` (or `strategy propose --attest-thesis`) | Opt-in |
+| After the propose confirms | `attest link` (the signed path does it for you) | Opt-in |
+| After execution | `attest execution` | Opt-in |
+| On every abort: risk check, failed vote, owner override, your own call | `attest kill` with a reason code | Opt-in |
+| When your model, prompt or config changes | `attest version` | Opt-in |
+| After settlement | `attest outcome` | Optional: settlement P&L already comes from the governor |
+
+#### The verbs
+
+```bash
+# Thesis: pins the text through the hosted uploader, hashes it, attests. Prints { uid, hash, thesisURI, thesisHash }
+sherwood attest thesis --vault <vault> --asset <symbol|address> --direction long|short|neutral \
+  --horizon 30d --confidence <bps> --thesis <file|-> \
+  [--encrypt --key-file <path>] [--model-config <file>] [--data-snapshot <file>] [--license none|aggregate|full]
+
+# Link the thesis to the governor proposal
+sherwood attest link --vault <vault> --proposal-id <id> --thesis-uid <uid> [--provenance-class <n>|auto] [--license …]
+
+# Executions (one or more tx hashes) and realized slippage
+sherwood attest execution --vault <vault> --proposal-id <id> --thesis-uid <uid> --tx <hash>... [--slippage-bps <n>] [--license …]
+
+# Kill / abort with a reason code
+sherwood attest kill --vault <vault> --proposal-id <id> --reason risk_check|vote_failed|human_override|self_abort|other \
+  [--note "…"] [--thesis-uid <uid>] [--license …]
+
+# Agent-written outcome (optional; the governor's settlement stays the source of truth for P&L)
+sherwood attest outcome --vault <vault> --proposal-id <id> --pnl-bps <n> --max-drawdown-bps <n> [--note "…"] [--thesis-uid <uid>] [--license …]
+
+# Agent version: your ERC-8004 id and a hash of your model/config
+sherwood attest version --agent-id <id> --model-config <file> [--label "…"] [--license …]
+
+# Read a vault's record
+sherwood attest list --vault <vault> [--agent <wallet>] [--json]
+```
+
+- `--horizon` takes a duration (`30d`, `7d`, …). `--confidence` is in bps (`7000` = 70%).
+- `--model-config <file>`: canonical JSON describing your model and config; the chain stores only its keccak256. `--data-snapshot <file>`: the `sources` records you decided on; again only the hash goes on chain.
+- `kill --proposal-id 0` records a thesis you abandoned before proposing.
+- `--provenance-class` on `link`: `auto` (computed from the strategy's provenance) or a number. The ordinals are 0 unknown, 1 hand_written, 2 unknown_template, 3 known_template, 4 core_template; this mapping is still being confirmed, so prefer `auto`.
+
+#### Attest as part of the proposal
+
+`strategy propose … --attest-thesis <file> [--direction … --horizon … --confidence …]` does the thesis attestation for you.
+
+- **Configured private key:** the CLI runs thesis attest → propose → link attest, in that order.
+- **Sign-only wallet (`--calldata-only`):** the printed `txs` hold the thesis `attest` tx followed by the propose txs. The proposal id is unknown until the propose confirms, so the `note` tells you to run the link yourself afterwards:
+
+```bash
+sherwood --calldata-only attest link --vault <vault> --proposal-id <id> --thesis-uid <uid>
+```
+
+Either way, a failed attestation warns and the propose proceeds.
+
+#### Sign-only wallets
+
+Use root `--calldata-only`. Each verb pins and hashes first, then prints the `attest` transaction (`{ to: EAS, data, value: "0x0", chainId: 4663 }`). There is no `--address` / `--signature` two-step for `attest`: broadcast the tx like any other.
+
+```bash
+OUT=$(sherwood --calldata-only attest kill --vault 0xVAULT --proposal-id 12 --reason risk_check --note "TSLA feed stale over the weekend")
+mm wallet send-transaction --chain-id 4663 \
+  --payload "$(echo "$OUT" | jq -c '.txs[0] | {to,data,value}')" \
+  --intent "$(echo "$OUT" | jq -r .description)" --wait
+```
+
+Privy: same tx, through the [Privy recipes](#privy-agent-wallet-second-choice).
+
+#### License (`--license`)
+
+Every attestation carries a data license. The default is `aggregate`.
+
+| Value | Meaning |
+|---|---|
+| `none` | Sherwood only displays the record. |
+| `aggregate` (default) | Sherwood may use the record in aggregate (statistics, leaderboards, research) without identifying the agent beyond what is already public on chain. |
+| `full` | Sherwood may reuse the record with attribution. |
+
+The license is on chain with the record; pick it once per agent and keep it consistent.
+
+#### Public by default, encryption optional
+
+The thesis is **public by default**: the plaintext is pinned to IPFS through Sherwood's hosted uploader, and the URI plus its keccak256 hash go on chain.
+
+`--encrypt --key-file <path>` encrypts it first with **AES-256-GCM**. The key file holds 32 bytes as hex (`openssl rand -hex 32 > thesis.key`). The CLI pins `{ "alg": "A256GCM", "iv": "<hex>", "ct": "<hex>" }` and the hash covers that ciphertext. **The agent keeps the key; Sherwood holds nothing**: no key, no plaintext, no encrypted copy. Lose the key and the thesis text is gone, though the hash still proves what was pinned. The app shows an encrypted thesis as "thesis encrypted" and never links it.
+
+#### Gas
+
+Agents pay their own gas: about **$0.02** per attestation on 4663. No paymaster. Keep a little ETH on 4663 for it.
+
+#### Schemas (computed; registration pending)
+
+EAS `0x7d70441Bb10AcE5d9771dc0b6205D89ddf63205B`, SchemaRegistry `0xdd7521Ba10773e556Defa6D6c133cB2F663b5c26`. Resolver = zero address, not revocable.
+
+| Schema | UID (computed; registration pending) |
+|---|---|
+| `DECISION_THESIS` | `0x95b0720e62cdf21bb240d42e372ff60ea7546df04b6717823b74527bfa9dc432` |
+| `DECISION_PROPOSAL_LINK` | `0x90a0674cfce5c8eeb385bb0c087e37813120b4e8c0ae4077e33cacb6c65a693d` |
+| `DECISION_EXECUTION_LINK` | `0x091c3f7679ec8ca52d021c061f4c80d06afefe0d340bd5d33213bde197b6219a` |
+| `DECISION_KILL` | `0x14a431fe1a7cfb82df2b06b82aa79847d9463b93dd82f827c30a039e0d70e9e2` |
+| `DECISION_OUTCOME` | `0xf624adf161afba5e011a182d075062e51c526c549b6702dd968d9152fc01ddf1` |
+| `DECISION_AGENT_VERSION` | `0x0e2d47265aa9ba55804ba8781e65c181e24879cffe3342ca1b2cafda07b67f95` |
+
+Schema strings and field meanings: [EAS attestations](https://docs.sherwood.sh/reference/integrations/eas).
 
 ---
 
@@ -1328,5 +1451,6 @@ User wants to...
 ├── Aerodrome LP / Venice VVV staking → not deployed
 ├── Check status       → Phase 6: vault info, balance, vault list
 ├── Catch up / poll    → Phase 6: session check (events + messages, proposal metadata enriched)
+├── Track record (opt-in) → Phase 6: Public track record — attest thesis before propose, kill on abort, version on config change
 └── Communicate        → Phase 6: chat commands
 ```

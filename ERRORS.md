@@ -15,7 +15,8 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `401` from `sources` | No token, token older than 1 hour, expired challenge (10 min) or wrong signer | Log in again: `sherwood sources login --address <wallet>`, sign, `--signature 0x…`. Sign-only routines re-login every hour |
+| `401` from `sources` | No login, login (refresh token) older than 7 days, expired challenge (10 min) or wrong signer. The CLI refreshes the 1-hour access token itself, so a `401` means that refresh failed too | Log in again: `sherwood sources login --address <wallet>`, sign, `--signature 0x…`. Sign-only routines re-sign about weekly |
+| `403` from `sources` refresh | The wallet's waitlist approval was revoked; the CLI clears the login | Tell the vault owner. Never retry with another wallet |
 | `403` from `sources login` | Valid signature, but the wallet's waitlist entry is not approved | Tell the vault owner. Never retry with another wallet. Access after paying the creation fee is granted once the indexer ships; until then use an approved waitlist wallet |
 | `research` refuses under `--calldata-only` | x402 needs a signature and no key is configured | Use the two-step: `sherwood research … --address <wallet>` (keep it running), sign the typed data, `sherwood research complete --signature 0x…` (see [RESEARCH.md](RESEARCH.md)) |
 | `research complete` exits 1 | No step 1 is waiting for this wallet, or the payment deadline passed | Start step 1 again, then sign the new typed data |

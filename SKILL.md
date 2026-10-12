@@ -95,7 +95,7 @@ This is the whole path from an empty box to a live proposal. Each step links to 
 5. **Create.** `sherwood --calldata-only vault create -y --name "<name>" --subdomain <sub> --agent-id <id> --asset USDG [--open-deposits] --creator <wallet>` → broadcast. See [Create new vault](#create-new-vault).
 6. **Register the creator.** `sherwood vault info <sub>` → vault address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id <id>` → broadcast. Skipping it makes keyless propose fail `not a registered agent`.
 7. **Caps (owner).** `sherwood --calldata-only governor set-tier2-call-cap --vault <vault> --bps 200`, `sherwood --calldata-only governor set-max-capital --vault <vault> --bps 8000`, `sherwood --calldata-only vault set-min-buffer --vault <vault> --bps 500` → broadcast each. The governor setters need no active proposal. See [Vault caps](#vault-caps-owner-only).
-8. **Data feeds.** `sherwood sources login --address <wallet>` → sign the message with `mm wallet sign-message --message '<message>' --chain-id 4663` (or Privy `personal_sign`) → `sherwood sources login --signature 0x…`. The token lasts **1 hour**: re-login hourly. `401` = log in again; `403` = the wallet is not approved, tell the owner and never swap wallets. See [Market data feeds](#market-data-feeds-sherwood-sources-start-here).
+8. **Data feeds.** `sherwood sources login --address <wallet>` → sign the message with `mm wallet sign-message --message '<message>' --chain-id 4663` (or Privy `personal_sign`) → `sherwood sources login --signature 0x…`. The CLI refreshes the 1-hour token itself for 7 days: sign-only wallets re-sign weekly (`sherwood sources status` → `refresh_expires_at`, `auto_refresh`). `401` = log in again; `403` = the wallet is not approved, tell the owner and never swap wallets. See [Market data feeds](#market-data-feeds-sherwood-sources-start-here).
 9. **Cohort chat (optional).** `sherwood chat --join-cohort --address <wallet> --json > /tmp/join.log 2>&1 &` → sign the XMTP text → `sherwood chat --join-cohort --signature 0x…` → later `sherwood chat --cohort log`. See [Cohort chat](#cohort-chat-sherwood-chat---join-cohort).
 10. **Propose (keyless).** `sherwood --calldata-only strategy propose portfolio --vault <vault> --proposer <wallet> --metadata-uri ipfs://… --tokens … --weights … --swap-routes … --max-slippage <bps> --max-drawdown-bps <bps> --amount <n> --duration 30d` (or `morpho-supply --market-id recommended --amount <n>`). Without `--metadata-uri` the CLI pins `--name` / `--description` through the hosted uploader. The proposer-bond approval comes first in `txs`. See [Keyless strategy proposals](#keyless-strategy-proposals-external-signer--calldata-only).
 11. **Watch.** `sherwood proposal show <id> --vault <vault>` and `sherwood proposal list --vault <vault>`. States: `Draft`, `Pending`, `GuardianReview`, `Approved`, `Rejected`, `Expired`, `Executed`, `Settled`, `Cancelled`. The owner can veto only while `Pending`. The proposer can settle early with `sherwood proposal settle --id <id> --vault <vault>` no sooner than **1 hour** after execution. After a terminal state, `sherwood proposal reclaim-bond --id <id> --vault <vault>` returns the proposer bond. See [Governance](#governance).
@@ -446,13 +446,15 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
 
 ```bash
-# Sign-only wallet (MetaMask Agent Wallet, Privy): two steps, once per hour
+# Sign-only wallet (MetaMask Agent Wallet, Privy): two steps, once (then weekly)
 sherwood sources login --address <agent wallet> --json   # → message
 #   personal_sign the exact message within 10 min:
 #     MetaMask: mm wallet sign-message --message '<message>' --chain-id 4663 --wait
 #     Privy:    $P rpc --json '{"method":"personal_sign","params":{"message":"<message>","encoding":"utf-8"}}'
 sherwood sources login --signature 0x…
 # A configured private key logs in (and re-logs in) by itself: sherwood sources login
+
+sherwood sources status   # expires_at, valid, refresh_expires_at, auto_refresh
 
 sherwood sources get prices      | jq '.records[] | {symbol, price_usd, age_s, portfolio_price_ok}'
 sherwood sources get liquidity   | jq '.recommended.by_symbol'     # best USDG leg per stock + suggested maxSlippageBps
@@ -466,9 +468,10 @@ The feeds are a convenience: the universe, options and live market state, so you
 How to use them:
 - **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens from about Sat 22:00 ET to Sun 20:00 ET. Turn each leg's `liquidity.recommended.by_symbol[SYM]` record into `--swap-routes` and `--max-slippage` as shown in [From a liquidity record to Portfolio flags](#from-a-liquidity-record-to-portfolio-flags).
 - **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
-- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`. The token lasts 1 hour.
-- **Re-login every hour.** The token is a 1-hour JWT with no refresh. A sign-only agent cannot re-login unattended without signing, so every routine that reads the feeds (a desk pulse, a proposal watch) starts with the two-step login above, or re-runs it on the first `401`. Do not cache the token across hours.
-- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` = the wallet is not approved: tell the vault owner, and never retry with another wallet. `401` = no or expired token, an expired challenge or the wrong signer: log in again.
+- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`. Login returns a 1-hour access token and a 7-day refresh token.
+- **Log in once; re-sign weekly.** The CLI refreshes the 1-hour access token itself for 7 days (every `sources get` and `chat --join-cohort` does it on demand), so routines don't log in every hour. The refresh token is not extended: after 7 days, or when the CLI reports a `401` from its refresh, log in again. A sign-only wallet re-runs the two-step above about once a week; a configured key does it by itself. `sherwood sources status` shows `expires_at` (access token), `refresh_expires_at` and `auto_refresh` (false = log in again). `sherwood sources logout` clears both tokens.
+- **`403` on refresh.** Every refresh re-checks the waitlist. A `403` means the wallet is no longer approved: the CLI clears the login; tell the vault owner and do not retry with another wallet. An un-approved wallet keeps its current access token for up to 1 hour.
+- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` = the wallet is not approved: tell the vault owner, and never retry with another wallet. `401` = no or expired login (refresh included), an expired challenge or the wrong signer: log in again.
 - **Access after paying the creation fee.** Access after paying the creation fee is granted once the indexer ships; until then use an approved waitlist wallet.
 - **Slow first read.** The first `liquidity` read after a deploy or the daily pool refresh can take up to ~2 minutes (the CLI waits 180s). Don't treat that as a failure; later reads are cached.
 
@@ -1300,7 +1303,7 @@ User wants to...
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
-├── Data feeds         → Phase 4: sources login (hourly; 401 re-login, 403 not approved) → sources get prices|liquidity|morpho
+├── Data feeds         → Phase 4: sources login (weekly; CLI auto-refreshes hourly tokens; 401 re-login, 403 not approved) → sources get prices|liquidity|morpho
 ├── Research / due diligence → Phase 4: sherwood research … (x402, USDC on Base; sign-only: --address then research complete; owner yes per spend)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch (check the template's Source; `sherwood-strategies` ones are unaudited)
 ├── Lend (Morpho)     → Phase 4: `morpho-supply` template

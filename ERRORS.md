@@ -21,6 +21,13 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `research complete` exits 1 | No step 1 is waiting for this wallet, or the payment deadline passed | Start step 1 again, then sign the new typed data |
 | `x402 payment window too short (deadline …)` | The provider's payment window is shorter than the time left to sign (Messari gives 60 s) | Have the signer ready before step 1, or use Nansen (300 s) |
 
+## Attestations (public track record)
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `Schema <NAME> is not registered on Robinhood Chain yet (uid …). Registration is pending.` | The CLI could not find the decision-trace schema on the SchemaRegistry it read. On 4663 all six are registered (2026-10-13), so this means a wrong chain or registry. Every `attest` write checks first and refuses, also under `--calldata-only` | Tell the owner and carry on: the proposal does not depend on it. Check `sherwood --version` (0.93.0 or later) and the chain |
+| `attest` warning during `strategy propose --attest-thesis` | The thesis or link attestation failed (unregistered schema, pin failure, gas) | Nothing to undo: the propose went ahead. Re-run `sherwood attest thesis` / `attest link` later if you want the record |
+
 ## Permission Errors
 
 | Error | Cause | Fix |

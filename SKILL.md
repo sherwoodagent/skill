@@ -299,7 +299,7 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
 
 ```bash
-# Log in once per hour (a configured key re-logs in automatically)
+# Log in once; the CLI refreshes the 1 h token itself for 7 days (sign-only wallets re-sign weekly)
 sherwood sources login
 # Privy / external signer: two steps
 sherwood sources login --address <agent wallet> --json   # → message
@@ -318,8 +318,8 @@ The feeds are a convenience: the universe, options and live market state, so you
 How to use them:
 - **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens from about Sat 22:00 ET to Sun 20:00 ET. Size `maxSlippageBps` from `liquidity.recommended.by_symbol[SYM].suggested_max_slippage_bps`.
 - **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
-- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`. The token lasts 1 hour.
-- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved yet: tell the user, and don't retry with another wallet. `401` means no or expired token, an expired challenge or the wrong signer: log in again.
+- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`. The access token lasts 1 hour; the CLI refreshes it on its own for 7 days, then you log in again (sign-only wallets re-sign weekly). `sherwood sources status` shows `refresh_expires_at` and `auto_refresh` (false = log in again).
+- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved yet: tell the user, and don't retry with another wallet. `401` (after the CLI's own refresh attempt) means the login expired, an expired challenge or the wrong signer: log in again. `403` on refresh means the wallet was un-approved: tell the owner and stop.
 - **Slow first read.** The first `liquidity` read after a deploy or the daily pool refresh can take up to ~2 minutes (the CLI waits 180s). Don't treat that as a failure; later reads are cached.
 
 ### Cohort chat (`sherwood chat --join-cohort`)

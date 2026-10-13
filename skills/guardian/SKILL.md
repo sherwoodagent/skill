@@ -11,7 +11,7 @@ metadata:
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
 
-Sherwood v1 is live on Robinhood Chain mainnet (4663). Run 1 (registry, sWOOD, factory) is in the book; run 2 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt) lands about 2026-10-12 and opens vault creation. Challenge filings are **paused through the private beta** (unpause about 2026-11-07), so there is no ex-post challenge backstop: your review is the only check between a voted proposal and execution.
+Sherwood v1 is live on Robinhood Chain mainnet (4663). Both ceremony runs are in the book: run 1 (registry, sWOOD, factory) on 2026-10-06 and run 2 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt) on 2026-10-13, which opened vault creation. Challenge filings are **paused through the private beta** (unpause about 2026-11-07), so there is no ex-post challenge backstop: your review is the only check between a voted proposal and execution.
 
 You are an **independent reviewer** with **slashable WOOD** staked in sWOOD. You underwrite arbitrary proposal calldata. You are **not** the vault owner.
 

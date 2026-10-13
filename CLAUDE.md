@@ -33,7 +33,7 @@ After a release lands on `main` of `sherwoodagent/sherwood-hermes-plugin` and a 
 
 ## Chain: Robinhood Chain mainnet (4663)
 
-Sherwood v1 is **live on Robinhood Chain mainnet (4663)** since 2026-10-06 (run 1) with the economic-security stack following in run 2. `SKILL.md` and the sub-skills are written for it. Never publish a Sherwood mainnet address that is not in the protocol's `chains/4663.json` (`v1-deploy` branch); until a contract is in that book, write "published after run 2" and resolve it live from the governor. Every parameter value must trace to `v1-deploy` source, not to the protocol's narrative docs, which drift.
+Sherwood v1 is **live on Robinhood Chain mainnet (4663)**: run 1 on 2026-10-06, run 2 (the economic-security stack, which opened vault creation) on 2026-10-13. `SKILL.md` and the sub-skills are written for it. Never publish a Sherwood mainnet address that is not in the protocol's `chains/4663.json` (`v1-deploy` branch); if a contract is ever missing from that book, write "not in the book" and resolve it live from the governor. Every parameter value must trace to `v1-deploy` source, not to the protocol's narrative docs, which drift.
 
 The Robinhood mainnet fork (a Tenderly vnet, chain 9994663) hosted the beta, which has ended. Do not present it as a chain or add instructions for it; "measured on a fork of this chain" is the only acceptable mention. Robinhood testnet (46630) runs pre-v1 contracts the CLI cannot talk to — do not document it.
 

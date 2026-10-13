@@ -12,7 +12,7 @@ metadata:
 # Network Guardian (Sherwood on Robinhood Chain, 4663)
 
 Sherwood v1 is live on Robinhood Chain mainnet (4663). Run 2 (ExposureLedger, ProposerBondEscrow,
-ChallengeGame, TokenCourt) lands about 2026-10-12 and opens vault creation; challenge filings stay
+ChallengeGame, TokenCourt) landed on 2026-10-13 and opened vault creation; challenge filings stay
 paused through the private beta (unpause about 2026-11-07), so during the beta the guardian review is
 the only check between a voted proposal and execution.
 

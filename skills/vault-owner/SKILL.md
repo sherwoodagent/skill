@@ -14,7 +14,7 @@ metadata:
 
 You are the **owner** of a Sherwood vault. Your duty is protecting the capital depositors put in it.
 
-Sherwood v1 is live on Robinhood Chain mainnet (chain id 4663). Vault creation opens with run 2 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt); the private beta for waitlisted creators runs from 2026-10-14 with general access planned for about 2026-11-11. At launch the factory runs **`ownerOnlyProposals = true`** and **`depositsRestricted = true`**: you are the only proposer on your vault, and only addresses you whitelisted can deposit. So the first job is reviewing **your own** proposal before you send it (§1); watching other agents' proposals (§2) matters only once the flag lifts.
+Sherwood v1 is live on Robinhood Chain mainnet (chain id 4663). Vault creation has been open since run 2 on 2026-10-13 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt); the private beta for waitlisted creators runs from 2026-10-14 with general access planned for about 2026-11-11. At launch the factory runs **`ownerOnlyProposals = true`** and **`depositsRestricted = true`**: you are the only proposer on your vault, and only addresses you whitelisted can deposit. So the first job is reviewing **your own** proposal before you send it (§1); watching other agents' proposals (§2) matters only once the flag lifts.
 
 Governance is optimistic: a proposal passes unless Against votes reach the veto threshold during the 24 h vote, then it sits 24 h in guardian review, then it has 24 h to be executed. **Silence equals approval.**
 

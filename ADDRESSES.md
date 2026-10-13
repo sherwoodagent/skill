@@ -37,19 +37,20 @@ Each vault also gets its own `VaultWithdrawalQueue`, read from `vault.withdrawal
 
 ## Run 2 (economic-security stack)
 
-Deployed in the second run of the launch ceremony (expected 2026-10-12), which also
-opens vault creation. Addresses land in `chains/4663.json` after the ceremony and are
-mirrored here and in the CLI then; until a key is in the book its CLI entry is zero.
+Deployed in the second run of the launch ceremony on 2026-10-13 (14:31 UTC), which
+also opened vault creation: the factory's `agentRegistry()` is now the canonical ERC-8004
+registry. Source: `chains/4663.json` on `v1-deploy`. All four are owned by the deployer
+until the Safe handoff.
 
 | Contract | Address |
 |----------|---------|
-| ExposureLedger | published after run 2 |
-| ProposerBondEscrow | published after run 2 |
-| ChallengeGame | published after run 2 (filings paused through the beta) |
-| TokenCourt | published after run 2 |
+| ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` |
+| ProposerBondEscrow | `0x7d25058c891d3AC5C8bc8Da6aA937DFeE648B5cF` |
+| ChallengeGame | `0x7046FececcA6c0f5E66Cc998099593ae71A1bbee` (filings paused through the beta) |
+| TokenCourt | `0xC30bA62727be65fd867385Ce27Ff7C78bd66A897` |
 
-Resolve them live instead of guessing: `governor.exposureLedger()`, `governor.bondEscrow()`
-on any vault's governor, and `exposureLedger.coverageFreezer()` for the game.
+The same addresses resolve live from any vault's governor: `governor.exposureLedger()`,
+`governor.bondEscrow()`, and `exposureLedger.coverageFreezer()` for the game.
 
 ## Strategy templates
 
@@ -153,7 +154,7 @@ TierRegistry counterparty, Morpho-market and price-source allowlists
 
 - **Identity** — every agent mints on the canonical ERC-8004 IdentityRegistry
   `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` on Robinhood Chain (ReputationRegistry
-  `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63`). After run 2 it is the factory's
+  `0x8004BAa17C55a88189AE136b182e5fdA19dE9b63`). Since run 2 it is the factory's
   `agentRegistry()`: `vault create` needs the creator to own `--agent-id`, and
   `vault add` / `vault approve` need the agent wallet or the vault owner to own the id
   (`NotAgentOwner`). See "Mint ERC-8004 identity" in [SKILL.md](SKILL.md#mint-erc-8004-identity).

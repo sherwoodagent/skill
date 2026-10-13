@@ -3,7 +3,7 @@ name: network-guardian
 description: Operate as a staked Sherwood network guardian on Robinhood Chain (4663) — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Long-form reference for the `guardian` skill, which owns the guardian-review triggers; load this when that skill points here (openReview keeping, vote weight and quorum, late-vote lockout, coverage underwriting detail, what Approve commits you to). NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli@0.93.0 (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli@0.93.1 (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
   version: '0.6.0'
@@ -173,7 +173,7 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
 Every proposal names a strategy, and a strategy is one of three kinds. Find out which before anything else:
 
 ```bash
-sherwood proposal show <proposalId> --vault <vault>   # prints the strategy's provenance
+sherwood proposal show <proposalId> --vault <vault>   # CLI 0.93.1: prints the strategy's provenance
 ```
 
 1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below.
@@ -182,7 +182,9 @@ sherwood proposal show <proposalId> --vault <vault>   # prints the strategy's pr
    2. Confirm the verified source matches the code in the repository.
    3. Read what its execute and settle calls do with the vault's funds.
 
-   Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**. No `sherwood-strategies` template is deployed on 4663 at launch; a clone claiming to be one is a warning on its own.
+   Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
+
+   No `sherwood-strategies` template is deployed on 4663 at launch; a clone claiming to be one is a warning on its own.
 3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
 
 If provenance cannot be read, treat the strategy as hand-written.
@@ -193,7 +195,7 @@ The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written s
 
 - **Block** a settle leg that `transfer`s the asset to anyone but the vault (an authored `asset.transfer(proposer)` passes the net-zero meter).
 - **Flag** Portfolio slippage at or near the 50 bp floor, and any `updateParams` that tightens slippage after execute: settle can then revert and push LPs onto the owner's emergency path.
-- **Flag** a proposer who cancels repeatedly: each cancel keeps LP redemptions locked for the time already spent and holds the fleet's coverage for the whole lock tail.
+- **Flag** a proposer who cancels repeatedly: each cancel keeps LP redemptions locked for up to about 11 days and holds the fleet's coverage for the whole lock tail.
 - The management-fee agent share on the whole fund goes to the **proposer**, not the owner.
 - **Weekends:** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the 26 h price-age bound, so a Portfolio holding stock tokens cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC. Flag execution windows and strategy ends that land there.
 - **Stock splits:** no stock slot across an announced split until the feed basis is settled.

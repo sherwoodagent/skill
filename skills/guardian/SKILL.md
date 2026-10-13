@@ -3,7 +3,7 @@ name: guardian
 description: Act as a staked Sherwood network guardian on Robinhood Chain (4663) — stake WOOD into sWOOD, open and review proposal guardian reviews (execute + settle calldata), size the coverage you declare, and vote Approve or Block, or abstain, on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) via `sherwood proposal review-vote`. Triggers on staking WOOD as a guardian, reviewing proposal calldata, Approve/Block/abstain verdicts, coverage underwriting (lockWood), ApproveLockBelowFloor, openReview, resolveReview, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls (the `vault-owner` skill).
 allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch WebSearch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli@0.93.0 (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli@0.93.1 (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
   version: '0.14.0'
@@ -27,7 +27,7 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 - `RPC_URL` and `PRIVATE_KEY` exported for the `cast` commands below. `PRIVATE_KEY` is the reviewer wallet, **not** a vault owner. With an agent wallet, build each tx with `cast calldata "<signature>" <args…>` and broadcast it through the wallet recipe in the main skill (Phase 1 → Agent wallet); every `sherwood` command below also accepts `--calldata-only`.
 - WOOD to stake (`minGuardianStake` is 10,000 WOOD at launch). Quote WOOD live; never treat a published figure as a price.
-- Foundry (`forge`, `cast`) and `@sherwoodagent/cli@0.93.0` or later (defaults to Robinhood Chain; no `--chain` flag).
+- Foundry (`forge`, `cast`) and `@sherwoodagent/cli@0.93.1` or later (defaults to Robinhood Chain; no `--chain` flag).
 
 > **Per-vault governor.** There is no singleton. `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`; `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
@@ -185,7 +185,7 @@ For deeper debugging, the bundled Foundry harness is `skills/guardian/simulate/S
 Every proposal names a strategy, and a strategy is one of three kinds. Find out which before anything else:
 
 ```bash
-sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # prints the strategy's provenance
+sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # CLI 0.93.1: prints the strategy's provenance
 ```
 
 1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below.
@@ -194,7 +194,9 @@ sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # prints the strat
    2. Confirm the verified source matches the code in the repository.
    3. Read what its execute and settle calls do with the vault's funds.
 
-   Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**. No `sherwood-strategies` template is deployed on 4663 at launch; a clone claiming to be one is a warning on its own.
+   Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
+
+   No `sherwood-strategies` template is deployed on 4663 at launch; a clone claiming to be one is a warning on its own.
 3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
 
 If provenance cannot be read, treat the strategy as hand-written.
@@ -205,27 +207,27 @@ The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written s
 
 - **Block** a settle leg that `transfer`s the asset to anyone but the vault (an authored `asset.transfer(proposer)` passes the net-zero meter).
 - **Flag** Portfolio slippage at or near the 50 bp floor, and any `updateParams` that tightens slippage after execute: settle can then revert and push LPs onto the owner's emergency path.
-- **Flag** a proposer who cancels repeatedly: each cancel keeps LP redemptions locked for the time already spent and holds the fleet's coverage for the whole lock tail.
+- **Flag** a proposer who cancels repeatedly: each cancel keeps LP redemptions locked for up to about 11 days and holds the fleet's coverage for the whole lock tail.
 - The management-fee agent share on the whole fund goes to the **proposer**, not the owner.
 - **Weekends:** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the 26 h price-age bound, so a Portfolio holding stock tokens cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC. Flag execution windows and strategy ends that land there.
 - **Stock splits:** no stock slot across an announced split until the feed basis is settled.
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
-- Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule (intake item 3).
+- Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule (§4 intake item 3).
 - The strategy was **not cloned from any template** (hand-written), or its provenance cannot be read.
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
 - The **settle** path **cannot return the vault deposit asset** — missing settle, different token, or a return path that depends on an unverified contract.
-- **Undisclosed value movement** — any transfer, approval, or token flow not explained by the description, **even if `simulate` passes**.
-- You **could** size the intake and what you found is wrong. **Never Approve to be helpful.**
+- **Undisclosed value movement** — any transfer, approval, or ETH/token flow not explained by the description, **even if `simulate` passes**.
+- You **could** size the intake and what you found is wrong — the calls, the targets, or the value trace. **Never Approve to be helpful.**
 
-Where the obstacle is instead about *you* — you cannot size the coverage book, are unwilling to underwrite it, or intake is incomplete because evidence is missing rather than because the proposal is evasive — **abstain** (§2b).
+Everything above is a claim about the *proposal*. Where the obstacle is instead about *you* — you cannot size the coverage book, are unwilling to underwrite it, or intake is incomplete because evidence is missing rather than because the proposal is evasive — **abstain** (§2b). Never Approve in either case.
 
 ### Approve ONLY if ALL of these hold
 
 - The description **matches** the decoded execute and settle calls exactly, with no extra behavior.
 - **Every** target is labeled/known on **this chain**, or is a verified clone of a known template on this chain (clone/bytecode check, never a cross-chain assumption).
-- The strategy's provenance is known: a core-protocol template, or a `sherwood-strategies` template whose verified source you checked and whose unaudited status you told your user about. Never a hand-written strategy.
+- The strategy's provenance is known: a core-protocol template, or a `sherwood-strategies` template whose verified source you checked against the repository and whose unaudited status you told your user about. Never a hand-written strategy.
 - The **settle** path provably **returns the vault deposit asset** to the vault.
 - The **simulation and the value trace agree** — every balance/approval delta is explained by the description.
 - You are willing to **underwrite the coverage book** with slashable WOOD for 23–53 days.
@@ -234,7 +236,7 @@ Where the obstacle is instead about *you* — you cannot size the coverage book,
 
 ## 5. Vote Approve or Block
 
-`GuardianVoteType`: `None = 0` (reverts), `Approve = 1`, `Block = 2`. The review must already be **opened** (§3).
+`GuardianVoteType`: `None = 0` (reverts), `Approve = 1`, `Block = 2`. The review must already be **opened** (§3) — this is the second of the two transactions.
 
 ```bash
 sherwood proposal review-vote --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --support approve --lock-wood <WOOD>   # decimal WOOD
@@ -246,7 +248,7 @@ cast send $GUARDIAN_REGISTRY "voteOnProposal(address,uint256,uint8,uint256)" $GO
 
 The signed CLI refuses before sending if the review is not opened, prints the strategy's provenance, and shows the review state. Your vote weight is your **raw stake at the propose-time snapshot** (`getPastStake(you, snapshotAt)`), so stake added after the propose carries no weight on that review (`NotActiveGuardian`). Changing a vote is allowed before the lockout and reuses that weight; re-submitting the side you hold reverts `NoVoteChange`. Approvers are capped at 100 per proposal (`NewSideFull`); blockers are not capped.
 
-**`lockWood` — the coverage you declare.** It is the WOOD you put behind *this* proposal on an **Approve**; ignored on a Block (pass `0`).
+**`lockWood` — the coverage you declare.** It is the WOOD you put behind *this* proposal on an **Approve**. It is ignored on a Block (a blocker underwrites nothing); pass `0`.
 
 **Over-declaring clamps; under-declaring reverts.** The `ExposureLedger` books `lock = min(lockWood, free)`, where `free = kNumerator (1) × yourStake − openExposure`, floored at zero; declaring more than your free budget books less, and the shortfall surfaces at execute when `requireApproveQuorum` scales the proposal down to what was raised. Declaring too little is refused outright, below.
 
@@ -258,18 +260,18 @@ cast call $GOVERNOR_ADDRESS "getRequiredCoverage(uint256)(uint256)" <PROPOSAL_ID
 cast call $EXPOSURE_LEDGER "coverageUsdOf(address,uint256,address)(uint256)" $GOVERNOR_ADDRESS <PROPOSAL_ID> <YOUR_ADDRESS> --rpc-url $RPC_URL   # after voting
 ```
 
-> **The slot floor** (`ExposureLedger.recordApproval`). An Approve reverts `ApproveLockBelowFloor` unless the USD value of the lock it actually books is at least `floorUsd`:
+> **The slot floor** (`ExposureLedger.recordApproval`). A slot in the bounded approver array cannot be bought for a lock that carries nothing, so an Approve reverts `ApproveLockBelowFloor` unless the USD value of the lock it actually books is at least `floorUsd`:
 >
 > - `shareUsd = ceil(needUsd / 100)` — `APPROVER_SLOTS` is 100 and `needUsd = coverageUsd(vault asset, requiredCoverage)`: your share if a hundred guardians each carried one;
 > - `budgetUsd` = your **whole** cap (`kNumerator × guardianStake`, not the free part) valued in USD;
 > - `floorUsd = shareUsd` when `shareUsd < budgetUsd`, **or** when 50 or more of the 100 approver slots are already booked; otherwise `floorUsd = budgetUsd`. So a guardian whose whole budget is below the share may pay with all of it only while fewer than 50 approvers are seated; after that every slot costs the share outright.
 > - Every WOOD amount is valued as `min(amount, your slashable stake now) × woodPriceX8 / 1e8` at the **haircut** WOOD price (50% at launch), so a starved feed can refuse a slot but never enlarge one.
 >
-> It also reverts when the booked lock is zero (no free budget left) or `budgetUsd` is zero. This is a **refusal to underwrite, not a transient failure**: do not retry the same number. Raise `--lock-wood` to something you are willing to lose, wait for a lock to age out, or vote **Block**.
+> It also reverts when the booked lock is zero (no free budget left) or `budgetUsd` is zero. This is a **refusal to underwrite, not a transient failure**: do not retry the same number and do not treat it as an RPC hiccup. Raise `--lock-wood` to something you are willing to lose, wait for a lock to age out, or vote **Block**.
 
 - On **Approve**, you are staking slashable WOOD on the intake conditions above being true, and underwriting the coverage book for `lockWood`.
-- On **Block**, you do **not** pick a slash rate.
-- If you cannot finish intake before the lockout: **Block if what you saw so far looks wrong, abstain if you simply ran out of road.** Never let a deadline turn into an Approve.
+- On **Block**, you do **not** pick a slash rate. Severity is computed at `resolveReview`.
+- If you cannot finish intake before the lockout: **Block if what you saw so far looks wrong, abstain if you simply ran out of road.** A wrongly blocked honest proposal can be resubmitted; a slashed stake and drained LPs cannot. Never let a deadline turn into an Approve.
 
 After `reviewEnd`, anyone may resolve (`ReviewNotReadyForResolve` before it). A never-opened review resolves Cleared; block weight ≥ 30% of the at-snapshot stake resolves Blocked and slashes the approvers:
 
@@ -302,6 +304,8 @@ Proposal in GuardianReview (2), before the last 10% of the window
 |   +-- Yes --> Approve
 ```
 
+Block and abstain are not interchangeable. Block is a claim about the proposal and feeds slash severity; abstain is a claim about your own footing and emits nothing.
+
 ### After the window: the challenge game
 
 Filings are paused through the beta. Once unpaused, anyone can `file` a challenge against an executed proposal within 14 days of its end, freezing the approvers' coverage. If the accused side stays silent for 7 days, or TokenCourt finds Guilty: every approver's lock is slashed and **burned**, the proposer bond is forfeited (20% to the challenger as prosecutor fee, the rest burned), and the challenger gets its bond back minus 5%. Nobody is paid from your stake. The 23–53-day lock exists so that a challenge can still reach it.
@@ -322,17 +326,17 @@ Block-only, weighted at the review snapshot. Do **not** call `emergencySettleWit
 
 ## 7. Known-safe targets (this chain only)
 
-Verify targets against known protocol addresses **for Robinhood Chain (4663)**. See [ADDRESSES.md](../../ADDRESSES.md). Strategy template clones are valid only after you verify the implementation on this chain; the shipped templates are Portfolio, Morpho Supply and Concentrated Liquidity. Batch callees still have to pass the reachability rule (intake item 3).
+Verify targets against known protocol addresses **for the chain the proposal executes on**: Robinhood Chain (4663). Addresses differ across chains. See [ADDRESSES.md](../../ADDRESSES.md). Strategy template clones are valid only after you verify the implementation on this chain; the shipped templates are Portfolio, Morpho Supply and Concentrated Liquidity. Batch callees still have to pass the reachability rule (intake item 3).
 
-Unlabeled is a Block unless you independently verify bytecode against a known template. A known template from `sherwood-strategies` is still unaudited; a strategy that was not cloned from any template is hand-written and a Block.
+Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template. A known template from `sherwood-strategies` is still unaudited; a strategy that was not cloned from any template is hand-written and a Block (see §4, Strategy provenance).
 
 ---
 
 ## 8. Running this for real
 
-Findings from operating a live guardian fleet. Each one presents as something other than its cause.
+Findings from operating a live guardian fleet. Each one presents as something other than its cause, which is why they are written down.
 
-**In a container, `forge` needs the system CA store.** `forge` is Rust and reads `/etc/ssl/certs`; Node bundles its own. A `node:*` image has that directory empty, so the agent talks to an HTTPS RPC happily over viem while `forge test --fork-url https://…` cannot reach it at all, and forge then emits no decoded logs. `apt-get install -y ca-certificates` at image build time, and run `forge build` in the build so it fails there rather than on first review.
+**In a container, `forge` needs the system CA store.** `forge` is Rust and reads `/etc/ssl/certs`; Node bundles its own. A `node:*` image has that directory empty, so the agent talks to an HTTPS RPC happily over viem while `forge test --fork-url https://…` cannot reach it at all, and forge then emits no decoded logs, so the failure arrives as an unparseable run with nothing to point at. `apt-get install -y ca-certificates` at image build time, and run `forge build` in the build so it fails there rather than on first review.
 
 **Judge gas-capped recovery calls by state, not status.** `{gas: X}` is a cap, not a grant, and the 63/64 rule bounds it by the transaction's own limit. A best-effort sweep that swallows its own failures makes `eth_estimateGas` converge on the do-nothing path: the tx succeeds, costs little, emits nothing, and recovers nothing. Pass an explicit `--gas-limit` sized to the internal cap and confirm the effect from balances or events.
 
@@ -340,11 +344,11 @@ Findings from operating a live guardian fleet. Each one presents as something ot
 
 ### If you are running more than one guardian
 
-**Posture is not dissent.** A `defend`-mode guardian runs the same judge as everyone else; on a proposal the rules read as clean it Approves, and declining to sign is an *abstain*. Only policy produces genuine divergence: which warnings a guardian tolerates, and how much it will underwrite. Without at least one of those differing, a fleet of M guardians is M copies of one opinion.
+**Posture is not dissent.** A `defend`-mode guardian runs the same judge as everyone else; on a proposal the rules read as clean it Approves, and declining to sign is an *abstain*. It does not Block where others Approve. Only policy produces genuine divergence: which warnings a guardian tolerates, and how much it will underwrite. Without at least one of those differing, a fleet of M guardians is M copies of one opinion, and a single judge bug moves all M votes the same way.
 
 **A per-proposal coverage ceiling is an abstain trigger, not a sizing input.** It makes the guardian sit out anything larger. The daemon declares `min(freeWood, ceiling)` without reading the need, so an unset ceiling spends a key on its first Approve; set it to about a third of the expected per-proposal need.
 
-**An unfunded voter is a silent non-voter.** Below a workable gas balance an identity simply stops voting, and abstains emit nothing. Monitor gas per identity, not just liveness.
+**An unfunded voter is a silent non-voter.** Below a workable gas balance an identity simply stops voting, and abstains emit nothing, so the fleet looks quorate right up until it is not. Monitor gas per identity, not just liveness.
 
 **New capacity goes into new keys, never a top-up.** A top-up re-anchors stake age and restarts the court's 30-day juror clock.
 

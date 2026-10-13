@@ -130,16 +130,16 @@ $P rpc --json '{"method":"eth_signTypedData_v4","params":{"typed_data":<typed_da
 
 Three CLI commands need a signature but no transaction. Each prints what to sign, then takes `--signature`.
 
-### Data feeds: `sources login` (hourly)
+### Data feeds: `sources login` (weekly)
 
 ```bash
 sherwood sources login --address <wallet> --json   # → message (expires in 10 min)
 #   personal_sign the exact message: MetaMask mm wallet sign-message --message '<message>' --chain-id 4663, Privy personal_sign
-sherwood sources login --signature 0x…             # → token, valid 1 hour
-sherwood sources status                            # api, address, expires_at, valid, pending_challenge
+sherwood sources login --signature 0x…             # → 1 h token + 7-day refresh token
+sherwood sources status                            # api, address, expires_at, valid, refresh_expires_at, auto_refresh, pending_challenge
 ```
 
-The token lasts 1 hour and the CLI does not refresh it for a sign-only wallet, so re-run both steps when `sherwood sources status` shows `valid: false` or a feed answers `401`. A configured key re-logs in by itself. `403` = the wallet is not approved on the waitlist: tell the vault owner, and never retry with another wallet. `sherwood sources logout` clears the token.
+The access token lasts 1 hour; the CLI refreshes it on its own for 7 days, sign-only wallets included (refresh needs no signature). Re-run both steps once a week: when `sherwood sources status` shows `auto_refresh: false`, or a feed fails with `Sources login expired…` or `401`. A configured key re-logs in by itself. `403` = the wallet is not approved on the waitlist (on refresh: no longer approved): tell the vault owner, and never retry with another wallet. `sherwood sources logout` clears both tokens.
 
 ### Cohort chat: `chat --join-cohort`
 

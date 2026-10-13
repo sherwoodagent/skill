@@ -456,16 +456,17 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
 
 ```bash
-# Sign-only wallet (MetaMask Agent Wallet, Privy): two steps, once per hour
+# Log in once; the CLI refreshes the 1 h token itself for 7 days (sign-only wallets re-sign weekly)
+# Sign-only wallet (MetaMask Agent Wallet, Privy): two steps
 sherwood sources login --address <agent wallet> --json   # → message
 #   personal_sign the exact message within 10 min:
 #     MetaMask: mm wallet sign-message --message '<message>' --chain-id 4663 --wait
 #     Privy:    $P rpc --json '{"method":"personal_sign","params":{"message":"<message>","encoding":"utf-8"}}'
 sherwood sources login --signature 0x…
-# A configured private key logs in (and re-logs in on expiry or 401) by itself: sherwood sources login
+# A configured private key logs in one step (and re-logs in by itself once the 7-day login runs out): sherwood sources login
 
-sherwood sources status   # api, address, expires_at, valid, pending_challenge
-sherwood sources logout   # clears the token
+sherwood sources status   # api, address, expires_at, valid, refresh_expires_at, auto_refresh, pending_challenge
+sherwood sources logout   # clears the access and refresh tokens
 
 sherwood sources get prices      | jq '.records[] | {symbol, price_usd, age_s, portfolio_price_ok}'
 sherwood sources get liquidity   | jq '.recommended.by_symbol'     # best USDG leg per stock + suggested maxSlippageBps
@@ -480,8 +481,8 @@ How to use them:
 - **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens every weekend from about Sat 18:40 UTC to Mon 00:00 UTC (and over US market holidays; `sources get calendar` prints the live window). Turn each leg's `liquidity.recommended.by_symbol[SYM]` record into `--swap-routes` and `--max-slippage` as shown in [From a liquidity record to Portfolio flags](#from-a-liquidity-record-to-portfolio-flags).
 - **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
 - **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`.
-- **The token lasts 1 hour.** `sherwood sources status` shows `expires_at` and `valid`. A configured key re-logs in by itself when the token is missing or expired, or when the API answers `401`; a sign-only wallet re-runs the two-step above, so an unattended routine on a sign-only wallet needs a signer it can reach every hour. `sherwood sources logout` clears the token.
-- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved: tell the vault owner, and never retry with another wallet. `401` means no or expired token, an expired challenge or the wrong signer: log in again.
+- **Log in once a week.** The access token lasts 1 hour; the CLI refreshes it on its own for 7 days (no signature needed, sign-only wallets included), then you log in again: a configured key re-logs in by itself, a sign-only wallet re-runs the two-step above, so an unattended routine on a sign-only wallet needs a signer it can reach once a week. `sherwood sources status` shows `expires_at`, `valid`, `refresh_expires_at` and `auto_refresh` (false = log in again). `sherwood sources logout` clears both tokens.
+- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved: tell the vault owner, and never retry with another wallet. `401` (after the CLI's own refresh attempt) means the 7-day login expired, an expired challenge or the wrong signer: log in again. `403` on refresh means the wallet was un-approved: tell the vault owner and stop.
 - **Slow first read.** The first `liquidity` read after a deploy or the daily pool refresh can take up to ~2 minutes (the CLI waits 180s). Don't treat that as a failure; later reads are cached.
 
 ### Cohort chat (`sherwood chat --join-cohort`)
@@ -539,6 +540,8 @@ Step 1 needs `--yes` (or an interactive yes) to get past the cost prompt; in a h
 - **Deadlines.** The provider sets the payment window (`maxTimeoutSeconds` in its 402): **Messari 60 s**, **Nansen 300 s**. With Messari that leaves about 57 s to sign and run step 2, so have the signer ready before you start step 1. Nansen is the safer provider for sign-only wallets.
 - **Two payments.** A query that needs two paid calls (Messari `market`) makes step 2 print the next `x402_signature_request` and exit 0. Sign that one too and run `sherwood research complete --signature 0x…` again.
 - **Header.** Step 1 sends the signed payment in the x402 v2 `PAYMENT-SIGNATURE` header; you never build it yourself.
+
+**Calling Messari without the CLI.** If the two-step can't run (no CLI in the harness, or you need a Messari endpoint `research` doesn't wrap), a sign-only wallet can call the Messari API itself and pay the x402 402 directly: read the payment terms from the 402, sign an EIP-3009 `TransferWithAuthorization` with `mm wallet sign-typed-data --chain-id 8453 --wait`, then retry with the `PAYMENT-SIGNATURE` header inside the 60-second window. Same owner yes per spend, same USDC on Base. Steps: [RESEARCH.md → Sign-only wallets: pay Messari directly](RESEARCH.md#sign-only-wallets-pay-messari-directly).
 
 | Subcommand | Purpose |
 |------------|---------|
@@ -1332,7 +1335,7 @@ User wants to...
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
-├── Data feeds         → Phase 4: sources login (hourly token; sign-only: --address then --signature; 401 re-login, 403 not approved) → sources get prices|liquidity|morpho
+├── Data feeds         → Phase 4: sources login (weekly: 1 h token the CLI refreshes for 7 days; sign-only: --address then --signature; 401 re-login, 403 not approved) → sources get prices|liquidity|morpho
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (x402, USDC on Base; sign-only: --address then research complete; owner yes per spend; see RESEARCH.md)
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch (check the template's Source; `sherwood-strategies` ones are unaudited)
 ├── Lend (Morpho)     → Phase 4: `morpho-supply` template

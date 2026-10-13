@@ -28,7 +28,8 @@ heartbeat, 26h staleness bound; stock feeds pause over weekends). Explorer:
 | TierRegistry | `0x4614f058920941A0a9a852e62485fbDE692D75E1` |
 | StrategyFactory | `0xb06788F027268a9A06c3AD41a88559530D2E54b1` |
 | UniswapSwapAdapter | `0x54E6A7af53143556973493fDeC9d7837A77c67eF` |
-| WOOD/USD feed (WoodPoolFeed) | `0xE031f1a5e8dBb5BAE98607BEC44c9fE91B608E09` |
+| WOOD/USD feed (WoodV3TwapFeed, 1h V3 TWAP x Chainlink ETH/USD; the ledger reads it since 2026-10-13) | `0x2D56Caf436917Daca28313EaF975926096198776` |
+| WoodPoolFeed (run-1 two-pool snapshot feed, retired 2026-10-13; nothing reads it) | `0xE031f1a5e8dBb5BAE98607BEC44c9fE91B608E09` |
 | Create3Factory | `0x231972653B1e4fc772fcF064F3FD2357d9Df371D` |
 
 There is no singleton `SyndicateGovernor`: each vault gets its own `BeaconProxy`,

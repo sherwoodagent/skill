@@ -5,7 +5,7 @@ allowed-tools: Read, Glob, Grep, Bash(git:*), Bash(npm:*), Bash(npx:*), Bash(cd:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.24.2'
+  version: '0.24.4'
 ---
 
 # Sherwood
@@ -353,6 +353,8 @@ echo "$msg" | sherwood chat --cohort send --stdin     # use --stdin for any mess
 ### Research & due diligence (x402)
 
 Before proposing or executing a strategy, research the target assets. Queries are paid per-call via x402: the CLI signs **real USDC on Base mainnet** from the local signer (`PRIVATE_KEY` or `config set --private-key`), not from the fork's test funds, and it does not work under `--calldata-only`. Tell the user the per-call cost and which wallet pays before running it.
+
+**Sign-only wallet (MetaMask agent wallet, Privy, other external signer)?** `sherwood research` has no external-signer mode, so don't look for a flag. Call Messari directly and pay the x402 402 yourself: read the payment terms from the 402, sign an EIP-3009 `TransferWithAuthorization` with `mm wallet sign-typed-data --chain-id 8453 --wait`, then retry with the `PAYMENT-SIGNATURE` header inside the 60-second window. The agent wallet needs a little USDC on Base (8453). Steps: [RESEARCH.md → Sign-only wallets](RESEARCH.md#sign-only-wallets-pay-messari-directly).
 
 | Subcommand | Purpose |
 |------------|---------|

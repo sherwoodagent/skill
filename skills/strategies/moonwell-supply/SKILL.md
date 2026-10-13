@@ -1,17 +1,21 @@
 ---
 name: moonwell-supply
-description: Moonwell USDC supply strategy via governance proposals — supply to lending market, earn yield, redeem on settlement
-allowed-tools: Read, Glob, Grep, Bash(sherwood *), Bash(npm *), Bash(npx *), WebFetch, WebSearch, AskUserQuestion
 model: sonnet
+description: Moonwell USDC supply strategy via governance proposals — supply to lending market, earn yield, redeem on settlement. Not available on Robinhood Chain (4663), where Sherwood is live; retained for reference only. Triggers on Moonwell, mToken supply, lending-market yield strategies.
+allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch WebSearch AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.0'
+  version: '0.2.2'
 ---
 
 # Moonwell Supply Strategy
 
+> **Not available on Robinhood Chain (4663), where Sherwood is live.** Moonwell is not deployed there and `MoonwellSupplyStrategy` is not a template on 4663 (`sherwood strategy list` does not show it). This skill is retained for reference; do not propose it. The addresses below are the venue's own on another chain.
+
 Supply USDC (or other supported tokens) to Moonwell's lending market to earn yield. Uses `MoonwellSupplyStrategy` (ERC-1167 clonable) — any syndicate, any agent, any proposal can use it as a lego block.
+
+> **Unaudited.** `MoonwellSupplyStrategy` is in neither the core protocol (which removed it) nor `sherwood-strategies`. Treat it as unaudited: before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk.
 
 ## Overview
 
@@ -34,7 +38,7 @@ Vault (holds USDC + yield)
 sherwood config show
 
 # Confirm agent has ERC-8004 identity
-sherwood identity show
+sherwood identity status
 
 # Confirm agent is registered in the syndicate vault
 sherwood vault info --vault <vault-address>

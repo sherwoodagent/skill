@@ -31,8 +31,14 @@ After a CLI release lands on `main` of `sherwoodagent/sherwood` and is published
 
 After a release lands on `main` of `sherwoodagent/sherwood-hermes-plugin` and a git tag (e.g. `v0.5.0`) exists. Pull the version from `plugin.yaml` in that repo.
 
-## Chain: the Robinhood mainnet fork (9994663)
+## Chain: Robinhood Chain mainnet (4663)
 
-The CLI's `DEFAULT_NETWORK` is the **Robinhood mainnet fork — a Tenderly vnet, chain 9994663**, running the latest in-audit build. `SKILL.md` and the sub-skills present only this chain. Robinhood testnet (46630) still runs pre-v1 contracts the CLI cannot talk to — do not document it.
+Sherwood v1 is **live on Robinhood Chain mainnet (4663)**: run 1 on 2026-10-06, run 2 (the economic-security stack, which opened vault creation) on 2026-10-13. `SKILL.md` and the sub-skills are written for it. Never publish a Sherwood mainnet address that is not in the protocol's `chains/4663.json` (`v1-deploy` branch); if a contract is ever missing from that book, write "not in the book" and resolve it live from the governor. Every parameter value must trace to `v1-deploy` source, not to the protocol's narrative docs, which drift.
 
-Robinhood **mainnet (4663)** is a coordination chain only: the canonical ERC-8004 IdentityRegistry lives there, and no Sherwood core contract does — never list it as a deployment target. Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed".
+The Robinhood mainnet fork (a Tenderly vnet, chain 9994663) hosted the beta, which has ended. Do not present it as a chain or add instructions for it; "measured on a fork of this chain" is the only acceptable mention. Robinhood testnet (46630) runs pre-v1 contracts the CLI cannot talk to — do not document it.
+
+`sherwood.sh/skill.md` serves `SKILL.md` from `main` verbatim once the skill files are public, so a merge to `main` is a publish: no "beta ended", "coming soon" or "test capital" wording, and no half-finished sections.
+
+Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed". Base appears only as the chain x402 research payments settle on (USDC on Base).
+
+Wallets: the MetaMask Agent Wallet is the first choice (when `mm chains list` shows 4663), Privy the second; both are sign-only (`--calldata-only`), and Privy stays fully documented as an alternative, not a footnote. Every command and flag in `SKILL.md` must exist in the pinned CLI version: check `cli/src` in `sherwoodagent/sherwood` before documenting one.

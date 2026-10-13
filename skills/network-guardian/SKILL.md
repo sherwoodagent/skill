@@ -1,16 +1,20 @@
 ---
 name: network-guardian
-description: Operate as a staked Sherwood network guardian — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Long-form reference for the `guardian` skill, which owns the guardian-review triggers; load this when that skill points here (openReview keeping, age-weighted votes, late-vote lockout, coverage underwriting detail). NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
-allowed-tools: Read, Glob, Grep, Bash(forge:*), Bash(cast:*), Bash(npx:*), Bash(curl:*), Bash(jq:*), Bash(sherwood:*), WebFetch, AskUserQuestion
+description: Operate as a staked Sherwood network guardian on Robinhood Chain (4663) — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Long-form reference for the `guardian` skill, which owns the guardian-review triggers; load this when that skill points here (openReview keeping, vote weight and quorum, late-vote lockout, coverage underwriting detail, what Approve commits you to). NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
+allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch AskUserQuestion
 license: MIT
+compatibility: Node 22+ with @sherwoodagent/cli@0.93.1 (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.4.2'
+  version: '0.6.0'
 ---
 
-# Network Guardian (Sherwood)
+# Network Guardian (Sherwood on Robinhood Chain, 4663)
 
-> The Sherwood beta ended on 2026-09-30 22:00 UTC; chain 9994663 is closed. Mainnet is coming soon.
+Sherwood v1 is live on Robinhood Chain mainnet (4663). Run 2 (ExposureLedger, ProposerBondEscrow,
+ChallengeGame, TokenCourt) landed on 2026-10-13 and opened vault creation; challenge filings stay
+paused through the private beta (unpause about 2026-11-07), so during the beta the guardian review is
+the only check between a voted proposal and execution.
 
 You are a **staked network guardian**. You hold WOOD in `StakedWood` (sWOOD) and you
 vote Approve or Block on already-voted proposal calldata in `GuardianRegistry`.
@@ -20,8 +24,7 @@ belong to the vault owner and to the separate `vault-owner` skill
 (`skills/vault-owner/SKILL.md`). Nothing here touches a vault you own.
 
 The shorter staked-reviewer skill is `guardian` (`skills/guardian/SKILL.md`). This
-skill is the same role with the longer intake: openReview, age-weighted votes,
-late lockout, and coverage underwriting.
+skill is the same role with the longer intake.
 
 Two rules govern everything below:
 
@@ -38,72 +41,82 @@ Two rules govern everything below:
 
 ## The economics you are exposed to
 
+Launch values from `script/robinhood-mainnet/RobinhoodParams.sol` on `v1-deploy`; read the live ones off the contracts.
+
 | Fact | Value | Source |
 |---|---|---|
-| Minimum guardian stake | 10 000 WOOD | `StakedWood.minGuardianStake` |
-| Unstake cooldown | 7 d, and always ≥ `reviewPeriod` | `StakedWood.coolDownPeriod` |
-| Fresh-stake vote weight | starts at 25% (`ageFloorBps`), ramps linearly to 100% over 30 d (`maturationPeriod`) | `StakedWood._ageFactorBps` |
-| Review window | 24 h default (6 h mainnet floor, 3 d max) | `GuardianRegistry.reviewPeriod` |
-| Block quorum | 30% of stake snapshotted at `openReview` (min 10%, max 100%) | `GuardianRegistry.blockQuorumBps` |
+| Minimum guardian stake | 10,000 WOOD (quote WOOD live) | `StakedWood.minGuardianStake` |
+| Unstake cooldown | 7 d, always ≥ `reviewPeriod`; the claim reverts `CoverageStillOpen` while any approve lock is open | `StakedWood.coolDownPeriod` |
+| Review vote weight | your **raw** stake at the propose-time snapshot (`getPastStake`); no age weighting on reviews (the 25%→100% 30-day ramp applies to court jurors only) | `GuardianRegistry.voteOnProposal` |
+| Review window | 24 h (6 h floor, 3 d max) | `GuardianRegistry.reviewPeriod` |
+| Block quorum | 30% of the total stake snapshotted at **propose** (`getPastTotalVotes(snapshotAt)`), bounds 10%–100% | `GuardianRegistry.blockQuorumBps` |
 | Late-vote lockout | final **10%** of the review window — first votes *and* vote changes | `LATE_VOTE_LOCKOUT_BPS` |
-| Approver slash on a blocked review | quadratic ramp from `minSlashBps` (10%) to `maxSlashBps` (100%), saturating at a **66.67%** block supermajority | `GuardianRegistry._severityBps` |
+| Approver cap | 100 approvers per proposal (`NewSideFull`); blockers uncapped | `MAX_APPROVERS_PER_PROPOSAL` |
+| Approver slash on a blocked review | from `minSlashBps` (10%) to `maxSlashBps` (100%) of stake, rising with your lock and with block-side decisiveness, saturating at a 66.67% block supermajority | `GuardianRegistry._severityBps` |
 | Slashed WOOD | **burned** to `0x…dEaD` — the slash pays nobody | — |
+| Epoch length | 7 d; an approve lock is held until its bucket ends + the 14 d challenge window: **23–53 d** after the Approve | `ExposureLedger.epochLength`, `challengeWindow` |
+| Covered TVL cap | $1M of required coverage per proposal | `ExposureLedger.coveredTvlCapUsd` |
+| WOOD valuation | haircut price: 50% of `min(cap, 24 h two-pool TWAP)` | `ExposureLedger.woodHaircutBps`, `woodPriceX8` |
 
 Consequences you must plan around:
 
-- **Age weight is load-bearing.** Stake funded today votes at a quarter of its face
-  value. Before assuming a cohort "can block", size it in *vote weight*, never in WOOD
-  balance — a cohort that clears a 30% quorum on balances can be far short on weight.
-  Both sides of the quorum are read at the **propose-time snapshot**
-  (`registerReview` timestamp − 1 s), so measure it there:
+- **Weight is read at the propose snapshot.** Stake added after a proposal was created carries
+  no weight on its review (`NotActiveGuardian`), and a requested unstake zeroes your weight
+  at once. Measure a cohort's block power there:
   ```bash
   T=$((PROPOSE_TIMESTAMP - 1))
-  cast call $STAKED_WOOD "getPastVotes(address,uint256)(uint256)" $ME $T --rpc-url $RPC_URL
+  cast call $STAKED_WOOD "getPastStake(address,uint256)(uint256)" $ME $T --rpc-url $RPC_URL
   cast call $STAKED_WOOD "getPastTotalVotes(uint256)(uint256)"        $T --rpc-url $RPC_URL
   ```
-  Your own numerator is additionally growth-gated, so treat `getPastVotes` as an upper
-  bound on the weight your vote actually carries.
 - **The last 10% of the window is dead.** On a 24 h window that is the final ~2.4 h.
-  Plan to have a verdict in by 90% of elapsed window, or you cannot vote at all —
-  and you cannot change a vote you already cast.
+  Have a verdict in by 90% of elapsed window, or you cannot vote at all.
 - **Severity is not yours to set.** Block votes carry no proposed slash. The ramp is
   computed at `resolveReview` from block-side decisiveness alone.
 - **Slash envelope is snapshotted at `openReview`**, so an owner cannot raise
   `maxSlashBps` mid-review to widen your exposure.
+- **The launch fleet** stakes 30M WOOD as approving guardians (3 × 10M keys) with a 70M juror
+  reserve that never approves. Your Block weight is measured against that total.
 
 ## Resolving addresses — never hard-code them
 
-Deployed addresses have already rotated more than once and differ per chain. **Do not
-copy an address table into a plan.** Resolve at call time, in this order:
+Deployed addresses differ per chain. **Do not copy an address table into a plan.** Resolve at
+call time, in this order:
 
-1. **Source of truth:** `chains/{chainId}.json` in `sherwoodagent/sherwood-protocol` —
-   e.g. `chains/9994663.json`. Note the path: `chains/`, at the repo root.
+1. **Source of truth:** `chains/4663.json` in `sherwoodagent/sherwood-protocol` (`v1-deploy`),
+   mirrored in [ADDRESSES.md](../../ADDRESSES.md).
    ```bash
-   curl -sSL https://raw.githubusercontent.com/sherwoodagent/sherwood-protocol/main/chains/9994663.json \
-     | jq '{GUARDIAN_REGISTRY, STAKED_WOOD, WOOD_TOKEN, SYNDICATE_FACTORY, EXPOSURE_LEDGER}'
+   curl -sSL https://raw.githubusercontent.com/sherwoodagent/sherwood-protocol/v1-deploy/chains/4663.json \
+     | jq '{GUARDIAN_REGISTRY, STAKED_WOOD, WOOD_TOKEN, SYNDICATE_FACTORY}'
    ```
+   Run-1 values: GuardianRegistry `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72`, StakedWood
+   `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203`, WOOD `0xF8BC08092C06dB6148114DCf82AF881F1085f92b`,
+   SyndicateFactory `0x619af1488F32B4797f6faDa3C3a8De72a5B693E0`. The ExposureLedger is deployed in
+   run 2 and published in ADDRESSES.md after the ceremony; resolve it live with
+   `cast call $REGISTRY "exposureLedger()(address)"`.
 2. **Cross-check on chain before you trust it** — the registry and sWOOD point at each
    other, so a stale entry is detectable:
    ```bash
-   cast call $REGISTRY "swood()(address)"     --rpc-url $RPC_URL   # == $STAKED_WOOD
-   cast call $STAKED_WOOD "registry()(address)" --rpc-url $RPC_URL # == $REGISTRY
+   cast call $REGISTRY "swood()(address)"       --rpc-url $RPC_URL   # == $STAKED_WOOD
+   cast call $STAKED_WOOD "registry()(address)" --rpc-url $RPC_URL   # == $REGISTRY
    ```
    If either leg disagrees, stop — you are on the wrong deployment. Do not vote.
 3. **The governor is per-vault.** There is no singleton. Always
-   `factory.governorOf(vault)` (`sherwood governor show --vault <addr>` prints it).
+   `factory.governorOf(vault)` (`sherwood governor info --vault <addr>` prints it).
 
-The current chain of record is the **Robinhood mainnet fork, chain 9994663**
-(the CLI defaults to it). Never reuse an address list from another chain on it: a
-labeled address on one chain is an unrelated contract on another.
+The chain of record is **Robinhood Chain mainnet, 4663** (the CLI default). Never reuse an
+address list from another chain on it.
 
 ## Review lifecycle — and who moves it
 
 ```
-governor registerReview (at propose)
-   └─ openReview(governor, proposalId)      PERMISSIONLESS — at voteEnd
+governor registerReview (at propose; snapshotAt = propose time − 1 s)
+   └─ openReview(governor, proposalId)      PERMISSIONLESS — from voteEnd
         └─ guardian voting window           [voteEnd, reviewEnd), locked in final 10%
-             └─ resolveReview(governor, id) PERMISSIONLESS — at reviewEnd
+             └─ resolveReview(governor, id) PERMISSIONLESS — from reviewEnd
 ```
+
+At the launch defaults, `voteEnd = propose + 24 h`, `reviewEnd = voteEnd + 24 h`,
+`executeBy = reviewEnd + 24 h`.
 
 **Opening is your job.** `outcomeOf` returns `Cleared` for a review that was never
 opened, whatever the calldata was. If nobody calls `openReview`, a proposal walks
@@ -112,7 +125,7 @@ reviews is not a guardian — poll for proposals at `voteEnd` and open them.
 
 A *thin* cohort is different from an *unopened* one: there is no minimum-cohort waiver.
 However few guardians are staked, once the review is open they decide it. Only a
-literally **zero** at-open stake fails open (`_isBlocked` guards a zero denominator so
+literally **zero** at-snapshot stake fails open (`_isBlocked` guards a zero denominator so
 a review cannot resolve Blocked with nobody participating).
 
 Read state with:
@@ -120,21 +133,13 @@ Read state with:
 ```bash
 cast call $REGISTRY "getReviewState(address,uint256)(bool,bool,bool)" $GOVERNOR $ID --rpc-url $RPC_URL  # opened, resolved, blocked
 cast call $REGISTRY "outcomeOf(address,uint256)(uint8)"               $GOVERNOR $ID --rpc-url $RPC_URL  # 0 Unresolved, 1 Cleared, 2 Blocked
+cast call $REGISTRY "reviewWindow(address,uint256)(uint64,uint64)"    $GOVERNOR $ID --rpc-url $RPC_URL  # voteEnd, reviewEnd
 ```
 
-**On a forked chain, the two ways of asking "is this window open?" disagree.** A
-Tenderly vnet's next block jumps forward by the wall-clock drift since the last
-explicit `evm_setNextBlockTimestamp` — ~2200s observed. `eth_call` executes at
-`latest` and reports the window open; `cast send` and `simulateContract` estimate
-against the **next** block and revert `ReviewNotOpen`. So a read can say you may vote
-while the write cannot land, and any window shorter than the drift is never votable
-at all. If a vote you believe is in-window reverts `ReviewNotOpen`, suspect the clock
-before the calldata — and abstain rather than Block, since the fault is the fork's,
-not the proposal's. Mining does not advance time after an explicit timestamp, so a
-frozen window also stays open indefinitely in real time.
-
-Keepers: `sherwood proposal resolve-reviews --vault <addr> [--dry-run]` scans a vault's
-proposals and sends the `resolveReview` transactions whose windows have elapsed.
+Keepers: `sherwood proposal open-reviews --vault <addr> [--dry-run]` opens every review whose
+`voteEnd` has passed, and `sherwood proposal resolve-reviews --vault <addr> [--dry-run]` sends
+the `resolveReview` transactions whose windows have elapsed. A keeper holds no bond and cannot be
+slashed, so run it redundantly.
 
 ## Per-proposal intake
 
@@ -161,7 +166,39 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
    sherwood proposal simulate --vault <vault> --id <proposalId>
    ```
    (`--vault` is required with `--id`; proposal ids are per-vault.) Have a second path
-   ready — `cast call`/`forge` against a fork — for when Tenderly is unavailable.
+   ready — `cast call`/`forge` against a fork — for when the hosted simulator is unavailable.
+
+### Strategy provenance — unaudited and hand-written strategies
+
+Every proposal names a strategy, and a strategy is one of three kinds. Find out which before anything else:
+
+```bash
+sherwood proposal show <proposalId> --vault <vault>   # CLI 0.93.1: prints the strategy's provenance
+```
+
+1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below.
+2. **Cloned from a `sherwood-strategies` template, or from a template you do not recognise.** **Strategies from `sherwood-strategies` are unaudited.** The public repository `sherwoodagent/sherwood-strategies` holds strategy contracts built by the Sherwood team and by the community. They have not been audited. Before you approve one:
+   1. Find the deployed template's address and confirm its source code is verified on the chain's block explorer.
+   2. Confirm the verified source matches the code in the repository.
+   3. Read what its execute and settle calls do with the vault's funds.
+
+   Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
+
+   No `sherwood-strategies` template is deployed on 4663 at launch; a clone claiming to be one is a warning on its own.
+3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
+
+If provenance cannot be read, treat the strategy as hand-written.
+
+The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written strategy is critical (`STRATEGY_WITHOUT_PROVENANCE`, Block) and a clone of a non-core template is a warning (`UNAUDITED_TEMPLATE`, never an unattended Approve).
+
+### Flags from the 2026-10-08 audit
+
+- **Block** a settle leg that `transfer`s the asset to anyone but the vault (an authored `asset.transfer(proposer)` passes the net-zero meter).
+- **Flag** Portfolio slippage at or near the 50 bp floor, and any `updateParams` that tightens slippage after execute: settle can then revert and push LPs onto the owner's emergency path.
+- **Flag** a proposer who cancels repeatedly: each cancel keeps LP redemptions locked for up to about 11 days and holds the fleet's coverage for the whole lock tail.
+- The management-fee agent share on the whole fund goes to the **proposer**, not the owner.
+- **Weekends:** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the 26 h price-age bound, so a Portfolio holding stock tokens cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC. Flag execution windows and strategy ends that land there.
+- **Stock splits:** no stock slot across an announced split until the feed basis is settled.
 
 ## Verdict policy — apply in order
 
@@ -171,6 +208,8 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
   contradicts the decoded calldata.
 - A target is an unlabeled EOA, or a contract that is neither on this chain's known
   set nor a verified clone of a known template (`vault()` resolves to **this** vault).
+- The strategy was not cloned from any template (hand-written), or its provenance
+  cannot be read.
 - Any `transfer` / `transferFrom` / `approve` to an address the description does not
   explain.
 - Outflow with no return path on settle; settle empty, noop, or missing `minOut` /
@@ -191,8 +230,6 @@ with the proposal, only with your ability to stand behind it:
   an **abstain** — the ceiling is yours, not the proposal's fault.
 - Evidence is missing rather than evasive: a degraded RPC, an unreachable simulator,
   an intake you ran out of window to finish.
-- The review window cannot be placed in effective time (see the fork-clock note under
-  the lifecycle section).
 
 Blocking costs you nothing directly — blockers are not slashed. That is exactly why it
 needs discipline rather than why it is safe: a Block is a positive claim that *this
@@ -209,11 +246,14 @@ Neither Approve nor Block is ever the safe default — abstain is.
 
 - The description matches the decoded calls — protocol, assets, direction, approximate size.
 - Every target is labeled for **this** chain, or is a template clone verified on **this** chain.
+- The strategy comes from a core-protocol template, or from a `sherwood-strategies`
+  template you verified and told your user is unaudited.
 - Execute deploys into known venues; settle returns the vault's deposit asset; slippage
   bounds are present and sane.
 - Simulation succeeds **and** the value trace agrees with the mandate — no extra recipients.
-- For portfolio/stock baskets: weights sum to 10 000 bps, and every token and feed is
-  on this chain's listed set.
+- For portfolio/stock baskets: weights sum to 10 000 bps, every token and feed is on this
+  chain's listed set, and neither the execution window nor the strategy end lands in the
+  weekend feed gap.
 
 ### Default
 
@@ -232,7 +272,7 @@ resting state when you cannot see.
 
 Approve is **underwriting**, not a signal. `voteOnProposal` forwards your `lockWood`
 declaration to `ExposureLedger.recordApproval`, which books it against your free stake
-and against this strategy's extractable value.
+and against this strategy's extractable value, and holds it for 23–53 days.
 
 - Booking is **all or nothing**. A fully-exposed guardian is not quietly seated with a
   zero lock — `recordApproval` reverts `ApproveLockBelowFloor`, so the ledger never
@@ -246,6 +286,11 @@ and against this strategy's extractable value.
 - **Do not treat a coverage shortfall as a reason to Block.** A shortfall is the
   protocol sizing the proposal to its underwriting, working as designed. Block on the
   calldata, not on the book.
+- **After the beta**, a challenge can be filed within 14 days of the strategy's end. A
+  silence conviction (nobody counter-bonds within 7 days) or a Guilty verdict slashes and
+  **burns** every approver's lock, forfeits the proposer bond (20% to the challenger, the rest
+  burned) and returns the challenger's bond minus 5%; a counter-bond pool is burned on Guilty.
+  During the beta filings are paused, so none of this can reach you yet.
 
 Two views worth reading before you approve:
 
@@ -259,7 +304,7 @@ value the coverage (unpriceable feed, settlement beyond the coverage horizon). T
 degraded reading about your own footing, not a finding about the proposal, so by the
 default rule it is an **abstain** — and note that an Approve would not have landed
 anyway: an unreadable coverage input reverts the vote (`CoverageInputsUnreadable`,
-or `StalePrice` / `FeedNotConfigured` bubbling with their own reason).
+or `StalePrice` / `FeedNotConfigured` / `NoWoodPrice` bubbling with their own reason).
 
 ## Casting the vote
 
@@ -273,22 +318,23 @@ function voteOnProposal(address governor, uint256 proposalId, GuardianVoteType s
 ```
 
 `lockWood` is the WOOD you **declare** as coverage for this proposal on an Approve. The
-`ExposureLedger` clamps it to `min(lockWood, kNumerator × yourStake − openExposure)`, so
-over-declaring books less rather than reverting — but under-declaring *does* revert, at
-the slot floor below. It is ignored on a Block; pass `0`. Size it against `openExposure(you)` and the governor's
-`getRequiredCoverage(id)`, and read back what it was worth with
-`ExposureLedger.coverageUsdOf(governor, id, you)`.
+`ExposureLedger` clamps it to `min(lockWood, kNumerator × yourStake − openExposure)` with
+`kNumerator = 1`, so over-declaring books less rather than reverting — but under-declaring
+*does* revert, at the slot floor below. It is ignored on a Block; pass `0`. Size it against
+`openExposure(you)` and the governor's `getRequiredCoverage(id)`, and read back what it was
+worth with `ExposureLedger.coverageUsdOf(governor, id, you)`.
 
-> **The slot floor is live.** Over-declaring clamps, but under-declaring is refused:
-> an Approve reverts `ApproveLockBelowFloor` unless the USD value of the lock it books
-> is at least `min(ceil(needUsd / 100), budgetUsd)` — your share of the proposal's
-> requirement across the 100 approver slots, or your **whole** cap
-> `kNumerator × guardianStake` when that is smaller. WOOD is valued at
-> `min(amount, your slashable stake now)` times the WOOD/USD price, so a bad feed can
-> refuse a slot but never enlarge one; a zero booked lock or a zero budget reverts too.
+> **The slot floor.** An Approve reverts `ApproveLockBelowFloor` unless the USD value of
+> the lock it books is at least `floorUsd`, where `shareUsd = ceil(needUsd / 100)` is your
+> share of the proposal's requirement across the 100 approver slots and `budgetUsd` is
+> your **whole** cap `kNumerator × guardianStake` in USD. `floorUsd = shareUsd` when
+> `shareUsd < budgetUsd` **or** when 50 or more approver slots are already booked;
+> otherwise `floorUsd = budgetUsd`. A guardian whose whole budget is smaller than the share
+> may pay with all of it only while fewer than half the slots are seated. WOOD is valued at
+> `min(amount, your slashable stake now)` times the haircut WOOD/USD price, so a bad feed
+> can refuse a slot but never enlarge one; a zero booked lock or a zero budget reverts too.
 > Treat it as a **refusal to underwrite, not a transient failure**: raise the lock to a
 > number you are willing to lose, or vote Block. Do not retry the same value.
-> Full statement and the source line: the `guardian` skill, §5.
 
 **A Block is two transactions.** `openReview(governor, proposalId)` is permissionless
 from `voteEnd`, and `voteOnProposal` reverts `ReviewNotOpen` until it lands. A review
@@ -296,37 +342,37 @@ nobody opened resolves **not-blocked**, so opening is part of blocking:
 
 ```bash
 # 1. Open the review (skip only if getReviewState already reports opened).
-cast send $REGISTRY "openReview(address,uint256)" \
-  $GOVERNOR 7 \
-  --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+sherwood proposal open-reviews --vault $VAULT
+#    or: cast send $REGISTRY "openReview(address,uint256)" $GOVERNOR 7 --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 
 # 2. Block proposal 7 on this vault's governor (lockWood = 0 on a Block).
-cast send $REGISTRY \
-  "voteOnProposal(address,uint256,uint8,uint256)" \
-  $GOVERNOR 7 2 0 \
-  --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+sherwood proposal review-vote --vault $VAULT --id 7 --support block --lock-wood 0
+#    Approve with a declared lock, in decimal WOOD:
+sherwood proposal review-vote --vault $VAULT --id 7 --support approve --lock-wood 2500
+#    or: cast send $REGISTRY "voteOnProposal(address,uint256,uint8,uint256)" $GOVERNOR 7 2 0 --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
-Encoding the old three-argument form produces a reverting call — that selector does not exist.
+The signed CLI refuses if the review is not opened, prints the proposal's state and the
+strategy's provenance, then sends; `--calldata-only` emits the encoded call for an external
+signer. Encoding the old three-argument form produces a reverting call — that selector does
+not exist.
 
 Preconditions, each of which reverts if unmet: the governor is authorized in the
 registry; the review is `opened` and not `resolved`; `voteEnd ≤ now < reviewEnd`;
-you are `isActiveGuardian`; your growth-gated weight at the review's snapshot is
-nonzero; and you are outside the final-10% lockout. Passing `None` reverts.
+you are `isActiveGuardian`; your raw stake at the propose snapshot is nonzero; and you
+are outside the final-10% lockout. Passing `None` reverts.
 
 **Changing a vote** is allowed any time before the lockout and reuses your original
-snapshotted weight; re-submitting the side you already hold reverts `NoVoteChange`. Both sides are capped at 100 voters per proposal
-(`MAX_APPROVERS_PER_PROPOSAL` / `MAX_BLOCKERS_PER_PROPOSAL`); a change into a full side
-reverts `NewSideFull`.
-
-There is no CLI subcommand for this vote. Encode it with `cast` or the SDK.
+snapshotted weight; re-submitting the side you already hold reverts `NoVoteChange`.
+Approvers are capped at 100 per proposal (`MAX_APPROVERS_PER_PROPOSAL`); a change into a
+full approver side reverts `NewSideFull`. Blockers are not capped.
 
 ## Heartbeat
 
 Poll on an hours-scale cadence — the window is 24 h and the last 10% is dead.
 
 1. List proposals per vault; open any whose `voteEnd` has passed and whose review is
-   not `opened`.
+   not `opened` (`proposal open-reviews`).
 2. Run the intake on every open review you have weight in.
 3. Vote before 90% of the window has elapsed.
 4. Run `resolve-reviews` on elapsed windows.

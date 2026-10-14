@@ -23,7 +23,7 @@ While the factory's `ownerOnlyProposals` launch flag is on, only the vault owner
 
 If the proposal's strategy comes from `sherwood-strategies` (or from neither source repository), it is unaudited: run the checks in [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the operator before proposing.
 
-`propose` locks a WOOD proposer bond (1% of required coverage at the haircut WOOD price; about 4% of deployed capital for an uncertified strategy). Show the operator the quoted bond and every parameter, and wait for an explicit yes before running the command (see "Ask before funds move" in [SKILL.md](SKILL.md#ask-before-funds-move)). For stock-token baskets, keep the execution window and the settle time out of the weekend feed gap (≈ Sat 18:40 → Mon 00:00 UTC).
+`propose` locks a WOOD proposer bond (1% of required coverage, quoted in WOOD by the CLI; about 4% of deployed capital for an uncertified strategy; the CLI approves the quote plus a 5% buffer and re-quotes before propose). Show the operator the quoted bond and every parameter, and wait for an explicit yes before running the command (see "Ask before funds move" in [SKILL.md](SKILL.md#ask-before-funds-move)). For stock-token baskets, keep the execution window and the settle time out of the weekend feed gap (≈ Sat 18:40 → Mon 00:00 UTC).
 
 ```bash
 sherwood proposal create \
@@ -146,7 +146,7 @@ Displays the governor address and its parameters: voting period, execution windo
 ## Governor parameter setters (owner only)
 
 ```bash
-sherwood governor set-voting-period --vault 0x... --seconds <n>      # 1h–3d
+sherwood governor set-voting-period --vault 0x... --seconds <n>      # 1h–3d; testing: 3600 (1 h)
 sherwood governor set-execution-window --vault 0x... --seconds <n>   # 1h–7d
 sherwood governor set-veto-threshold --vault 0x... --bps <n>         # 2000–8000
 sherwood governor set-max-fee --vault 0x... --bps <n>                # ≤ 2500

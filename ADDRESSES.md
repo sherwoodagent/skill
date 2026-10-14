@@ -76,11 +76,12 @@ Chain**; `sherwood strategy list` shows them under "Not available". See
 | WOOD/WETH Uniswap V3 pool | `0xF6831AaF374B353757F0dE6B3DD2a74697671C69` |
 | WOOD/WETH Uniswap V3 factory | `0xE51960f1B45f1C9FB6D166E6a884F866fC70433B` |
 
-The CLI has no command that buys WOOD. Swap WETH for WOOD through the Uniswap
-SwapRouter below (or the V2 pair directly); both pools are shallow, so quote first and
-size the trade in tranches. How much WOOD a creator needs: [Fund the wallet](SKILL.md#fund-the-wallet-eth-and-wood).
-The protocol prices WOOD from the WOOD/WETH V3 pool's 1h TWAP (times Chainlink
-ETH/USD), capped by the owner and haircut 50%; that haircut price sizes the proposer bond.
+The CLI has no command that buys WOOD. With the MetaMask Agent Wallet, swap USDG for WOOD
+with `mm swap` (quote first). Otherwise swap WETH for WOOD through the Uniswap SwapRouter
+below (or the V2 pair directly). The pools are shallow, so quote first, size the trade in
+tranches and expect price impact: 10,000 WOOD cost about $33 on the mainnet test, not the
+~$16 that spot implies. How much WOOD a creator needs: [Fund the wallet](SKILL.md#fund-the-wallet-eth-and-wood).
+The CLI quotes the proposer bond in WOOD; use that number.
 
 ## Tokens
 

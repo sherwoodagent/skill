@@ -4,7 +4,7 @@ model: sonnet
 description: Instructs an AI agent acting as the owner of a Sherwood vault on Robinhood Chain (4663) — seeds the post-create caps, reviews its own proposal before sending it, monitors governance and live strategies, vetoes or emergency-cancels a bad proposal, sets vault and governor parameters, pauses, rescues, and recovers a stuck Executed proposal through unstick or the bonded emergency unwind (emergencySettleWithCalls → finalizeEmergencySettle). Triggers on vault owner duties, post-create checklist, proposal monitoring, veto, emergency cancel, settlement tracking, stuck proposal, pause, set-agent-fee, min buffer, max capital, tier-2 cap, depositor whitelist, rotate owner, or emergency owner powers. Not for staking WOOD or casting Approve/Block review votes (the `guardian` skill).
 allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch WebSearch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli@0.93.2 (default chain robinhood-mainnet, 4663), Foundry (cast) for the direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli@0.94.0 (default chain robinhood-mainnet, 4663), Foundry (cast) for the direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
   version: '0.4.1'
@@ -30,7 +30,7 @@ Governance is optimistic: a proposal passes unless Against votes reach the veto 
   export GOVERNOR_ADDRESS=$(cast call $SYNDICATE_FACTORY "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)
   sherwood governor info --vault $VAULT_ADDRESS     # prints the same address and the live parameters
   ```
-- The Sherwood CLI, `@sherwoodagent/cli@0.93.2` or later (Node 22+). It defaults to Robinhood Chain; no `--chain` flag is needed. Foundry (`forge`, `cast`).
+- The Sherwood CLI, `@sherwoodagent/cli@0.94.0` or later (Node 22+). It defaults to Robinhood Chain; no `--chain` flag is needed. Foundry (`forge`, `cast`).
 
 ### Addresses
 
@@ -89,7 +89,7 @@ At launch you are the proposer. `sherwood strategy propose` / `proposal create` 
 
 1. **Provenance.** Core templates only (Portfolio, Morpho Supply, Concentrated Liquidity). `sherwood strategy list` shows what is deployed on 4663. Anything from `sherwood-strategies`, or hand-written, is unaudited: see [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
 2. **Simulate the call files** before proposing: `sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json --settle-calls settle.json`. Read the risk codes (§2).
-3. **The bond.** Quote it live; the CLI prints it. It is 1% of required coverage in USD, converted at the **haircut** WOOD price (50% haircut at launch), so an uncertified Portfolio bond is about 4% of deployed capital in WOOD at spot, about 0.8% once the class is certified. Never treat a fixed WOOD figure as the requirement. It comes back on any terminal state: `sherwood proposal reclaim-bond --vault $VAULT_ADDRESS --id <id>` (after a Settled proposal, only once the 14-day challenge window has closed; `ChallengeWindowOpen` until then).
+3. **The bond.** Quote it live; the CLI prints it. It is 1% of required coverage, quoted in WOOD by the CLI (with the 5% buffer it approves and your free WOOD), so plan on about 4% of deployed capital in WOOD for an uncertified Portfolio, about 0.8% once the class is certified. Never treat a fixed WOOD figure as the requirement. It comes back on any terminal state: `sherwood proposal reclaim-bond --vault $VAULT_ADDRESS --id <id>` (after a Settled proposal, only once the 14-day challenge window has closed; `ChallengeWindowOpen` until then).
 4. **Caps.** `--max-capital` ≤ 80% of `totalAssets()` (§0); each tier-2 call cap ≤ 2% of `totalAssets()`; Σ caps ≤ `--max-capital` (`CallCapsExceedMaxCapital`). Required coverage is capped at $1M per proposal (`CoveredTvlCapExceeded`); while uncertified that is about 2× the deployed capital.
 5. **Duration** 1 h – 30 d. Cooldown 1 h after the last proposal ended (`CooldownNotElapsed`).
 6. **The weekend feed gap.** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the Portfolio template's 26 h `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens **cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC** (`StalePrice`). With the default 24 h vote + 24 h review + 24 h execution window, an execution window that falls inside the gap expires the proposal. Propose so that both the execution window and the end of the strategy land on weekdays.
@@ -203,7 +203,7 @@ For each Executed proposal:
 ### Governor (owner only, frozen while any proposal is open — Drafts count)
 
 ```bash
-sherwood governor set-voting-period    --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 3 d (default 24 h)
+sherwood governor set-voting-period    --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 3 d (default 24 h); testing: 3600 (1 h)
 sherwood governor set-execution-window --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 7 d (default 24 h)
 sherwood governor set-veto-threshold   --vault $VAULT_ADDRESS --bps <n>       # 2000 – 8000 (default 2000)
 sherwood governor set-max-fee          --vault $VAULT_ADDRESS --bps <n>       # ≤ 2500 (default 2000)

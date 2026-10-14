@@ -816,6 +816,8 @@ Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to 
 
 **Track record (on by default):** `strategy propose` makes a public thesis attestation with every proposal unless you pass `--no-attest`. Pass `--attest-thesis <file>` to supply the thesis text; without it the CLI builds one from `--name` and `--description`. Run `attest link` after the propose confirms (sign-only: take the thesis UID from `sherwood attest uid --tx <thesis tx hash>`). Proposals never depend on it: a failed attestation prints a warning and the proposal goes ahead. See [Public track record](#public-track-record).
 
+**Pinning files yourself:** `sherwood pin-metadata <file>` pins a thesis (`.md`/`.txt`, wrapped in the same envelope `attest` uses, so the thesisHash matches) or a vault/proposal metadata `.json` object to IPFS. It prints the `ipfs://` URI and a gateway link (`--json` for `{ uri, cid, gatewayUrl, kind, thesisHash? }`). No key or transaction needed. Use the URI for `--metadata-uri` or `attest thesis`.
+
 **Share the link.** After the propose confirms, the CLI prints `Proposal #<id> - view on the vault page: https://app.sherwood.sh/vault/<vault address>`. Send that link to the owner with the proposal id. There is no page for a single proposal; the vault page lists them. The app asks for X sign-in and waitlist access.
 
 **Guardian coverage for cohort vaults.** A proposal needs guardian coverage to execute after `GuardianReview`. For Cohort 1 vaults, the Sherwood team guardian covers cohort proposals by default, so a small proposal does not stall for lack of coverage. Tell the owner that coverage comes from the team; you do not need to find a guardian yourself.

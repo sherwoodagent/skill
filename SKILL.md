@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.27.3'
+  version: '0.28.0'
 ---
 
 # Sherwood
@@ -17,10 +17,10 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.94.0
+npm i -g @sherwoodagent/cli@0.95.0
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.94.0 or later**; if older, run the install command above. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and from 0.93.2 it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
+If it does exist, run `sherwood --version`. It must be **0.95.0 or later**; if older, run the install command above. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and from 0.93.2 it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
 
 Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
@@ -270,12 +270,12 @@ The **vault owner** sets each vault's governance periods on its governor. Change
 
 | Period | Command | Bounds | Testing | Production |
 |---|---|---|---|---|
-| Voting period | `sherwood governor set-voting-period --vault 0xVAULT --seconds <n>` | `MIN_VOTING_PERIOD` (1h on mainnet 4663) to 3 days | `3600` (1 hour) | 24h or more, so depositors can react |
+| Voting period | `sherwood governor set-voting-period --vault 0xVAULT --seconds <n>` | `MIN_VOTING_PERIOD` (30 min on mainnet 4663) to 3 days | `1800` (30 min) | 24h or more, so depositors can react |
 | Execution window | `sherwood governor set-execution-window --vault 0xVAULT --seconds <n>` | 1 hour to 7 days | `3600` | 1–2 days |
 | Cooldown | `sherwood governor set-cooldown --vault 0xVAULT --seconds <n>` | `MIN_COOLDOWN_PERIOD` (1h on mainnet) to 30 days | `3600` | as needed |
 | Max strategy duration | `sherwood governor set-max-duration --vault 0xVAULT --seconds <n>` | 1 hour to 30 days | — | match the strategy |
 
-The guardian review period comes after voting and is set by the protocol (GuardianRegistry), not the owner. A fresh vault uses the deploy defaults. For a quick test cycle, set the voting period to 1 hour before the first proposal. With `--calldata-only`, each setter is one more transaction for the wallet to sign.
+The guardian review period comes after voting and is set by the protocol (`GuardianRegistry.reviewPeriod`, 30 min on mainnet 4663 since 2026-10-14), not the owner. A fresh vault starts with a 24h voting period; only the owner changes it. A proposal keeps the voting and review periods it was created with, so a change applies to the next proposal. For a quick test cycle, set the voting period to 30 min (`1800`) before the first proposal: propose → vote ends +30 min → review ends +1 h → execute. With `--calldata-only`, each setter is one more transaction for the wallet to sign.
 
 
 ### Join existing vault
@@ -822,6 +822,8 @@ Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to 
 
 **Guardian coverage for cohort vaults.** A proposal needs guardian coverage to execute after `GuardianReview`. For Cohort 1 vaults, the Sherwood team guardian covers cohort proposals by default, so a small proposal does not stall for lack of coverage. Tell the owner that coverage comes from the team; you do not need to find a guardian yourself.
 
+**Check coverage before execute.** During `GuardianReview`, run `sherwood proposal show <id> --vault <vault>` and read its **Guardian Coverage** section: each approving guardian's WOOD lock and its USD value, the total WOOD locked, and covered vs required (required is in the vault asset, e.g. `60 USDG`). `Status: FULL` means execute deploys the full requested capital; `PARTIAL` deploys a proportional share; `NONE` means execute reverts `InsufficientApproveCoverage`. Do not read the governor's `effectiveMaxCapital` for this: it stays 0 until execute. Check again before Review End, while guardians can still Approve, and run `sherwood proposal execute --vault <vault> --id <id> --dry-run` before the real execute: it fails when coverage is short (pass `--allow-partial-coverage` to accept a partial deploy). If review ended with no coverage, cancel, wait out the cooldown that `proposal cancel` prints, and repropose.
+
 Two-step variant — when a local signing wallet handles the clone and only the propose comes from the external signer:
 
 ```bash
@@ -1076,7 +1078,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.94.0` (the version pinned in Install) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.95.0` (the version pinned in Install) before continuing.
 2. **Confirm wallet matches.** Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
@@ -1326,7 +1328,7 @@ With `--calldata-only` the CLI does not wait. Broadcast the vote only after a bl
 sherwood proposal execute --vault <addr> --id <proposalId>
 ```
 
-Anyone can call. Verifies proposal is Approved, within execution window, no other active strategy, and cooldown has elapsed.
+Anyone can call. Verifies proposal is Approved, within execution window, no other active strategy, and cooldown has elapsed. Guardian coverage must be booked first: run `sherwood proposal show <id> --vault <addr>` (Guardian Coverage section) and `sherwood proposal execute --vault <addr> --id <id> --dry-run`, which fails when coverage is short. See **Check coverage before execute** earlier in this file.
 
 ### Settle an executed proposal
 

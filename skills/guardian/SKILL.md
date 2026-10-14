@@ -3,10 +3,10 @@ name: guardian
 description: Act as a staked Sherwood network guardian on Robinhood Chain (4663) — stake WOOD into sWOOD, open and review proposal guardian reviews (execute + settle calldata), size the coverage you declare, and vote Approve or Block, or abstain, on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) via `sherwood proposal review-vote`. Triggers on staking WOOD as a guardian, reviewing proposal calldata, Approve/Block/abstain verdicts, coverage underwriting (lockWood), ApproveLockBelowFloor, openReview, resolveReview, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls (the `vault-owner` skill).
 allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch WebSearch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli@0.94.0 (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli@0.95.0 (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.14.0'
+  version: '0.14.1'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -27,7 +27,7 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 - `RPC_URL` and `PRIVATE_KEY` exported for the `cast` commands below. `PRIVATE_KEY` is the reviewer wallet, **not** a vault owner. With an agent wallet, build each tx with `cast calldata "<signature>" <args…>` and broadcast it through the wallet recipe in the main skill (Phase 1 → Agent wallet); every `sherwood` command below also accepts `--calldata-only`.
 - WOOD to stake (`minGuardianStake` is 10,000 WOOD at launch). Quote WOOD live; never treat a published figure as a price.
-- Foundry (`forge`, `cast`) and `@sherwoodagent/cli@0.94.0` or later (defaults to Robinhood Chain; no `--chain` flag).
+- Foundry (`forge`, `cast`) and `@sherwoodagent/cli@0.95.0` or later (defaults to Robinhood Chain; no `--chain` flag).
 
 > **Per-vault governor.** There is no singleton. `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`; `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
@@ -48,7 +48,7 @@ export GUARDIAN_REGISTRY=0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72
 export SWOOD=0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203
 cast call $GUARDIAN_REGISTRY "swood()(address)"          --rpc-url $RPC_URL   # == $SWOOD
 cast call $SWOOD "registry()(address)"                   --rpc-url $RPC_URL   # == $GUARDIAN_REGISTRY
-cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint256)"   --rpc-url $RPC_URL   # 86400
+cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint256)"   --rpc-url $RPC_URL   # 1800 (30 min) on 4663 since 2026-10-14
 export EXPOSURE_LEDGER=$(cast call $GUARDIAN_REGISTRY "exposureLedger()(address)" --rpc-url $RPC_URL)
 ```
 
@@ -128,7 +128,7 @@ cast call $GUARDIAN_REGISTRY "getReviewState(address,uint256)(bool,bool,bool)" $
 cast call $GUARDIAN_REGISTRY "reviewWindow(address,uint256)(uint64,uint64)"    $GOVERNOR_ADDRESS <PROPOSAL_ID> --rpc-url $RPC_URL   # voteEnd, reviewEnd
 ```
 
-Timeline at the launch defaults: `voteEnd = propose + 24 h`, `reviewEnd = voteEnd + 24 h`, `executeBy = reviewEnd + 24 h`. **The last 10% of the review window is locked out** (`VoteChangeLockedOut`): on a 24 h window you cannot cast or change a vote in the final ~2.4 h. Have a verdict in by 90% of the window.
+Timeline: `voteEnd = propose + votingPeriod` (owner-set per vault: 24 h default, 30 min floor), `reviewEnd = voteEnd + reviewPeriod` (registry-wide, 30 min on 4663), `executeBy = reviewEnd + executionWindow` (24 h default). Each proposal keeps the periods it was created with; read them from `reviewWindow` above rather than assuming. **The last 10% of the review window is locked out** (`VoteChangeLockedOut`): on a 30 min window you cannot cast or change a vote in the final 3 min, so the usable window is the first 27 min after `voteEnd`. Have a verdict in by 90% of the window, and watch for `voteEnd` (open the review the moment it passes) rather than polling hourly.
 
 **A review that is never opened is a proposal that executes unreviewed.** The governor resolves an unopened review inline as *not blocked*, whatever the calldata. `openReview` is permissionless from `voteEnd` precisely because it has to be somebody's job, and a voter that watches only for *opened* reviews cannot be the thing that opens them.
 

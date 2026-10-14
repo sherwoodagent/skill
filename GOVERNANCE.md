@@ -90,7 +90,9 @@ A vote cannot land in the second its proposal was created. The governor refuses 
 
 ## Guardian review
 
-After the voting window, staked guardians review the calls for `reviewPeriod` (24h): `sherwood proposal review-vote` casts Approve (declaring a WOOD lock that underwrites the book) or Block. Anyone may open and resolve the review. A block quorum (30% of staked WOOD at the snapshot) rejects the proposal and slashes the approvers; a shortfall of approving coverage scales the capital the proposal may deploy rather than blocking it. Details in the `guardian` skill.
+After the voting window, staked guardians review the calls for `reviewPeriod` (30 min on mainnet 4663; protocol-set in the GuardianRegistry, not by the vault owner): `sherwood proposal review-vote` casts Approve (declaring a WOOD lock that underwrites the book) or Block. Anyone may open and resolve the review. A block quorum (30% of staked WOOD at the snapshot) rejects the proposal and slashes the approvers; a shortfall of approving coverage scales the capital the proposal may deploy rather than blocking it. Details in the `guardian` skill.
+
+**Check coverage before execute.** During `GuardianReview`, run `sherwood proposal show <id> --vault <vault>` and read its **Guardian Coverage** section: each approving guardian's WOOD lock and its USD value, the total WOOD locked, and covered vs required (required is in the vault asset, e.g. `60 USDG`). `Status: FULL` means execute deploys the full requested capital; `PARTIAL` deploys a proportional share; `NONE` means execute reverts `InsufficientApproveCoverage`. Do not read the governor's `effectiveMaxCapital` for this: it stays 0 until execute. Check again before Review End, while guardians can still Approve, and run `sherwood proposal execute --vault <vault> --id <id> --dry-run` before the real execute: it fails when coverage is short (pass `--allow-partial-coverage` to accept a partial deploy). If review ended with no coverage, cancel, wait out the cooldown that `proposal cancel` prints, and repropose.
 
 ## Execute an approved proposal
 
@@ -146,7 +148,7 @@ Displays the governor address and its parameters: voting period, execution windo
 ## Governor parameter setters (owner only)
 
 ```bash
-sherwood governor set-voting-period --vault 0x... --seconds <n>      # 1h–3d; testing: 3600 (1 h)
+sherwood governor set-voting-period --vault 0x... --seconds <n>      # 30 min–3d (default 24h); testing: 1800 (30 min)
 sherwood governor set-execution-window --vault 0x... --seconds <n>   # 1h–7d
 sherwood governor set-veto-threshold --vault 0x... --bps <n>         # 2000–8000
 sherwood governor set-max-fee --vault 0x... --bps <n>                # ≤ 2500

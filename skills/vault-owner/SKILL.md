@@ -221,7 +221,7 @@ Each applies instantly and emits `ParameterChangeFinalized`. `set-mgmt-split` / 
 
 ```bash
 sherwood governor info --vault $VAULT_ADDRESS                        # voting period, execution window
-cast call $REG "reviewPeriod()(uint256)" --rpc-url $RPC_URL          # seconds, registry-wide
+cast call 0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72 "reviewPeriod()(uint256)" --rpc-url $RPC_URL   # seconds, registry-wide
 ```
 
 ---

@@ -7,7 +7,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli@0.93.2 (default chain robinhood-mainnet, 4663), Foundry (cast) for the direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.4.0'
+  version: '0.4.1'
 ---
 
 # Vault Owner (Sherwood on Robinhood Chain, 4663)
@@ -216,6 +216,13 @@ sherwood governor set-tier2-call-cap --vault $VAULT_ADDRESS --bps <bps>     # 1 
 ```
 
 Each applies instantly and emits `ParameterChangeFinalized`. `set-mgmt-split` / `set-perf-split` are protocol-owner only (ProtocolConfig); as vault owner you receive 10% of the performance fee by the launch split.
+
+**Who sets the timeline.** Every vault is created with a 24 h voting period and a 24 h execution window; both live in your vault's own governor and only you can change them. The guardian review period is one value in the GuardianRegistry for every vault, set by the protocol owner (6 h floor), so no owner setter reaches it. A proposal's `voteEnd` and `reviewEnd` are fixed when it is created: a change applies to the next proposal, and `ParamsFrozenDuringProposal` refuses the setter until the open one resolves or is cancelled. Read both before you plan a cycle:
+
+```bash
+sherwood governor info --vault $VAULT_ADDRESS                        # voting period, execution window
+cast call $REG "reviewPeriod()(uint256)" --rpc-url $RPC_URL          # seconds, registry-wide
+```
 
 ---
 

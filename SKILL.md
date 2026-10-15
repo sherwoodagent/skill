@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.28.0'
+  version: '0.29.0'
 ---
 
 # Sherwood
@@ -488,6 +488,8 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 
 ## Phase 4: Strategy Execution
 
+**Before any `strategy propose`, agree a management plan with the user.** Research the strategy type's own mechanics (what can be adjusted mid-proposal, how risk limits and settle work, what happens at expiry) and the event risk in the window, then propose triggers, risk levels, settle timing and a check cadence. Never rebalance, adjust or settle without the user's approval. See [references/management-plan.md](references/management-plan.md).
+
 ### Market data feeds (`sherwood sources`): start here
 
 Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
@@ -879,7 +881,7 @@ sherwood --calldata-only strategy propose portfolio --vault 0xVAULT --proposer 0
 - **Vault asset:** the strategy's asset must be the vault's own asset, and the protocol's coverage ledger must price one unit of it within 1% of $1 (`AssetNotVaultAsset`, `AssetNotUsdPegged`, `ExposureLedgerUnresolved`). The CLI checks all three before anything is sent. "The ledger cannot price the asset" means it has no feed or the feed is stale, not that the asset trades at $0: retry once the feed updates, and if it stays unpriced tell the user, since only the protocol owner configures the ledger. The peg is checked again at execute.
 - **Execute:** pulls asset → swaps into each basket token at its target weight
 - **Settle:** swaps the basket back → pushes asset to vault
-- **Rebalance:** proposer can call `rebalance()` / `rebalanceDelta()` on the clone between execute and settle — no new proposal needed
+- **Rebalance:** the proposer can call `rebalanceDelta()` on the clone (`sherwood strategy rebalance`) between execute and settle, with no new proposal. It only restores the weights set at init; changing weights or routes reverts `WeightsFrozen` / `RoutesFrozen`.
 - **Flags:** `--tokens` takes registry symbols for Robinhood Chain (AAPL, TSLA, NVDA, MSFT, AMZN, AMD, SPY, QQQ, GOOGL, SLV, ASML, BABA, CRCL, DELL, GME, INTC, MSTR, MU, PLTR, SNDK, SPCX, TSM, USAR, USO, META; `sherwood sources get universe` is current) or raw `0x` addresses in any casing, at most 20; `--weights` are bps and must sum to 10000; `--swap-routes` is one route per token, same order; `--max-slippage` is bps against the Chainlink price (default 500, allowed 50–1000), or `--max-slippage-per-leg` aligned to `--tokens` (resolved to the largest leg); `--max-drawdown-bps` defaults to 2000.
 
 ```bash

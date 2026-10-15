@@ -48,7 +48,7 @@ The factory runs in a launch posture. Signed commands read each flag live and re
 - **Single-operator vaults** (`ownerOnlyProposals`). Only the vault owner can propose, and collaborative proposals are refused, so each sponsored vault has one accountable operator who has posted the owner bond. See [Single-operator vaults](#single-operator-vaults).
 - **Deposits by owner approval** (`depositsRestricted`). Every vault takes deposits only from addresses its owner approved, whatever `--open-deposits` says: launch is invite-only for depositors too. See [Approve depositors](#approve-depositors).
 - **No vote in the propose second.** Voting opens one second after the propose block. See [Vote on a proposal](#vote-on-a-proposal).
-- **No ex-post challenges yet.** `ChallengeGame` filings are paused until the juror reserve that judges disputes is 30 days old, so settled strategies cannot be challenged yet and proposer bonds are released at the end of the challenge window without one. Guardian review before execution still runs.
+- **No ex-post challenges yet.** `ChallengeGame` filings are paused until the juror reserve that judges disputes is 30 days old, so settled strategies cannot be challenged yet and proposer bonds are released at the end of the challenge window without one. Guardian review before execution still runs. See [Challenge window](https://docs.sherwood.sh/explanations/challenge-window).
 
 Read the flags live on the factory (`0x619af1488F32B4797f6faDa3C3a8De72a5B693E0`): `ownerOnlyProposals()(bool)`, `depositsRestricted()(bool)`, `creationFee()(uint256)` and `creationSponsored(address)(bool)`, e.g. `cast call 0x619af1488F32B4797f6faDa3C3a8De72a5B693E0 "depositsRestricted()(bool)" --rpc-url https://rpc.mainnet.chain.robinhood.com`. `sherwood vault info <subdomain>` prints a vault's live deposit and proposal rules.
 
@@ -117,7 +117,7 @@ What a creator pays in WOOD, and what comes back:
 | Pull | When | Amount | Returned? |
 |---|---|---|---|
 | Creation fee | `vault create`, unless the wallet is sponsored | 1,000,000 WOOD at launch (`factory.creationFee()`) | No. Waitlisted creators are sponsored and pay nothing |
-| Owner stake | once per vault, before `vault create` | 10,000 WOOD (`StakedWood.minOwnerStake()`) | Yes, after a 7-day cooldown once the vault has no open proposal; slashed only if guardians block an owner emergency settle |
+| Owner stake | once per vault, before `vault create` | 10,000 WOOD (`StakedWood.minOwnerStake()`) | Yes, after a 7-day cooldown once the vault has no open proposal; slashed only if guardians block an owner emergency settle ([why](https://docs.sherwood.sh/explanations/owner-stake)) |
 | Proposer bond | every `propose`, per open proposal | 1% of the proposal's required coverage, valued at a WOOD price the ledger halves. For a `strategy propose` proposal (every template is uncertified, tier 2) required coverage ≈ `--amount`, so the bond is about **2% of `--amount`** in WOOD at market price. The CLI quotes the exact WOOD figure | Yes, on any terminal state via `sherwood proposal reclaim-bond` (a settled proposal waits out the 14-day challenge window) |
 
 Why the bond exists and why the ledger prices WOOD at half: [Proposer bond](https://docs.sherwood.sh/explanations/proposer-bond).
@@ -305,7 +305,7 @@ The **vault owner** sets each vault's governance periods on its governor. Change
 | Cooldown | `sherwood governor set-cooldown --vault 0xVAULT --seconds <n>` | `MIN_COOLDOWN_PERIOD` (1h on mainnet) to 30 days | `3600` | as needed |
 | Max strategy duration | `sherwood governor set-max-duration --vault 0xVAULT --seconds <n>` | 1 hour to 30 days | — | match the strategy |
 
-The guardian review period comes after voting and is set by the protocol (`GuardianRegistry.reviewPeriod`, 30 min on mainnet 4663 since 2026-10-14), not the owner. A fresh vault starts with a 24h voting period; only the owner changes it. A proposal keeps the voting and review periods it was created with, so a change applies to the next proposal. For a quick test cycle, set the voting period to 30 min (`1800`) before the first proposal: propose → vote ends +30 min → review ends +1 h → execute. With `--calldata-only`, each setter is one more transaction for the wallet to sign.
+The guardian review period comes after voting and is set by the protocol (`GuardianRegistry.reviewPeriod`, 30 min on mainnet 4663 since 2026-10-14), not the owner. **The chain is the authority for both 30-minute values**: read `MIN_VOTING_PERIOD()(uint256)` on your governor and `reviewPeriod()(uint256)` / `minReviewPeriod()(uint256)` on the GuardianRegistry (`0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72`); all read `1800`. The protocol's `v1-deploy` parameter file and the CLI's `governor set-voting-period` help still say 1h, so do not "correct" these values from either. A fresh vault starts with a 24h voting period; only the owner changes it. Why the periods are what they are, and why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing). A proposal keeps the voting and review periods it was created with, so a change applies to the next proposal. For a quick test cycle, set the voting period to 30 min (`1800`) before the first proposal: propose → vote ends +30 min → review ends +1 h → execute. With `--calldata-only`, each setter is one more transaction for the wallet to sign.
 
 
 ### Join existing vault
@@ -334,7 +334,7 @@ While the factory's `ownerOnlyProposals` launch flag is on, **only the vault own
 
 1. **A complete config** — asset, name, symbol, subdomain and metadata URI (`InvalidSyndicateConfig`). The CLI fills these.
 2. **A prepared owner bond** (`PreparedStakeNotFound`). See below.
-3. **The creation fee, or sponsorship.** Creation is invite-only: a wallet the Sherwood Safe sponsored through the waitlist creates for free, once (the factory clears the sponsorship when it is used). Any other wallet pays `creationFee()` in `creationFeeToken()` (1,000,000 WOOD at launch), pulled from the creator with `transferFrom`. When the allowance is short, signed `vault create` approves exactly the fee to the factory, then creates.
+3. **The creation fee, or sponsorship.** Creation is invite-only: a wallet the Sherwood Safe sponsored through the waitlist creates for free, once (the factory clears the sponsorship when it is used). Any other wallet pays `creationFee()` in `creationFeeToken()` (1,000,000 WOOD at launch), pulled from the creator with `transferFrom`. When the allowance is short, signed `vault create` approves exactly the fee to the factory, then creates. Check it first: [Confirm waitlist approval](#confirm-waitlist-approval-before-buying-anything); why: [Launch posture](https://docs.sherwood.sh/explanations/launch-posture).
 4. **An ERC-8004 identity the creator owns** — `--agent-id` in the factory's `agentRegistry()` (`NotAgentOwner`). See [Mint ERC-8004 identity](#mint-erc-8004-identity).
 5. **The subdomain** — at least 3 characters (`SubdomainTooShort`) and not taken (`SubdomainTaken`).
 
@@ -378,7 +378,9 @@ creates, so each new vault needs a fresh one. The CLI checks
 `Vault creation needs a prepared owner bond first`; the on-chain revert is
 `PreparedStakeNotFound()`.
 
-The stake stays bound while the vault lives. The owner gets it back with `requestUnstakeOwner` → 7-day cooldown → `claimUnstakeOwner` (direct `StakedWood` calls; no CLI command yet), only while the vault has no open proposal, and proposing stops while an unstake is pending (`OwnerBondNotLive`). It is slashed only when guardians block an owner emergency settle.
+**Why it exists.** The stake is the slashable bond behind the owner's one discretionary power, the emergency settle with new calldata: guardians burn it if they block that settle, and nothing else slashes it. That is why its size is a flat floor, not scaled to the vault. More: [Owner stake](https://docs.sherwood.sh/explanations/owner-stake).
+
+The stake stays bound while the vault lives, and the whole prepared amount binds at create: there is no top-up later. The owner gets it back with `requestUnstakeOwner` → 7-day cooldown → `claimUnstakeOwner` (direct `StakedWood` calls with `cast`; no CLI command yet), only while the vault has no open proposal. **The request freezes the vault at once**: propose and execute both revert `OwnerBondNotLive` from that moment, so do not request it while you intend to run strategies. It is slashed only when guardians block an owner emergency settle.
 
 > **Owner stake ≠ proposer bond.** The 10,000 WOOD owner stake is a one-time
 > vault-creator bond via `prepare-owner-stake`. A **separate** WOOD pull happens
@@ -551,7 +553,7 @@ sherwood sources get universe    # token addresses, decimals, multipliers, Chain
 The feeds are a convenience: the universe, options and live market state, so you don't have to look them up. They are not investment advice. Treat `recommended` picks as a starting point and apply your own analysis and data before proposing.
 
 How to use them:
-- **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h, which happens every weekend from about Sat 18:40 UTC to Mon 00:00 UTC (and over US market holidays; `sources get calendar` prints the live window). Turn each leg's `liquidity.recommended.by_symbol[SYM]` record into `--swap-routes` and `--max-slippage` as shown in [From a liquidity record to Portfolio flags](#from-a-liquidity-record-to-portfolio-flags).
+- **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h (24h heartbeat + 2h grace). No contract knows about weekends: stock feeds stop publishing while US markets are closed, so they cross 26h about 26h after Friday's last update (recently about Sat 18:40 UTC) until Monday's first publish, and longer over US market holidays. `sources get calendar` prints the live window; otherwise take the feed's `updatedAt` + 26h. A stale **USDG** feed blocks every propose, whatever the strategy. Why: [Oracle staleness](https://docs.sherwood.sh/explanations/oracle-staleness). Turn each leg's `liquidity.recommended.by_symbol[SYM]` record into `--swap-routes` and `--max-slippage` as shown in [From a liquidity record to Portfolio flags](#from-a-liquidity-record-to-portfolio-flags).
 - **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
 - **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`.
 - **Log in once a week.** The access token lasts 1 hour; the CLI refreshes it on its own for 7 days (no signature needed, sign-only wallets included), then you log in again: a configured key re-logs in by itself, a sign-only wallet re-runs the two-step above, so an unattended routine on a sign-only wallet needs a signer it can reach once a week. `sherwood sources status` shows `expires_at`, `valid`, `refresh_expires_at` and `auto_refresh` (false = log in again). `sherwood sources logout` clears both tokens.
@@ -863,7 +865,7 @@ Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to 
 
 **Proposer bond:** when the proposer has no allowance to the bond escrow yet, the first printed tx is `WOOD.approve(bondEscrow)`. Send it before the clone and propose txs.
 
-**Track record (on by default):** `strategy propose` makes a public thesis attestation with every proposal unless you pass `--no-attest`. Pass `--attest-thesis <file>` to supply the thesis text; without it the CLI builds one from `--name` and `--description`. Run `attest link` after the propose confirms (sign-only: take the thesis UID from `sherwood attest uid --tx <thesis tx hash>`). Proposals never depend on it: a failed attestation prints a warning and the proposal goes ahead. See [Public track record](#public-track-record).
+**Track record (on by default):** `strategy propose` makes a public thesis attestation with every proposal unless you pass `--no-attest`. Pass `--attest-thesis <file>` to supply the thesis text; without it the CLI builds one from `--name` and `--description`. Run `attest link` after the propose confirms (sign-only: take the thesis UID from `sherwood attest uid --tx <thesis tx hash>`). Proposals never depend on it: a failed attestation prints a warning and the proposal goes ahead. **What goes public:** the attestation is permanent (not revocable) and readable by anyone; it costs gas (one extra tx under `--calldata-only`); and the protocol never reads it, it is only your track record. That is why the private management plan stays out of it. See [Public track record](#public-track-record).
 
 **Pinning files yourself:** `sherwood pin-metadata <file>` pins a thesis (`.md`/`.txt`, wrapped in the same envelope `attest` uses, so the thesisHash matches) or a vault/proposal metadata `.json` object to IPFS. It prints the `ipfs://` URI and a gateway link (`--json` for `{ uri, cid, gatewayUrl, kind, thesisHash? }`). No key or transaction needed. Use the URI for `--metadata-uri` or `attest thesis`.
 
@@ -925,7 +927,7 @@ sherwood --calldata-only strategy propose portfolio --vault 0xVAULT --proposer 0
   --swap-routes "$ROUTES" --max-slippage "$SLIP" --max-drawdown-bps 2000 --duration 7d
 ```
 
-**Weekend stock-feed gap.** Chainlink stock feeds on Robinhood Chain update only while US markets trade and gap 52–55 hours every weekend, against the strategy's 26-hour `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens therefore **cannot execute, settle or rebalance from about Saturday 18:40 UTC to Monday 00:00 UTC** (`StalePrice`), nor across US market holidays. Size the proposal so that neither the execution window nor the settle time falls in the gap: an execution window that closes inside it expires the proposal (guardian locks stay booked), and a settle due on the weekend waits until Monday while the management fee accrues. `sherwood sources get calendar` prints the session and the gap. Do not hold a stock slot across an announced stock split until the feed basis is settled.
+**Weekend stock-feed gap.** Chainlink stock feeds on Robinhood Chain update only while US markets trade and gap 52–55 hours every weekend, against the strategy's 26-hour `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens therefore **cannot execute, settle or rebalance from about Saturday 18:40 UTC to Monday 00:00 UTC** (`StalePrice`), nor across US market holidays. Size the proposal so that neither the execution window nor the settle time falls in the gap: an execution window that closes inside it expires the proposal (guardian locks stay booked), and a settle due on the weekend waits until Monday while the management fee accrues. `sherwood sources get calendar` prints the session and the gap; the Saturday start is observed (Friday's last update + 26h), not a protocol constant. Do not hold a stock slot across an announced stock split until the feed basis is settled. Why the 26h bound exists: [Oracle staleness](https://docs.sherwood.sh/explanations/oracle-staleness).
 
 - **Vault asset:** the strategy's asset must be the vault's own asset, and the protocol's coverage ledger must price one unit of it within 1% of $1 (`AssetNotVaultAsset`, `AssetNotUsdPegged`, `ExposureLedgerUnresolved`). The CLI checks all three before anything is sent. "The ledger cannot price the asset" means it has no feed or the feed is stale, not that the asset trades at $0: retry once the feed updates, and if it stays unpriced tell the user, since only the protocol owner configures the ledger. The peg is checked again at execute.
 - **Execute:** pulls asset → swaps into each basket token at its target weight
@@ -1322,7 +1324,8 @@ The summary MUST include all of:
   capital at market for an uncertified strategy), the 5% buffer it will approve, and the wallet's free WOOD. The wallet must **hold** it on top of the owner stake, and
   it comes back with `proposal reclaim-bond` when the proposal ends.
 - **Timing** — for a stock-token Portfolio, that neither the execution window nor the
-  settle time falls in the weekend feed gap (Sat 18:40 → Mon 00:00 UTC), and that no
+  settle time falls in the weekend feed gap (recently about Sat 18:40 → Mon 00:00 UTC;
+  `sources get calendar` has the live window, [why](https://docs.sherwood.sh/explanations/oracle-staleness)), and that no
   redeem queued under an earlier cancelled, rejected or expired proposal is still pending
   (`sherwood queue list --vault <vault>`).
 
@@ -1388,7 +1391,7 @@ Before voting, read where the strategy came from: signed `proposal vote` prints 
 
 **Voting opens one second after the propose block.** The governor snapshots at the propose block's timestamp minus one and refuses votes while `block.timestamp <= snapshotTimestamp + 1` (`NotWithinVotingPeriod`); `getVoteWeight` reads 0 until then. The signed CLI waits this out on the chain's clock (the latest block's timestamp, not wall time), showing `Voting opens in <n> s — waiting...`, then votes. If still no later block has landed after the wait, it stops with `No block has been produced since this proposal …`: rerun once the chain has produced a block. If the RPC's latest block is far behind the proposal, it stops and asks you to retry against an up-to-date RPC.
 
-With `--calldata-only` the CLI does not wait. Broadcast the vote only after a block whose timestamp is at least the propose block's timestamp + 1 (on a chain that produces blocks continuously, two seconds after the propose confirms is enough). A vote sent earlier reverts `NotWithinVotingPeriod`; send it again.
+With `--calldata-only` the CLI does not wait. Broadcast the vote only after a block whose timestamp is at least the propose block's timestamp + 1 (on a chain that produces blocks continuously, two seconds after the propose confirms is enough). A vote sent earlier reverts `NotWithinVotingPeriod`; send it again. The gap keeps flash-loaned shares from voting ([Governance timing](https://docs.sherwood.sh/explanations/governance-timing)).
 
 ### Execute an approved proposal
 
@@ -1396,7 +1399,7 @@ With `--calldata-only` the CLI does not wait. Broadcast the vote only after a bl
 sherwood proposal execute --vault <addr> --id <proposalId>
 ```
 
-Anyone can call. Verifies proposal is Approved, within execution window, no other active strategy, and cooldown has elapsed. Guardian coverage must be booked first: run `sherwood proposal show <id> --vault <addr>` (Guardian Coverage section) and `sherwood proposal execute --vault <addr> --id <id> --dry-run`, which fails when coverage is short. See **Check coverage before execute** earlier in this file.
+Anyone can call. Verifies proposal is Approved, within execution window, no other active strategy, and cooldown has elapsed. Guardian coverage must be booked first: run `sherwood proposal show <id> --vault <addr>` (Guardian Coverage section) and `sherwood proposal execute --vault <addr> --id <id> --dry-run`, which fails when coverage is short. A plain `proposal execute` does not check coverage. See [Guardian coverage](#guardian-coverage-for-cohort-vaults).
 
 ### Settle an executed proposal
 
@@ -1411,6 +1414,8 @@ Auto-routes to the correct settlement path:
 
 Output: P&L, fees distributed, redemptions unlocked.
 
+Settle reverts `SettlePriceBelowFloor` if the whole vault's share price fell more than the proposal's `--max-drawdown-bps` since execute; then only the owner paths above can close it. Why settle can refuse a loss, and how fees are taken: [Settlement and drawdown](https://docs.sherwood.sh/explanations/settlement-and-drawdown).
+
 Fees at settlement, on the whole vault: a management fee of 2%/yr (the factory's launch rate, cap 3%) accrued only while the strategy was live, and a performance fee of the vault's `agentFeeBps` (default 20%, protocol ceiling 25%) on profit above the high-water mark. Both are split between the agent, the protocol, the guardians and (performance only) the vault owner.
 
 ### Reclaim the proposer bond
@@ -1419,7 +1424,7 @@ Fees at settlement, on the whole vault: a management fee of 2%/yr (the factory's
 sherwood proposal reclaim-bond --vault <addr> --id <proposalId>
 ```
 
-Permissionless, always pays the proposer. Works as soon as the proposal is Rejected, Expired or Cancelled; for a Settled proposal, after `executedAt + strategyDuration + 14 days` (the challenge window; `ChallengeWindowOpen` before that). Run it after every terminal proposal so the WOOD is back in the wallet before the next `propose`; the CLI's `InsufficientProposerBondWood` refusal is usually a bond that was never reclaimed.
+Permissionless, always pays the proposer. Works as soon as the proposal is Rejected, Expired or Cancelled; for a Settled proposal, after `executedAt + strategyDuration + 14 days` (the challenge window; `ChallengeWindowOpen` before that). The bond waits because it is what a challenger could confiscate from a proposer who drained the vault; releasing it at settle would let a drainer walk away with it ([Challenge window](https://docs.sherwood.sh/explanations/challenge-window)). Run it after every terminal proposal so the WOOD is back in the wallet before the next `propose`; the CLI's `InsufficientProposerBondWood` refusal is usually a bond that was never reclaimed.
 
 ### Veto a proposal (vault owner only)
 

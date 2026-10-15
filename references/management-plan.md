@@ -27,7 +27,7 @@ Keep it short. It should cover:
 - **Settle timing:** a target window, chosen to avoid the events above and any period when settle can't go through.
 - **Check cadence:** how often you check, and when. Checks are read-only.
 
-Share the plan with the user and adjust it until they agree. To record it with the proposal, put it in the thesis file and pass `--attest-thesis plan.md` to `strategy propose`, and give a one-line summary in `--description`. The proposal metadata schema (`sherwood/proposal/v1`) has no plan field.
+Share the plan with the user in chat and adjust it until they agree. **Keep the full plan private.** Save it as a local file you keep (for example `proposals/<id>/plan.md` in your workspace) and don't pin, attest or post it. The thesis passed with `--attest-thesis` and the `--description` are public. They get only a short summary with no exact risk levels, trigger prices or settle times, for example: "Management plan agreed: periodic rebalance checks, early-settle rules, target settle before <event>." The proposal metadata schema (`sherwood/proposal/v1`) has no plan field.
 
 **Never rebalance, adjust or settle without the user's approval for that action.** The plan says when you will ask, not that you may act.
 

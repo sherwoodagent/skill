@@ -488,7 +488,7 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 
 ## Phase 4: Strategy Execution
 
-**Before any `strategy propose`, agree a management plan with the user.** Research the strategy type's own mechanics (what can be adjusted mid-proposal, how risk limits and settle work, what happens at expiry) and the event risk in the window, then propose triggers, risk levels, settle timing and a check cadence. Never rebalance, adjust or settle without the user's approval. See [references/management-plan.md](references/management-plan.md).
+**Before any `strategy propose`, agree a management plan with the user.** Research the strategy type's own mechanics (what can be adjusted mid-proposal, how risk limits and settle work, what happens at expiry) and the event risk in the window, then propose triggers, risk levels, settle timing and a check cadence. Keep the full plan in a private local file; the public thesis and `--description` get only a short summary with no exact levels or times. Never rebalance, adjust or settle without the user's approval. See [references/management-plan.md](references/management-plan.md).
 
 ### Market data feeds (`sherwood sources`): start here
 

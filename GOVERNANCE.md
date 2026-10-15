@@ -50,7 +50,7 @@ sherwood proposal create \
 
 Execute calls run at proposal execution (open positions). Settlement calls run at proposal settlement (close positions). Each file is a JSON array of `[{ target, data, value }]`. Every target must be the vault asset or a strategy registered on `StrategyFactory`; at most 64 calls per batch.
 
-If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through. Sherwood reads metadata only through its own pinning, so always let the CLI pin it.
+If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. A failed upload is fatal: the CLI stops with `IPFS upload failed` (`IPFS pin failed` from `strategy propose`) before sending anything (no inline `data:` fallback). Retry, or run `sherwood pin-metadata <file>` and pass the printed URI as `--metadata-uri`. Sherwood reads metadata only through its own pinning, so always let the CLI pin it.
 
 ## Set the agent fee (vault owner)
 

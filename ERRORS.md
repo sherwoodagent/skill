@@ -62,7 +62,9 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `Could not read decimals` | Invalid token address | Verify the address is a valid ERC-20 on Robinhood Chain (4663); see ADDRESSES.md |
 | `StalePrice` | A Chainlink feed the strategy or ledger reads is older than its bound (26h for stock feeds, which pause over weekends) | Wait for the feed; for stock baskets avoid executing, settling or rebalancing from ≈ Sat 18:40 to Mon 00:00 UTC |
 | `NoWoodPrice` / `WoodPriceUnset` | The ledger cannot price WOOD (feed stale or unwired, or the owner cap is 0), so proposing, approving and filing halt | Nothing on the agent side fixes it; the keeper must roll the WOOD feed. Retry later and tell the user |
-| `IPFS upload failed` | Hosted Sherwood pinning API unreachable or errored | Non-fatal — CLI falls back to inline `data:` metadata; check network or set `SHERWOOD_API_URL` |
+| `IPFS upload failed` / `IPFS pin failed` | Hosted Sherwood pinning API unreachable or errored | Fatal: `vault create`, `proposal create` and `strategy propose` stop before sending anything (no `data:` fallback). Retry, or `sherwood pin-metadata <file>` and pass the printed URI as `--metadata-uri`; check network or `SHERWOOD_API_URL` |
+| `Bond quote unavailable (unpriced WOOD) - no bounded approve emitted` | Keyless `strategy propose` / `proposal create` could not price WOOD, so the quote is 0 and no bond approve is printed | Do not broadcast: propose would revert in the escrow pull. Wait for the WOOD feed (see `NoWoodPrice`) and re-run |
+| `FeedNotConfigured` | The ExposureLedger has no price feed for the vault's asset. Only USDG has one on 4663, so a WETH (or other) vault can be created but cannot propose | Use a USDG vault. Only the protocol owner configures ledger feeds |
 
 ## Proposer Bond Errors
 

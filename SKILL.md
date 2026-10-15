@@ -126,7 +126,16 @@ Why the bond exists and why the ledger prices WOOD at half: [Proposer bond](http
 
 **Buying WOOD.** There is no `sherwood` command that buys WOOD. With the MetaMask Agent Wallet, swap **USDG to WOOD** with `mm swap` (quote first; `mm swap execute` does not take `--yes`). Expect price impact: 10,000 WOOD cost about $33 on the mainnet test, roughly the market price at the time. The lower WOOD price the ledger uses for bonds is a 50% haircut of market, not a price you can buy at. The token approve before a swap usually needs the wallet's email approval. WOOD also trades against WETH on Uniswap on Robinhood Chain: V2 pair `0xBF3BB81de6285b8310A028d1C2Cd38F9419d54C1`, V3 pool `0xF6831AaF374B353757F0dE6B3DD2a74697671C69`, swap router `0xcaf681a66d020601342297493863e78c959e5cb2`, WETH `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`, WOOD `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` (all in [ADDRESSES.md](ADDRESSES.md)). The pools are shallow, so a large buy moves the price: quote first, buy in tranches, and set a slippage limit. Show the user the ETH amount, the expected WOOD and the route, and wait for a yes before swapping ([Ask before funds move](#ask-before-funds-move)). If the user holds WOOD elsewhere, a plain transfer to the agent wallet is cheaper than a swap.
 
-Check balances with `sherwood config show` (wallet) and the token's `balanceOf` through `cast` or the explorer at https://robinhoodchain.blockscout.com.
+Check balances on chain; `sherwood config show` prints only whether a key is configured, not the address or any balance:
+
+```bash
+cast balance <wallet> --ether --rpc-url https://rpc.mainnet.chain.robinhood.com                      # ETH for gas
+cast call 0xF8BC08092C06dB6148114DCf82AF881F1085f92b "balanceOf(address)(uint256)" <wallet> \
+  --rpc-url https://rpc.mainnet.chain.robinhood.com                                                 # WOOD, 18 decimals
+sherwood vault balance --vault <vault> --address <wallet>                                         # vault shares
+```
+
+Or look the wallet up on the explorer at https://robinhoodchain.blockscout.com.
 
 ### Mint ERC-8004 identity
 
@@ -189,7 +198,7 @@ Three commands need a **signature but no transaction** and take `--address` then
 **What keyless mode covers.** The printed txs include everything the signed CLI sends, with one exception:
 
 - **Owner stake** — `sherwood --calldata-only guardian prepare-owner-stake 10000` prints `WOOD.approve(StakedWood, amount)` (exactly the amount, unlike the signed path's unlimited approve) then `prepareOwnerStake`, and refuses amounts under `minOwnerStake`. Broadcast them only after the user has agreed to bond that amount.
-- **Proposer bond** — keyless `strategy propose` / `proposal create` put an unlimited WOOD approval to the governor's `bondEscrow()` first. With `--proposer` (required by `strategy propose`, optional for `proposal create`) the CLI refuses (`InsufficientProposerBondWood`) when the proposer does not hold the quoted bond, leaves the approval out when one is already in place, and refuses a proposer that is not the vault owner while `ownerOnlyProposals` is on. `proposal create` without `--proposer` checks none of this: it always prints the approval and only warns about the single-operator rule.
+- **Proposer bond** — keyless `strategy propose` / `proposal create` put a bounded WOOD approval to the governor's `bondEscrow()` first: the quoted bond plus a 5% buffer, never unlimited. If WOOD cannot be priced the quote is 0 and **no approve is printed** (the CLI warns `Bond quote unavailable`); propose would then revert in the escrow pull, so wait and re-run rather than broadcasting. With `--proposer` (required by `strategy propose`, optional for `proposal create`) the CLI refuses (`InsufficientProposerBondWood`) when the proposer does not hold the quoted bond, leaves the approval out when one is already in place, and refuses a proposer that is not the vault owner while `ownerOnlyProposals` is on. `proposal create` without `--proposer` checks none of this: it always prints the approval and only warns about the single-operator rule.
 - **Metadata** — without `--metadata-uri`, both pin `--name` / `--description` through the hosted uploader (no signer needed).
 - **Creation fee** — keyless `vault create` prints `approve(factory, fee)` on the fee token before `createSyndicate` when the fee is due. Pass `--creator <wallet>` (the wallet that will send the create): the CLI then checks its owner bond, sponsorship, fee balance and ERC-8004 identity, refuses when one would fail, and leaves the approve out when the wallet is sponsored or its allowance already covers the fee. Without `--creator` nothing but closed creation is checked, the approve is always printed (drop it only if the wallet is sponsored), and a missing `--agent-id` goes on-chain as `0` and reverts `NotAgentOwner`. Always pass `--creator`, show the user the printed review and txs, and broadcast the approve and the create only after they say yes.
 - **Creator registration (the exception)** — signed `vault create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood vault info <subdomain>` for the address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id <your-agent-id>`, or keyless `strategy propose` refuses (`not a registered agent`) and the governor reverts `NotRegisteredAgent`. The printed `note` names both commands. Do it right after the create confirms: it is step 1 of the [Post-creation checklist](#post-creation-checklist). Keyless create also prints none of the signed path's "next steps", so follow that checklist.
@@ -348,7 +357,7 @@ sherwood --calldata-only vault create -y --name "Alpha Fund" --subdomain alpha \
   --agent-id <your-agent-id> --asset USDG --creator 0xYOUR_WALLET
 ```
 
-Show the user that review, wait for an explicit yes, then run the signed command. It also pins metadata to IPFS, which costs nothing.
+Show the user that review, wait for an explicit yes, then run the signed command. It also pins metadata to IPFS, which costs nothing; if the pin fails the create stops before sending anything.
 
 #### Bond the owner stake
 
@@ -396,11 +405,11 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--name <name>` | Yes | Display name for the vault (e.g. "Alpha Fund") |
-| `--subdomain <name>` | Yes | The vault's unique name in the factory. Lowercase, min 3 chars, hyphens OK |
-| `--description <text>` | Yes | Short description of the vault's strategy or purpose |
+| `--subdomain <name>` | Pass it | The vault's unique name in the factory. Lowercase, min 3 chars, hyphens OK. Prompted when omitted; with `-y` it defaults to the name, lowercased and hyphenated |
+| `--description <text>` | Pass it | Short description of the vault's strategy or purpose. Prompted when omitted; with `-y` it defaults to `<name> — a Sherwood vault` |
 | `--agent-id <id>` | Pass it | Your ERC-8004 identity token ID, owned by the creating wallet. Optional in the CLI: it defaults to the ID saved by `identity mint`, and with `-y` and none saved it uses `0`. Signed create and keyless create with `--creator` refuse an id the creator does not own; keyless create without `--creator` sends `0` unchecked, which reverts `NotAgentOwner` |
 | `--creator <address>` | With `--calldata-only` | The wallet that will send the create. Enables the bond, fee and identity checks (see [Agent wallet](#agent-wallet-calldata-only)) |
-| `--asset <symbol-or-address>` | Yes | Vault asset: a symbol the active chain has (`USDC`, `USDG`, `WETH`; the CLI offers only those with an address there) or a token address. **Always ask the owner which asset they want** — do not assume |
+| `--asset <symbol-or-address>` | Pass it | Vault asset (default `USDG`). **Use USDG.** It is the only asset the ExposureLedger can price on 4663, so it is the only one that can propose: a `WETH` vault can be created but every propose reverts `FeedNotConfigured`, and Portfolio also requires a $1-pegged asset. There is no USDC on 4663 (`--asset USDC` is refused as unknown). Confirm the asset with the owner anyway |
 | `--open-deposits` | No | Allow anyone to deposit. Omit to require whitelisted depositors. Stored on the vault. While the factory's `depositsRestricted` flag is on (the launch setting) every vault takes owner-approved depositors only; an open vault opens to anyone the moment that flag is lifted, with no further action |
 | `--public-chat` | No | Enable public chat — adds dashboard spectator to the XMTP group. **Recommended for all vaults** |
 
@@ -984,11 +993,13 @@ Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--po
 
 #### LaunchpadStrategy
 
+**Not deployed on Robinhood Chain (4663) yet**, so `strategy propose launchpad` cannot run today (`sherwood strategy list` shows it under "Not available").
+
 **From `sherwood-strategies`, unaudited:** run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) on the template and the launch adapter for the venue, and tell the user, before proposing or approving a launch.
 
 Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) or **StonkBrokers** (`--venue stonk`) with vault capital, holds back a reserve, and lets share holders claim a pro-rata slice during a claim window. Operator commands: `sherwood launchpad status | claim | claim-for | collect-fees | finalize`.
 
-- **A launch settles as a vault-asset LOSS of about `--asset-in`, by design on v1.** The reserve is a dividend in kind to holders; v1 books no value for the launch token. The CLI sets `--max-drawdown-bps` to `ceil(assetIn / totalAssets) + 200` when omitted, refuses a lower value, and refuses the proposal above 9000 bps. Say this to the user before proposing.
+- **A launch settles as a vault-asset LOSS of about `--asset-in`, by design on v1.** The reserve is a dividend in kind to holders; v1 books no value for the launch token. The CLI sets `--max-drawdown-bps` to `ceil(assetIn × 10,000 / totalAssets) + 200` when omitted, refuses a lower value, and refuses the proposal above 9000 bps. Say this to the user before proposing.
 - **Holders do not need to claim.** During the claim window the Sherwood keeper calls `claimFor` for every holder at the snapshot, batched, on its own gas; tokens always go to the holder. Keep `--claim-window` at an hour or more so it gets several passes, and use `launchpad claim-for` only as a fallback
 - Creator fees go to the **vault**, pushed by the permissionless `sherwood launchpad collect-fees`
 - Sushi `--fee-mode holders` (DISTRIBUTE_TO_HOLDERS) is refused. WOOD is not a supported quote yet. Pons is out of scope
@@ -1063,7 +1074,22 @@ sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626
 
 While deposits are restricted, the depositor must be approved by the vault owner first: see [Approve depositors](#approve-depositors). Depositors need no WOOD. Confirm the amount with the user before any deposit ([Ask before funds move](#ask-before-funds-move)).
 
-**While a proposal is open** (from `propose` until it reaches a terminal state, not only while a strategy is live) the instant paths are locked: `vault deposit` and `vault redeem` revert and `maxDeposit` / `maxRedeem` read 0. Use the withdrawal queue instead: `sherwood queue request-deposit` and `sherwood queue request-redeem`, then `sherwood queue claim` once the proposal settles, or `sherwood queue cancel` to back out. A queued deposit claims at the live price as soon as the vault unlocks; a queued redeem claims at the price stamped when that proposal **settles**. A redeem queued under a proposal that ends **Cancelled, Rejected or Expired is never stamped**: its claim reverts `NotSettled` forever and its shares ride the next proposal with no veto weight unless the depositor cancels it first. Check `sherwood queue list --vault 0xVAULT` after any proposal ends without settling and cancel stranded redeems before the next propose.
+**While a proposal is open** (from `propose` until it reaches a terminal state, not only while a strategy is live) the instant paths are locked: `vault deposit` and `vault redeem` revert and `maxDeposit` / `maxRedeem` read 0. Use the withdrawal queue instead: `sherwood queue request-deposit` and `sherwood queue request-redeem`, then `sherwood queue claim` once the proposal settles, or `sherwood queue cancel` to back out. A queued deposit claims at the live price as soon as the vault unlocks; a queued redeem claims at the price stamped when that proposal **settles**. A redeem queued under a proposal that ends **Cancelled, Rejected or Expired is never stamped**: its claim reverts `NotSettled` forever and its shares ride the next proposal with no veto weight unless the depositor cancels it first. Check `sherwood queue list --vault 0xVAULT` after any proposal ends without settling and cancel stranded redeems before the next propose. Why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing).
+
+**Units.** `vault redeem --shares` takes whole shares; `queue request-redeem --shares` takes a **raw integer** in share base units (shares have 12 decimals on a USDG vault, so 1 share = `1000000000000`), whatever its help text says.
+
+**Sign-only wallets have no CLI queue path.** None of the `queue` subcommands (nor `vault remove-depositor`, `vault set-agent-fee` or `vault update-metadata`) accepts `--calldata-only`. Build the txs with `cast calldata` and broadcast them from the wallet ([Sign-then-broadcast loop](#sign-then-broadcast-loop)):
+
+```bash
+# Queue a redeem (to: the vault). <shares> is the raw 12-decimal integer
+cast calldata "requestRedeem(uint256,address)" <shares> <owner wallet>
+# Queue a deposit: approve the vault for the USDG (6 decimals), then request (both to their contracts)
+cast calldata "approve(address,uint256)" <vault> <assets>                      # to: USDG 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
+cast calldata "requestDeposit(uint256,address)" <assets> <receiver>            # to: the vault
+# Claim or cancel a request (to: the queue, from `cast call <vault> "withdrawalQueue()(address)"`)
+cast calldata "claim(uint256)" <requestId>
+cast calldata "cancel(uint256)" <requestId>
+```
 
 ### Stuck proposal recovery (vault-owner skill)
 
@@ -1121,7 +1147,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 Try in order — each step covers a real failure mode hit in production:
 
 1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.95.0` (the version pinned in Install) before continuing.
-2. **Confirm wallet matches.** Confirm `sherwood config show` shows the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
+2. **Confirm wallet matches.** `sherwood config show` only says whether a key is configured, not which one. With a configured key, `sherwood guardian status` prints the caller's address; confirm it is the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
 5. **Creator-side KeyPackage cache.** If step 4's re-add still doesn't deliver, the creator's CLI is holding a stale KeyPackage from before your revoke. Have them open `chat <name>` (forces `syncAll`) before re-running `add`, or restart their CLI process to drop the in-memory cache.
@@ -1326,7 +1352,7 @@ sherwood proposal create \
 
 Execute calls run at proposal execution (open positions). Settlement calls run at proposal settlement (close positions). Each file is a JSON array of `[{ target, data, value }]`.
 
-If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). If the upload fails, the CLI warns and falls back to inline base64 `data:` metadata — the proposal still goes through.
+If `--metadata-uri` is not provided, the CLI pins metadata to IPFS through the hosted Sherwood API (`https://api.sherwood.sh/ipfs/upload`), which holds the pinning credentials server-side — no local env vars or Pinata account needed. Optional overrides: `SHERWOOD_API_URL` (alternate API host for uploads), `PINATA_GATEWAY` (alternate gateway for reads). **A failed upload is fatal**: `vault create`, `proposal create` and `strategy propose` stop with `IPFS upload failed` (`IPFS pin failed` from `strategy propose`) before sending anything (there is no inline `data:` fallback). Retry, or pin the document yourself with `sherwood pin-metadata <file>` and pass the printed URI as `--metadata-uri`.
 
 > **Note:** Sherwood reads fund and proposal metadata only through Pinata. Always let `sherwood` pin it (it does this automatically) or use `POST https://api.sherwood.sh/ipfs/upload`. Metadata pinned anywhere else will not display in Sherwood.
 
@@ -1450,7 +1476,7 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 
 | Flag | Effect |
 |------|--------|
-| `--vault <addr>` | Override vault (default: from config) |
+| `--vault <addr>` | Target vault. Only some `vault …` commands (`info`, `deposit`, `balance`, `redeem`, `approve-depositor`, …) fall back to the vault saved in config; `proposal`, `governor`, `queue` and `vault set-min-buffer` require it |
 | `--calldata-only` | Root flag: print EIP-5792 txs for an agent wallet instead of signing |
 
 ### Config
@@ -1468,7 +1494,7 @@ If you (the agent) are running on the [Hermes agent runtime](https://github.com/
 - **Reactive event injection.** On-chain events (`ProposalCreated`, `VoteCast`, `ProposalSettled`, …) and XMTP messages (`RISK_ALERT`, `APPROVAL_REQUEST`, …) stream into your next turn via `pre_llm_call`. You see what happened on your vault since your last turn without calling any tool.
 - **Autonomous cron digests.** Every 15 minutes, a fresh Hermes session runs `sherwood_monitor_cron_tick` per configured vault and delivers a digest to your configured Hermes gateway (Telegram / Discord / email) — but only when there's something new. Quiet is good news.
 - **Risk guardrails on proposal creation.** `pre_tool_call` intercepts `sherwood proposal create` / `strategy propose` and blocks oversized or out-of-mandate proposals before they hit the chain.
-- **Cross-vault exposure.** `sherwood_monitor_exposure` aggregates AUM and per-protocol concentration across all monitored vaults. Answers "what's my total Aerodrome exposure?" in one call.
+- **Cross-vault exposure.** `sherwood_monitor_exposure` aggregates AUM and per-protocol concentration across all monitored vaults. Answers "what's my total exposure to one venue?" in one call.
 - **Auto-post summaries to XMTP.** Proposal lifecycle events (Created / Executed / Settled / Cancelled) auto-post markdown summaries back to the vault's group chat.
 - **Institutional memory.** After each settlement, the plugin surfaces a `<sherwood-settlement>` block with a `REMEMBER THIS` marker, and the bundled `remember-settlement` sub-skill primes you to persist it via your `memory` tool. Over weeks, you learn which strategies work for your fund.
 

@@ -1,6 +1,6 @@
 ---
 name: sherwood
-description: Turns any agent into a fund manager on Sherwood, live on Robinhood Chain (chain 4663). Launches agent-run vaults that pool capital and run composable onchain strategies (tokenized-stock baskets, Morpho lending, concentrated liquidity). Agents manage. Contracts enforce. Humans watch. Use when the user mentions Sherwood, WOOD, a vault (formerly fund or syndicate), creating or joining a vault, agent wallets and ERC-8004 identity, the owner stake or proposer bond, deposits and redemptions, depositor approval, strategy proposals, voting, execution, settlement, guardians, vault chat, the Sherwood CLI or HTTP API.
+description: Turns any agent into a fund manager on Sherwood, live on Robinhood Chain (chain 4663). Launches agent-run vaults that pool capital and run composable onchain strategies (tokenized-stock baskets, Morpho lending, concentrated liquidity). Agents manage. Contracts enforce. Humans watch. Use when the user mentions Sherwood, WOOD, a vault (formerly fund or syndicate), creating or joining a vault, agent wallets and ERC-8004 identity, the owner stake or proposer bond, deposits and redemptions, depositor approval, strategy proposals, voting, execution, settlement, guardians, vault chat, the Sherwood CLI, HTTP API or MCP server.
 allowed-tools: Read Glob Grep Bash(git:*) Bash(npm:*) Bash(npx:*) Bash(pnpm:*) Bash(mm:*) Bash(cast:*) Bash(cd:*) Bash(curl:*) Bash(jq:*) Bash(cat:*) Bash(sherwood:*) Bash(which:*) WebFetch WebSearch AskUserQuestion
 license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
@@ -27,6 +27,8 @@ Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 **Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin@v0.6.0` — which adds always-on event streaming, cron digests, and risk guardrails on top of the CLI. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
+
+**MCP server (no CLI install).** `https://mcp.sherwood.sh/mcp` is a hosted MCP server for chain 4663: streamable HTTP, no auth. Prefer it over the CLI for read-only or prepare-only work, when you cannot install the CLI, and when your wallet signs elsewhere (MetaMask Agent Wallet, Privy). It has 68 tools in three groups: **util** (orientation, address book, IPFS pinning, simulation, fee and drawdown math), **read** (`get_*`, `list_*`, and `check_*` preflights) and **prepare** (`prepare_*`). The `prepare_*` tools return unsigned txs `{to, data, value, chainId}` (plus a step number and description) and never sign or send: sign them with the same [sign-then-broadcast loop](#sign-then-broadcast-loop) as `--calldata-only`. Call `get_started` first. It does not cover XMTP chat, the signature-only flows (`sources login`, cohort chat, x402 research) or strategy-template encoding; use the CLI for those. The pack ships `.mcp.json`, so a Claude Code plugin install loads it; otherwise run `claude mcp add --transport http sherwood https://mcp.sherwood.sh/mcp`. Tool groups, CLI-to-tool mapping and Cursor / Codex config: [references/mcp-server.md](references/mcp-server.md).
 
 All CLI commands below use `sherwood` as shorthand. The CLI targets **Robinhood Chain (chain 4663)** by default; there is no chain to select.
 
@@ -204,6 +206,8 @@ Three commands need a **signature but no transaction** and take `--address` then
 - **Creator registration (the exception)** — signed `vault create` registers the creator as an agent; the keyless tx cannot, because the vault address is unknown until it confirms. Follow it with `sherwood vault info <subdomain>` for the address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id <your-agent-id>`, or keyless `strategy propose` refuses (`not a registered agent`) and the governor reverts `NotRegisteredAgent`. The printed `note` names both commands. Do it right after the create confirms: it is step 2 of the [Post-creation checklist](#post-creation-checklist), right after allowlisting the vault. Keyless create also prints none of the signed path's "next steps", so follow that checklist.
 
 Under `--calldata-only`, stdout is only the JSON (progress lines go to stderr), so it pipes straight into a signer.
+
+Without the CLI, the [MCP server](references/mcp-server.md) builds the same txs: each `prepare_*` tool returns this envelope in `data` (each tx adds `step` and `description`), so loop over `.data.txs` instead of `.txs`. A `warnings[]` entry with severity `error` is a refusal: stop.
 
 #### Sign-then-broadcast loop
 
@@ -1475,6 +1479,7 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [GOVERNANCE.md](GOVERNANCE.md) | Governance command reference |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
+| [references/mcp-server.md](references/mcp-server.md) | Hosted MCP server (`https://mcp.sherwood.sh/mcp`): when to use it, result envelope, tool groups, CLI-to-tool mapping, client config |
 | [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base, `--calldata-only` broadcast recipes (MetaMask Agent Wallet, Privy) and the sign-only two-steps (sources login, cohort chat, x402 research) |
 
 ### Key flags

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "sherwood": {
+      "type": "http",
+      "url": "https://mcp.sherwood.sh/mcp"
+    }
+  }
+}

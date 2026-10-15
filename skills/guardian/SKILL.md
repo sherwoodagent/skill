@@ -85,7 +85,7 @@ cast send $SWOOD "stakeAsGuardian(uint256,uint256)" <AMOUNT_WEI> <AGENT_ID> --pr
 
 **An Approve is underwriting, not a rubber stamp.**
 
-At propose, each call is priced `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000` over execute **and** settlement calls. Uncertified / **tier 2** calldata is bounded at **full notional** (`boundBps = 10_000`), so an uncertified Portfolio books about 2× its deployed capital. Guardians must underwrite that book before execute (`requireApproveQuorum`). Portfolio class certification at 2,000 bps is pending (SHE-235).
+At propose, each call is priced `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000` over execute **and** settlement calls. Uncertified / **tier 2** calldata is bounded at **full notional** (`boundBps = 10_000`), so a proposal built by `strategy propose` (settle calls carry a 0 cap) books about 1× its deployed capital; a hand-built proposal with nonzero settle caps books more, so read `getRequiredCoverage` rather than assuming. Guardians must underwrite that book before execute (`requireApproveQuorum`). Every core template on 4663 is uncertified (tier 2) today. Why coverage works this way: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
 
 - Your WOOD is **slashable** on a wrong verdict. `resolveReview` slashes approvers when the review is Blocked. The rate is computed on-chain from your lock's share of your stake and how decisive the block was, clamped to `[minSlashBps, maxSlashBps]` = **10% to 100% of your stake** at launch, and the WOOD is burned (it pays nobody).
 - You state the size of that bet yourself: `lockWood`, the 4th argument. Size it before you vote (§5).

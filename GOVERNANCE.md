@@ -23,7 +23,7 @@ While the factory's `ownerOnlyProposals` launch flag is on, only the vault owner
 
 If the proposal's strategy comes from `sherwood-strategies` (or from neither source repository), it is unaudited: run the checks in [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the operator before proposing.
 
-`propose` locks a WOOD proposer bond (1% of required coverage, quoted in WOOD by the CLI; about 4% of deployed capital for an uncertified strategy; the CLI approves the quote plus a 5% buffer and re-quotes before propose). Show the operator the quoted bond and every parameter, and wait for an explicit yes before running the command (see "Ask before funds move" in [SKILL.md](SKILL.md#ask-before-funds-move)). For stock-token baskets, keep the execution window and the settle time out of the weekend feed gap (≈ Sat 18:40 → Mon 00:00 UTC).
+`propose` locks a WOOD proposer bond (1% of required coverage, valued at the ledger's half-price WOOD and quoted in WOOD by the CLI; about 2% of deployed capital at market for an uncertified strategy; the CLI approves the quote plus a 5% buffer and re-quotes before propose). Why: [Proposer bond](https://docs.sherwood.sh/explanations/proposer-bond). Every template on 4663 is tier 2, so each strategy call's cap must also fit `totalAssets × tier2CallCapBps / 10,000` or propose reverts `Tier2CallCapExceedsCeiling(i)`. Show the operator the quoted bond and every parameter, and wait for an explicit yes before running the command (see "Ask before funds move" in [SKILL.md](SKILL.md#ask-before-funds-move)). For stock-token baskets, keep the execution window and the settle time out of the weekend feed gap (≈ Sat 18:40 → Mon 00:00 UTC).
 
 ```bash
 sherwood proposal create \
@@ -113,7 +113,7 @@ Auto-routes to the correct settlement path:
 - **Duration elapsed:** `settleProposal` — permissionless, anyone can call after the strategy duration
 - **Vault owner emergency:** `emergencySettleWithCalls` — owner commits new unwind calldata, must hold a bond covering `requiredOwnerBond` (10,000 WOOD at launch), and opens a guardian emergency review. Calls do **not** execute until `finalizeEmergencySettle`. A blocked review burns the owner bond. (`unstick` only replays already-voted settlement calls.)
 
-Settlement reverts `StrategyNotSettled` if the strategy still reports `executed()` afterwards, and `SettlePriceBelowFloor` if the share price would fall below the declared drawdown floor.
+Settlement reverts `StrategyNotSettled` if the strategy still reports `executed()` afterwards, and `SettlePriceBelowFloor` if the whole vault's share price fell more than the declared `maxDrawdownBps` (capped at 9000) since execute. The floor is on price per share, not on the deployed amount, so idle assets dilute the basket's loss. Below it only the owner's `unstick` (90% floor) or bonded emergency settle closes the proposal. Why: [Settlement and drawdown](https://docs.sherwood.sh/explanations/settlement-and-drawdown).
 
 Output: P&L, fees distributed, redemptions unlocked, queued redeems stamped.
 
@@ -123,7 +123,7 @@ Output: P&L, fees distributed, redemptions unlocked, queued redeems stamped.
 sherwood proposal reclaim-bond --vault <addr> --id <proposalId>
 ```
 
-Permissionless, pays the proposer. Immediately after Rejected, Expired or Cancelled; for Settled, after `executedAt + strategyDuration + 14 days`.
+Permissionless, pays the proposer. Immediately after Rejected, Expired or Cancelled; for Settled, after `executedAt + strategyDuration + 14 days`, because the bond must still exist while a challenge could be filed. Why: [Challenge window](https://docs.sherwood.sh/explanations/challenge-window).
 
 ## Cancel a proposal
 
@@ -155,11 +155,11 @@ sherwood governor set-max-fee --vault 0x... --bps <n>                # ≤ 2500
 sherwood governor set-max-duration --vault 0x... --seconds <n>       # ≤ 30d
 sherwood governor set-cooldown --vault 0x... --seconds <n>           # 1h–30d
 sherwood governor set-max-capital --vault 0x... --bps <n>        # share of TVL one proposal may deploy; seed 8000
-sherwood governor set-tier2-call-cap --vault 0x... --bps <n>     # per-call cap for uncertified calls; seed 200
+sherwood governor set-tier2-call-cap --vault 0x... --bps <n>     # per-call cap for uncertified calls; seed ≥ max-capital (8000)
 sherwood vault set-min-buffer --vault 0x... --bps <n>            # idle reserve kept after any batch; seed 500, ≤ 5000
 ```
 
-Each validates against the governor's bounds before submitting, and all governor setters revert `ParamsFrozenDuringProposal` while the vault has an open proposal (Drafts count). Seed the last three right after `vault create` and before the first proposal; never raise `minBufferBps` while a proposal is open. Protocol-wide fee splits (`governor set-mgmt-split` / `set-perf-split`) live on `ProtocolConfig` and are protocol-owner only.
+Each validates against the governor's bounds before submitting, and all governor setters revert `ParamsFrozenDuringProposal` while the vault has an open proposal (Drafts count). Seed the last three right after `vault create` and before the first proposal; never raise `minBufferBps` while a proposal is open. Every template on 4663 is tier 2 and `strategy propose` puts the whole `--amount` on one call, so a proposal needs `--amount ≤ totalAssets × tier2CallCapBps / 10,000`: keep the tier-2 cap at or above `maxCapitalBps`, and ignore the 200 bps that signed `vault create` prints. Why: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage). Protocol-wide fee splits (`governor set-mgmt-split` / `set-perf-split`) live on `ProtocolConfig` and are protocol-owner only.
 
 ## Participation crons
 

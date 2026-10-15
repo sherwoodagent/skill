@@ -108,7 +108,7 @@ The agent wallet needs **ETH on Robinhood Chain** for gas (a few transactions co
 **You need WOOD twice.** Say this to the user up front, before they buy anything:
 
 1. **Owner stake**: locked **once**, at `vault create`, for the life of the vault (10,000 WOOD on mainnet; bond it with `sherwood guardian prepare-owner-stake`).
-2. **Proposer bond**: paid on **every proposal**, held in `ProposerBondEscrow` and **returned when the proposal settles cleanly**. It scales with the coverage the proposal requests and moves with the WOOD price. `sherwood strategy propose` prints the quote, a 5% buffer and your free WOOD before it signs anything, and approves only the quote plus 5% (never an unlimited amount). The bond needs its **own** WOOD approve to the bond escrow; the stake approve does not cover it.
+2. **Proposer bond**: paid on **every proposal**, held in `ProposerBondEscrow` and **returned when the proposal ends** (14 days after the strategy ends, for a settled one). It scales with the coverage the proposal requests (about 2% of the deployed amount at market) and moves with the WOOD price. `sherwood strategy propose` prints the quote, a 5% buffer and your free WOOD before it signs anything, and approves only the quote plus 5% (never an unlimited amount). The bond needs its **own** WOOD approve to the bond escrow; the stake approve does not cover it.
 
 Buy enough WOOD for the stake **plus at least one bond** before you start. On the Guard mainnet test, a 60 USDG basket needed a 366 WOOD bond on top of the 10,000 WOOD stake.
 
@@ -118,11 +118,13 @@ What a creator pays in WOOD, and what comes back:
 |---|---|---|---|
 | Creation fee | `vault create`, unless the wallet is sponsored | 1,000,000 WOOD at launch (`factory.creationFee()`) | No. Waitlisted creators are sponsored and pay nothing |
 | Owner stake | once per vault, before `vault create` | 10,000 WOOD (`StakedWood.minOwnerStake()`) | Yes, after a 7-day cooldown once the vault has no open proposal; slashed only if guardians block an owner emergency settle |
-| Proposer bond | every `propose`, per open proposal | 1% of the proposal's required coverage. The CLI quotes it in WOOD (`strategy propose` prints it). For an uncertified strategy, plan on about **4% of deployed capital** in WOOD; about 0.8% once the Portfolio class is certified | Yes, on any terminal state via `sherwood proposal reclaim-bond` (a settled proposal waits out the 14-day challenge window) |
+| Proposer bond | every `propose`, per open proposal | 1% of the proposal's required coverage, valued at a WOOD price the ledger halves. For a `strategy propose` proposal (every template is uncertified, tier 2) required coverage ≈ `--amount`, so the bond is about **2% of `--amount`** in WOOD at market price. The CLI quotes the exact WOOD figure | Yes, on any terminal state via `sherwood proposal reclaim-bond` (a settled proposal waits out the 14-day challenge window) |
 
-**Reserve rule.** Keep, in the creator wallet and outside the vault, the 10,000 WOOD stake plus roughly **10% of the capital you plan to deploy, in WOOD** (about 2% once the Portfolio class is certified). That covers the bond with room for a WOOD price fall, which raises the WOOD count of every new bond, and for a second proposal before the first bond is reclaimed. Quote the live number before every proposal: `sherwood strategy propose` prints it, and `ExposureLedger.proposerBondWood(asset, requiredCoverage)` is the view. **Never treat any fixed WOOD figure or any WOOD price as the requirement.**
+Why the bond exists and why the ledger prices WOOD at half: [Proposer bond](https://docs.sherwood.sh/explanations/proposer-bond).
 
-**Buying WOOD.** There is no `sherwood` command that buys WOOD. With the MetaMask Agent Wallet, swap **USDG to WOOD** with `mm swap` (quote first; `mm swap execute` does not take `--yes`). Expect price impact: 10,000 WOOD cost about $33 on the mainnet test, not the ~$16 that the spot price implies. The token approve before a swap usually needs the wallet's email approval. WOOD also trades against WETH on Uniswap on Robinhood Chain: V2 pair `0xBF3BB81de6285b8310A028d1C2Cd38F9419d54C1`, V3 pool `0xF6831AaF374B353757F0dE6B3DD2a74697671C69`, swap router `0xcaf681a66d020601342297493863e78c959e5cb2`, WETH `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`, WOOD `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` (all in [ADDRESSES.md](ADDRESSES.md)). The pools are shallow, so a large buy moves the price: quote first, buy in tranches, and set a slippage limit. Show the user the ETH amount, the expected WOOD and the route, and wait for a yes before swapping ([Ask before funds move](#ask-before-funds-move)). If the user holds WOOD elsewhere, a plain transfer to the agent wallet is cheaper than a swap.
+**Reserve rule.** Keep, in the creator wallet and outside the vault, the 10,000 WOOD stake plus about **2% of each proposal's `--amount` per bond in flight, with headroom for WOOD to fall by half** (about 3–4% of planned capital for one proposal at a time). A WOOD price fall raises the WOOD count of every new bond. A settled bond stays locked for 14 days after the strategy ends ([challenge window](https://docs.sherwood.sh/explanations/challenge-window)), so back-to-back proposals keep about `(duration + 14 days) / cadence` bonds in flight: size the reserve for that many. Quote the live number before buying. Before the vault exists, read the ledger view with the planned amount in USDG base units (6 decimals): `cast call 0x99D789E7C8E65dB5597dCa692F082B47BE30AB33 "proposerBondWood(address,uint256)(uint256)" 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168 <amount × 1e6> --rpc-url https://rpc.mainnet.chain.robinhood.com` (WOOD, 18 decimals). Once the vault exists, `sherwood --calldata-only strategy propose …` prints the quote and sends nothing. **Never treat any fixed WOOD figure or any WOOD price as the requirement.**
+
+**Buying WOOD.** There is no `sherwood` command that buys WOOD. With the MetaMask Agent Wallet, swap **USDG to WOOD** with `mm swap` (quote first; `mm swap execute` does not take `--yes`). Expect price impact: 10,000 WOOD cost about $33 on the mainnet test, roughly the market price at the time. The lower WOOD price the ledger uses for bonds is a 50% haircut of market, not a price you can buy at. The token approve before a swap usually needs the wallet's email approval. WOOD also trades against WETH on Uniswap on Robinhood Chain: V2 pair `0xBF3BB81de6285b8310A028d1C2Cd38F9419d54C1`, V3 pool `0xF6831AaF374B353757F0dE6B3DD2a74697671C69`, swap router `0xcaf681a66d020601342297493863e78c959e5cb2`, WETH `0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73`, WOOD `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` (all in [ADDRESSES.md](ADDRESSES.md)). The pools are shallow, so a large buy moves the price: quote first, buy in tranches, and set a slippage limit. Show the user the ETH amount, the expected WOOD and the route, and wait for a yes before swapping ([Ask before funds move](#ask-before-funds-move)). If the user holds WOOD elsewhere, a plain transfer to the agent wallet is cheaper than a swap.
 
 Check balances with `sherwood config show` (wallet) and the token's `balanceOf` through `cast` or the explorer at https://robinhoodchain.blockscout.com.
 
@@ -465,9 +467,10 @@ After creating a vault, and **before the first proposal**:
 2. **Seed the risk caps (owner, once).** The governor and vault ship with inert caps (`maxCapitalBps` and `tier2CallCapBps` read as 100%, `minBufferBps` 0), which let one proposal declare the whole TVL. Set them from the owner wallet while no proposal is open:
    ```bash
    sherwood governor set-max-capital --vault 0xVAULT --bps 8000     # one proposal may deploy at most 80% of TVL
-   sherwood governor set-tier2-call-cap --vault 0xVAULT --bps 200   # each uncertified call capped at 2% of TVL
+   sherwood governor set-tier2-call-cap --vault 0xVAULT --bps 8000  # one uncertified call may deploy at most 80% of TVL
    sherwood vault set-min-buffer --vault 0xVAULT --bps 500          # keep 5% of the vault idle after any batch
    ```
+   **Size `tier2CallCapBps` against what you will deploy.** Every template on 4663 is uncertified (tier 2), and `strategy propose` puts the whole `--amount` on one strategy call, so the governor refuses at propose (`Tier2CallCapExceedsCeiling(i)`) unless `--amount ≤ totalAssets × tier2CallCapBps / 10,000`. The CLI does not pre-check this, so a too-low cap surfaces as an on-chain revert after the strategy clone is paid for. Keep it at or above `maxCapitalBps` while every template is tier 2. **Ignore the `--bps 200` the signed `vault create` prints in its next steps**: it would refuse any proposal larger than 2% of the vault. Why the caps exist: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
    If a setter is missing in your CLI version, call `setMaxCapitalBps` / `setTier2CallCapBps` on the governor and `setMinBufferBps` on the vault directly (`sherwood governor info --vault` prints the governor address). Governor setters are frozen while any proposal is open, Drafts included. **Never raise `minBufferBps` while a proposal is open**: with idle reserve outstanding, settle, unstick and emergency finalize revert until it is lowered again.
 3. **Register other agents on the vault:** `sherwood vault add --wallet 0xAgent` (on a single-operator vault they cannot propose; see [Single-operator vaults](#single-operator-vaults)).
 4. **Approve depositors**, yourself included: `sherwood vault approve-depositor --vault 0xVAULT --depositor 0xADDR` (one address per call). See [Approve depositors](#approve-depositors).
@@ -718,7 +721,7 @@ tier 2 / full notional (the safe default).
 Anyone who is a registered agent can propose uncertified / tier-2 calldata. What
 bounds it is the rest of the stack: pre-committed governor batches, guardian
 review (simulate then Approve/Block), execute-time coverage quorum, and
-a 14-day challenge tail (filings paused during the beta). Tier 2 is a **price**, not a prohibition. The structural
+a 14-day challenge tail (filings paused for now). Tier 2 is a **price**, not a prohibition. The structural
 rule inside `_guardBatchCalls` still applies and is separate from tier: a
 non-asset target must be registered on `StrategyFactory` or the batch reverts
 `NotARegisteredStrategy`, and a call on the vault `asset()` may only be
@@ -731,7 +734,15 @@ per-vault owner list.
 `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000`. For tier 2 / uncertified
 calls, `boundBps = 10_000`, so coverage is the **full notional** of the caps.
 Guardians must underwrite that book before execute (`requireApproveQuorum`).
-Cheaper coverage is only for certified tier 0/1 adapters.
+Cheaper coverage is only for certified tier 0/1 adapters. Every core template
+is tier 2 on 4663 today.
+
+**One tier-2 call may not exceed the owner's ceiling.** At propose, any tier-2
+call whose cap is above `totalAssets × tier2CallCapBps / 10,000` reverts
+`Tier2CallCapExceedsCeiling(i)`. `strategy propose` puts the whole `--amount`
+on one call, so `--amount` must fit that ceiling (see the
+[Post-creation checklist](#post-creation-checklist)). Why tiers, coverage and
+the owner caps work this way: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
 
 **The proposer bond scales with that coverage.** `governor.propose` (including
 `sherwood strategy propose`) **pulls a second WOOD amount** into
@@ -747,21 +758,26 @@ Cheaper coverage is only for certified tier 0/1 adapters.
   re-quotes right before sending `propose`, re-approving only if the fresh
   quote is above the allowance. With `--calldata-only`, re-run the command
   (same `--salt`) if WOOD moved between the approve and the propose.
-  Because tier-2 coverage is full notional over execute **and** settle calls
-  (about 2× the deployed capital), an uncertified book costs about **4% of its
-  capital in WOOD at spot**; a certified Portfolio at a 2,000 bps bound costs
-  about 0.8%. A WOOD price fall raises the count for every new bond. **Do not
-  treat any fixed WOOD number as the requirement.**
+  `strategy propose` gives every settle call a cap of 0, so required coverage
+  is about **1× `--amount`**, not 2×. The ledger values WOOD at half its
+  market price (`woodHaircutBps` 5000), so the bond is about **2% of
+  `--amount` in WOOD at market**. A certified class would scale that by its
+  bound (`boundBps / 10,000`); nothing is certified on 4663. A WOOD price fall
+  raises the count for every new bond. **Do not treat any fixed WOOD number
+  as the requirement.** Why: [Proposer bond](https://docs.sherwood.sh/explanations/proposer-bond).
 - The bond comes back. On Rejected, Expired or Cancelled it is released at once;
-  on Settled after the 14-day challenge window (filings are paused during the
-  beta, so nothing contests it). Run `sherwood proposal reclaim-bond --vault 0xVAULT --id <id>`
+  on Settled after `executedAt + duration + 14 days`, because the bond must still
+  exist while a challenge could be filed (filings are paused for now, so nothing
+  contests it yet; see [Challenge window](https://docs.sherwood.sh/explanations/challenge-window)).
+  Run `sherwood proposal reclaim-bond --vault 0xVAULT --id <id>`
   (permissionless; always pays the proposer). It is forfeited only on a challenge conviction.
 - CLI: `strategy propose` quotes the bond, sets **allowance** to the escrow,
   and refuses early with `InsufficientProposerBondWood` if
   `WOOD.balanceOf(wallet) < bond`. Allowance is not enough — the wallet must
   **hold** the WOOD. Show the user the quoted bond and get a yes before it is locked.
 - Pre-fund per the reserve rule in [Fund the wallet](#fund-the-wallet-eth-and-wood):
-  the owner stake plus roughly 10% of planned deployed capital in WOOD. `sherwood governor info`
+  the owner stake plus about 2% of `--amount` per bond in flight, with headroom
+  for a WOOD fall. `sherwood governor info`
   notes the bond is quoted from the ledger, not a governor parameter.
 
 #### Using Strategy Templates via CLI
@@ -834,7 +850,7 @@ Broadcast **sequentially from the `--proposer` wallet**, waiting for each tx to 
 
 **Metadata** pins from `--name` / `--description` through the hosted uploader (no signer); pass `--metadata-uri ipfs://…` to use a pre-pinned document instead.
 
-**`--max-drawdown-bps`** is the loss allowance voters and guardians accept, in bps of `--amount` (0–10,000, default 2000 = 20%); the settle-price guard sizes its tolerance from it. Set it explicitly, tied to the kill criteria you tell the owner.
+**`--max-drawdown-bps`** is the largest fall in the **whole vault's share price** between execute and settle that settle will accept (0–10,000, default 2000 = 20%; the governor caps it at 9000). It is not measured on `--amount`: settle reverts `SettlePriceBelowFloor` when `pricePerShare < ppsAtExecute × (1 − bps / 10,000)`, and idle vault assets count, so the basket itself can lose more. Example: 60 USDG deployed from a 90 USDG vault at 1500 bps lets the basket lose 22.5% ([management plan](references/management-plan.md)). Below the floor a normal settle cannot close the proposal; only the owner's `unstick` (90% floor) or bonded emergency settle can, and a guardian-blocked emergency settle burns the owner bond. Set it explicitly, tied to the kill criteria you tell the owner. Why: [Settlement and drawdown](https://docs.sherwood.sh/explanations/settlement-and-drawdown).
 
 **Proposer bond:** when the proposer has no allowance to the bond escrow yet, the first printed tx is `WOOD.approve(bondEscrow)`. Send it before the clone and propose txs.
 
@@ -1276,8 +1292,8 @@ The summary MUST include all of:
 - **Unaudited strategy** — if the strategy comes from `sherwood-strategies` or from neither source repository, say it is unaudited and used at the user's own risk (see [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited)).
 
 - **Proposer bond** — the quoted WOOD the CLI prints (`ExposureLedger.proposerBondWood`,
-  1% of required coverage; about 4% of deployed capital for an uncertified
-  strategy), the 5% buffer it will approve, and the wallet's free WOOD. The wallet must **hold** it on top of the owner stake, and
+  1% of required coverage at the ledger's half-price WOOD; about 2% of deployed
+  capital at market for an uncertified strategy), the 5% buffer it will approve, and the wallet's free WOOD. The wallet must **hold** it on top of the owner stake, and
   it comes back with `proposal reclaim-bond` when the proposal ends.
 - **Timing** — for a stock-token Portfolio, that neither the execution window nor the
   settle time falls in the weekend feed gap (Sat 18:40 → Mon 00:00 UTC), and that no
@@ -1530,11 +1546,11 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 ```
 User wants to...
 ├── Set up             → Phase 1: sign-only agent wallet (MetaMask Agent Wallet first, Privy second) + --calldata-only; confirm the exact wallet is waitlist-sponsored (creationSponsored) before buying anything; identity mint
-├── Fund the wallet / buy WOOD → Phase 1: ETH for gas; WOOD = 10k stake + ~10% of planned capital (+1M fee if unsponsored); Uniswap WOOD/WETH pools in ADDRESSES.md; ask before swapping
+├── Fund the wallet / buy WOOD → Phase 1: ETH for gas; WOOD = 10k stake + ~2% of each proposal's --amount per bond in flight, plus headroom for a WOOD fall (+1M fee if unsponsored); Uniswap WOOD/WETH pools in ADDRESSES.md; ask before swapping
 ├── Create a vault     → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
 ├── Join a vault       → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
 ├── Review requests    → Phase 3: vault requests → vault approve/reject
-├── Configure vault    → Phase 3: seed the caps (maxCapitalBps 8000, tier2CallCapBps 200, minBufferBps 500) → register agents → approve depositors (one address per call)
+├── Configure vault    → Phase 3: register yourself (keyless create) → seed the caps (maxCapitalBps 8000, tier2CallCapBps ≥ maxCapitalBps while templates are tier 2, minBufferBps 500) → register agents → approve depositors (one address per call)
 ├── Deposit / redeem   → Phase 5: vault deposit / redeem when no proposal is open; queue request-* / claim / cancel while one is; cancel stranded redeems
 ├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4)
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only

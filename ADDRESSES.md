@@ -79,8 +79,9 @@ Chain**; `sherwood strategy list` shows them under "Not available". See
 The CLI has no command that buys WOOD. With the MetaMask Agent Wallet, swap USDG for WOOD
 with `mm swap` (quote first). Otherwise swap WETH for WOOD through the Uniswap SwapRouter
 below (or the V2 pair directly). The pools are shallow, so quote first, size the trade in
-tranches and expect price impact: 10,000 WOOD cost about $33 on the mainnet test, not the
-~$16 that spot implies. How much WOOD a creator needs: [Fund the wallet](SKILL.md#fund-the-wallet-eth-and-wood).
+tranches and expect price impact: 10,000 WOOD cost about $33 on the mainnet test, roughly
+the market price then. The lower price the ExposureLedger uses for bonds is a 50% haircut of
+market, not a buy price. How much WOOD a creator needs: [Fund the wallet](SKILL.md#fund-the-wallet-eth-and-wood).
 The CLI quotes the proposer bond in WOOD; use that number.
 
 ## Tokens

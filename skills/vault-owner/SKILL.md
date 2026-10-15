@@ -56,8 +56,8 @@ ExposureLedger, ProposerBondEscrow, ChallengeGame and TokenCourt are deployed in
 Three owner setters, in this order, **before the first propose**. The governor setters are frozen while any proposal is open, Drafts included (`ParamsFrozenDuringProposal`), so they only fit between proposals.
 
 ```bash
-# Per-call cap on tier-2 (uncertified) calls: 2% of totalAssets per call at propose (Tier2CallCapExceedsCeiling(i))
-sherwood governor set-tier2-call-cap --vault $VAULT_ADDRESS --bps 200
+# Per-call cap on tier-2 (uncertified) calls: 80% of totalAssets per call at propose (Tier2CallCapExceedsCeiling(i))
+sherwood governor set-tier2-call-cap --vault $VAULT_ADDRESS --bps 8000
 # Ceiling on --max-capital: 80% of totalAssets, checked at propose and again at execute
 sherwood governor set-max-capital --vault $VAULT_ADDRESS --bps 8000
 # Idle float the vault must keep after every governor batch: 5% (max 5000 = 50%, BufferTooHigh)
@@ -67,7 +67,7 @@ sherwood vault set-min-buffer --vault $VAULT_ADDRESS --bps 500
 
 `setMinBufferBps` is a vault setter with no proposal gate, so it *can* be raised mid-proposal. **Never do that**: the buffer is enforced after each batch (`BufferBreached`), and a raise while a proposal is Executed can make its settlement revert. Lower it, if ever, only between proposals.
 
-While the Portfolio class is uncertified (SHE-235 pending), every Portfolio call is tier 2, so the 200 bps ceiling caps each call at 2% of the vault's assets. Certification at 2,000 bps lifts the class out of tier 2.
+Every core template on 4663 is uncertified (tier 2), and `strategy propose` puts the whole `--amount` on one strategy call, so a proposal needs `--amount ≤ totalAssets × tier2CallCapBps / 10,000`. Keep the tier-2 cap at or above `maxCapitalBps` while that holds. Do not use the 200 bps that signed `vault create` prints: it refuses any proposal above 2% of the vault, and the CLI does not pre-check it, so you find out from an on-chain revert after the clone is paid for. Why: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
 
 Then whitelist depositors (`depositsRestricted` is on, so `--open-deposits` has no effect until it lifts):
 
@@ -89,8 +89,8 @@ At launch you are the proposer. `sherwood strategy propose` / `proposal create` 
 
 1. **Provenance.** Core templates only (Portfolio, Morpho Supply, Concentrated Liquidity). `sherwood strategy list` shows what is deployed on 4663. Anything from `sherwood-strategies`, or hand-written, is unaudited: see [Strategies from `sherwood-strategies` are unaudited](../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
 2. **Simulate the call files** before proposing: `sherwood proposal simulate --vault $VAULT_ADDRESS --execute-calls execute.json --settle-calls settle.json`. Read the risk codes (§2).
-3. **The bond.** Quote it live; the CLI prints it. It is 1% of required coverage, quoted in WOOD by the CLI (with the 5% buffer it approves and your free WOOD), so plan on about 4% of deployed capital in WOOD for an uncertified Portfolio, about 0.8% once the class is certified. Never treat a fixed WOOD figure as the requirement. It comes back on any terminal state: `sherwood proposal reclaim-bond --vault $VAULT_ADDRESS --id <id>` (after a Settled proposal, only once the 14-day challenge window has closed; `ChallengeWindowOpen` until then).
-4. **Caps.** `--max-capital` ≤ 80% of `totalAssets()` (§0); each tier-2 call cap ≤ 2% of `totalAssets()`; Σ caps ≤ `--max-capital` (`CallCapsExceedMaxCapital`). Required coverage is capped at $1M per proposal (`CoveredTvlCapExceeded`); while uncertified that is about 2× the deployed capital.
+3. **The bond.** Quote it live; the CLI prints it. It is 1% of required coverage at the ledger's half-price WOOD, quoted in WOOD by the CLI (with the 5% buffer it approves and your free WOOD), so plan on about 2% of deployed capital in WOOD at market for an uncertified template. Never treat a fixed WOOD figure as the requirement ([why](https://docs.sherwood.sh/explanations/proposer-bond)). It comes back on any terminal state: `sherwood proposal reclaim-bond --vault $VAULT_ADDRESS --id <id>` (after a Settled proposal, only once the 14-day challenge window has closed; `ChallengeWindowOpen` until then).
+4. **Caps.** `--max-capital` ≤ `totalAssets() × maxCapitalBps` (§0); each tier-2 call cap ≤ `totalAssets() × tier2CallCapBps` (with `strategy propose`, that is the whole `--amount`); Σ caps ≤ `--max-capital` (`CallCapsExceedMaxCapital`). Required coverage is capped at $1M per proposal (`CoveredTvlCapExceeded`); for a `strategy propose` proposal it is about 1× `--amount` (settle calls carry a 0 cap).
 5. **Duration** 1 h – 30 d. Cooldown 1 h after the last proposal ended (`CooldownNotElapsed`).
 6. **The weekend feed gap.** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the Portfolio template's 26 h `MAX_PUSH_PRICE_AGE`. A Portfolio holding stock tokens **cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC** (`StalePrice`). With the default 24 h vote + 30 min review + 24 h execution window, the execution window runs from propose + 24.5 h to propose + 48.5 h, so propose by about **Thursday 18:00 UTC** (or from Saturday 23:30 UTC, when the window opens after the gap ends); an execution window that falls inside the gap expires the proposal. With a 30 min test vote the window is propose + 1 h to propose + 25 h: propose by about Friday 17:30 UTC. Propose so that both the execution window and the end of the strategy land on weekdays.
 7. **Splits.** Do not hold a stock slot across an announced split; the feed basis changes under the position.

@@ -6,7 +6,7 @@ allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch 
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.2'
+  version: '0.2.3'
 ---
 
 # Moonwell Supply Strategy

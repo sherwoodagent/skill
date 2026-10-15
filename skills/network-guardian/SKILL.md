@@ -6,7 +6,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli@0.95.0 (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.6.1'
+  version: '0.7.0'
 ---
 
 # Network Guardian (Sherwood on Robinhood Chain, 4663)

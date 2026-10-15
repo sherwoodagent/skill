@@ -6,7 +6,7 @@ allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch 
 license: MIT
 metadata:
   author: sherwood
-  version: '0.1.2'
+  version: '0.1.3'
 ---
 
 # Memecoin Alpha Strategy

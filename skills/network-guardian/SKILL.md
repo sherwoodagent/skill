@@ -3,10 +3,10 @@ name: network-guardian
 description: Operate as a staked Sherwood network guardian on Robinhood Chain (4663) — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Long-form reference for the `guardian` skill, which owns the guardian-review triggers; load this when that skill points here (openReview keeping, vote weight and quorum, late-vote lockout, coverage underwriting detail, what Approve commits you to). NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli@0.94.0 (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli@0.95.0 (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.6.0'
+  version: '0.6.1'
 ---
 
 # Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -48,7 +48,7 @@ Launch values from `script/robinhood-mainnet/RobinhoodParams.sol` on `v1-deploy`
 | Minimum guardian stake | 10,000 WOOD (quote WOOD live) | `StakedWood.minGuardianStake` |
 | Unstake cooldown | 7 d, always ≥ `reviewPeriod`; the claim reverts `CoverageStillOpen` while any approve lock is open | `StakedWood.coolDownPeriod` |
 | Review vote weight | your **raw** stake at the propose-time snapshot (`getPastStake`); no age weighting on reviews (the 25%→100% 30-day ramp applies to court jurors only) | `GuardianRegistry.voteOnProposal` |
-| Review window | 24 h (6 h floor, 3 d max) | `GuardianRegistry.reviewPeriod` |
+| Review window | 30 min on 4663 since 2026-10-14 (30 min floor `minReviewPeriod`, 3 d max) | `GuardianRegistry.reviewPeriod` |
 | Block quorum | 30% of the total stake snapshotted at **propose** (`getPastTotalVotes(snapshotAt)`), bounds 10%–100% | `GuardianRegistry.blockQuorumBps` |
 | Late-vote lockout | final **10%** of the review window — first votes *and* vote changes | `LATE_VOTE_LOCKOUT_BPS` |
 | Approver cap | 100 approvers per proposal (`NewSideFull`); blockers uncapped | `MAX_APPROVERS_PER_PROPOSAL` |
@@ -115,8 +115,10 @@ governor registerReview (at propose; snapshotAt = propose time − 1 s)
              └─ resolveReview(governor, id) PERMISSIONLESS — from reviewEnd
 ```
 
-At the launch defaults, `voteEnd = propose + 24 h`, `reviewEnd = voteEnd + 24 h`,
-`executeBy = reviewEnd + 24 h`.
+`voteEnd = propose + votingPeriod` (owner-set per vault: 24 h default, 30 min floor),
+`reviewEnd = voteEnd + reviewPeriod` (30 min on 4663), `executeBy = reviewEnd + executionWindow`
+(24 h default). The last 10% of the review (3 min on a 30 min window) is locked out, so a fleet
+must open and vote within ~27 min of `voteEnd`.
 
 **Opening is your job.** `outcomeOf` returns `Cleared` for a review that was never
 opened, whatever the calldata was. If nobody calls `openReview`, a proposal walks

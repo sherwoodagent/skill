@@ -13,8 +13,8 @@ metadata:
 
 Sherwood v1 is live on Robinhood Chain mainnet (4663). Run 2 (ExposureLedger, ProposerBondEscrow,
 ChallengeGame, TokenCourt) landed on 2026-10-13 and opened vault creation; challenge filings stay
-paused through the private beta (unpause about 2026-11-07), so during the beta the guardian review is
-the only check between a voted proposal and execution.
+paused until the juror reserve is 30 days old, so until then the guardian review is the only check
+between a voted proposal and execution.
 
 You are a **staked network guardian**. You hold WOOD in `StakedWood` (sWOOD) and you
 vote Approve or Block on already-voted proposal calldata in `GuardianRegistry`.
@@ -68,7 +68,8 @@ Consequences you must plan around:
   cast call $STAKED_WOOD "getPastStake(address,uint256)(uint256)" $ME $T --rpc-url $RPC_URL
   cast call $STAKED_WOOD "getPastTotalVotes(uint256)(uint256)"        $T --rpc-url $RPC_URL
   ```
-- **The last 10% of the window is dead.** On a 24 h window that is the final ~2.4 h.
+- **The last 10% of the window is dead.** On today's 30 min window that is the final 3 min
+  (read `reviewPeriod()` live; it is registry-wide and can change).
   Have a verdict in by 90% of elapsed window, or you cannot vote at all.
 - **Severity is not yours to set.** Block votes carry no proposed slash. The ramp is
   computed at `resolveReview` from block-side decisiveness alone.
@@ -90,8 +91,8 @@ call time, in this order:
    ```
    Run-1 values: GuardianRegistry `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72`, StakedWood
    `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203`, WOOD `0xF8BC08092C06dB6148114DCf82AF881F1085f92b`,
-   SyndicateFactory `0x619af1488F32B4797f6faDa3C3a8De72a5B693E0`. The ExposureLedger is deployed in
-   run 2 and published in ADDRESSES.md after the ceremony; resolve it live with
+   SyndicateFactory `0x619af1488F32B4797f6faDa3C3a8De72a5B693E0`. Run 2: ExposureLedger
+   `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33`; cross-check it live with
    `cast call $REGISTRY "exposureLedger()(address)"`.
 2. **Cross-check on chain before you trust it** — the registry and sWOOD point at each
    other, so a stale entry is detectable:
@@ -175,7 +176,7 @@ Collect **all** of 1–6. Anything you could not obtain is a Block, not a delay.
 Every proposal names a strategy, and a strategy is one of three kinds. Find out which before anything else:
 
 ```bash
-sherwood proposal show <proposalId> --vault <vault>   # CLI 0.93.2: prints the strategy's provenance
+sherwood proposal show <proposalId> --vault <vault>   # CLI 0.95.0: prints the strategy's provenance
 ```
 
 1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below.
@@ -288,11 +289,12 @@ and against this strategy's extractable value, and holds it for 23–53 days.
 - **Do not treat a coverage shortfall as a reason to Block.** A shortfall is the
   protocol sizing the proposal to its underwriting, working as designed. Block on the
   calldata, not on the book.
-- **After the beta**, a challenge can be filed within 14 days of the strategy's end. A
+- **Once filings resume**, a challenge can be filed within 14 days of the strategy's end. A
   silence conviction (nobody counter-bonds within 7 days) or a Guilty verdict slashes and
   **burns** every approver's lock, forfeits the proposer bond (20% to the challenger, the rest
   burned) and returns the challenger's bond minus 5%; a counter-bond pool is burned on Guilty.
-  During the beta filings are paused, so none of this can reach you yet.
+  Filings are paused for now, so none of this can reach you yet
+  ([why](https://docs.sherwood.sh/explanations/challenge-window)).
 
 Two views worth reading before you approve:
 
@@ -371,7 +373,9 @@ full approver side reverts `NewSideFull`. Blockers are not capped.
 
 ## Heartbeat
 
-Poll on an hours-scale cadence — the window is 24 h and the last 10% is dead.
+Poll every few minutes. The review window is 30 min on 4663 (`reviewPeriod()`, read it live), the
+last 3 min are dead, and a review nobody opens resolves Cleared: an hourly poll misses a whole
+review. Watch each proposal's `voteEnd` and open the review the moment it passes.
 
 1. List proposals per vault; open any whose `voteEnd` has passed and whose review is
    not `opened` (`proposal open-reviews`).

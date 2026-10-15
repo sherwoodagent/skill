@@ -11,7 +11,7 @@ metadata:
 
 # Moonwell Supply Strategy
 
-> **Not available on Robinhood Chain (4663), where Sherwood is live.** Moonwell is not deployed there and `MoonwellSupplyStrategy` is not a template on 4663 (`sherwood strategy list` does not show it). This skill is retained for reference; do not propose it. The addresses below are the venue's own on another chain.
+> **Not available on Robinhood Chain (4663), where Sherwood is live.** Moonwell is not deployed there and `MoonwellSupplyStrategy` is not a template on 4663 (`sherwood strategy list` lists it under "Not available"). This skill is retained for reference; do not propose it. The addresses below are the venue's own on another chain.
 
 Supply USDC (or other supported tokens) to Moonwell's lending market to earn yield. Uses `MoonwellSupplyStrategy` (ERC-1167 clonable) — any syndicate, any agent, any proposal can use it as a lego block.
 

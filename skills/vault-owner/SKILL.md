@@ -14,7 +14,7 @@ metadata:
 
 You are the **owner** of a Sherwood vault. Your duty is protecting the capital depositors put in it.
 
-Sherwood v1 is live on Robinhood Chain mainnet (chain id 4663). Vault creation has been open since run 2 on 2026-10-13 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt); the private beta for waitlisted creators runs from 2026-10-14 with general access planned for about 2026-11-11. At launch the factory runs **`ownerOnlyProposals = true`** and **`depositsRestricted = true`**: you are the only proposer on your vault, and only addresses you whitelisted can deposit. So the first job is reviewing **your own** proposal before you send it (§1); watching other agents' proposals (§2) matters only once the flag lifts.
+Sherwood v1 is live on Robinhood Chain mainnet (chain id 4663). Vault creation has been open since run 2 on 2026-10-13 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt), invite-only: waitlisted creators are sponsored ([why](https://docs.sherwood.sh/explanations/launch-posture)). At launch the factory runs **`ownerOnlyProposals = true`** and **`depositsRestricted = true`**: you are the only proposer on your vault, and only addresses you whitelisted can deposit. So the first job is reviewing **your own** proposal before you send it (§1); watching other agents' proposals (§2) matters only once the flag lifts.
 
 Governance is optimistic: a proposal passes unless Against votes reach the veto threshold during the vote (24 h by default; you can set it down to 30 min), then it sits in guardian review (30 min on 4663, protocol-set), then it has the execution window (24 h by default) to be executed. **Silence equals approval.**
 
@@ -47,7 +47,7 @@ Source of truth: `chains/4663.json` in `sherwoodagent/sherwood-protocol` (`v1-de
 | USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
 | Portfolio / Morpho Supply / Concentrated Liquidity templates | `0xAA5872009c527cCb80343E41C52840CEdb095eb0` / `0x5B55E1Da361573CB0788e750038567D2569BE41d` / `0xcba9C84F2d382729D1519c5F7f4a9AAaC075f8B5` |
 
-ExposureLedger, ProposerBondEscrow, ChallengeGame and TokenCourt are deployed in run 2; their addresses are published in ADDRESSES.md after the ceremony. Resolve the ledger live: `cast call $GOVERNOR_ADDRESS "exposureLedger()(address)"`. Launchpad and Lighter templates are not deployed on 4663.
+Run 2 (2026-10-13): ExposureLedger `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33`, ProposerBondEscrow `0x7d25058c891d3AC5C8bc8Da6aA937DFeE648B5cF`, ChallengeGame `0x7046FececcA6c0f5E66Cc998099593ae71A1bbee`, TokenCourt `0xC30bA62727be65fd867385Ce27Ff7C78bd66A897` (all in [ADDRESSES.md](../../ADDRESSES.md)). Cross-check the ledger live: `cast call $GOVERNOR_ADDRESS "exposureLedger()(address)"`. Launchpad and Lighter templates are not deployed on 4663.
 
 ---
 
@@ -79,7 +79,7 @@ cast call $VAULT_ADDRESS "isApprovedDepositor(address)(bool)" 0xLP --rpc-url $RP
 
 "Only your own vault" is enforced only by this whitelist: anyone you approve can deposit, and nobody you did not approve can. Depositors need no WOOD.
 
-Your owner stake (`sherwood guardian prepare-owner-stake 10000` before create; `requiredOwnerBond` is 10,000 WOOD at launch) stays bound to the vault. Requesting its unstake makes `ownerBondLive` false, and propose and execute then revert `OwnerBondNotLive`. Keep it bound while you operate.
+Your owner stake (`sherwood guardian prepare-owner-stake 10000` before create; `requiredOwnerBond` is 10,000 WOOD at launch) stays bound to the vault. Requesting its unstake makes `ownerBondLive` false, and propose and execute then revert `OwnerBondNotLive`. Keep it bound while you operate. It exists to back your emergency settle with new calldata, the one power guardians can burn it for ([why](https://docs.sherwood.sh/explanations/owner-stake)); there is no top-up and no CLI command for the exit (`cast` only).
 
 ---
 
@@ -203,7 +203,7 @@ For each Executed proposal:
 ### Governor (owner only, frozen while any proposal is open — Drafts count)
 
 ```bash
-sherwood governor set-voting-period    --vault $VAULT_ADDRESS --seconds <n>   # 30 min – 3 d (default 24 h); testing: 1800; testing: 3600 (1 h)
+sherwood governor set-voting-period    --vault $VAULT_ADDRESS --seconds <n>   # 30 min – 3 d (default 24 h); testing: 1800. Floor = live MIN_VOTING_PERIOD() (1800); CLI help's 1 h is stale
 sherwood governor set-execution-window --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 7 d (default 24 h)
 sherwood governor set-veto-threshold   --vault $VAULT_ADDRESS --bps <n>       # 2000 – 8000 (default 2000)
 sherwood governor set-max-fee          --vault $VAULT_ADDRESS --bps <n>       # ≤ 2500 (default 2000)

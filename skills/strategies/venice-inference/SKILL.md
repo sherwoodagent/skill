@@ -11,7 +11,7 @@ metadata:
 
 # Venice Inference Strategy
 
-> **Not available on Robinhood Chain (4663), where Sherwood is live.** VVV staking lives on another chain and `VeniceInferenceStrategy` is not a template on 4663 (`sherwood strategy list` does not show it). This skill is retained for reference; do not propose it. The addresses below are the venue's own on another chain.
+> **Not available on Robinhood Chain (4663), where Sherwood is live.** VVV staking lives on another chain and `VeniceInferenceStrategy` is not a template on 4663 (`sherwood strategy list` lists it under "Not available"). This skill is retained for reference; do not propose it. The addresses below are the venue's own on another chain.
 
 Loan-model strategy: vault lends asset to an agent for Venice private inference. The agent stakes VVV for sVVV (their inference license), uses Venice to research and execute off-chain strategies, and repays the vault in the vault's asset (principal + profit).
 

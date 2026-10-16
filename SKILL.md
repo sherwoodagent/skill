@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.30.1'
+  version: '0.30.2'
 ---
 
 # Sherwood
@@ -17,10 +17,10 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.96.0
+npm i -g @sherwoodagent/cli@0.96.2
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; if older, run the install command above. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and from 0.93.2 it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
+If it does exist, run `sherwood --version`. It must be **0.96.2 or later**; if older, run the install command above. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and from 0.93.2 it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
 
 Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
@@ -309,7 +309,7 @@ The **vault owner** sets each vault's governance periods on its governor. Change
 | Cooldown | `sherwood governor set-cooldown --vault 0xVAULT --seconds <n>` | `MIN_COOLDOWN_PERIOD` (1h on mainnet) to 30 days | `3600` | as needed |
 | Max strategy duration | `sherwood governor set-max-duration --vault 0xVAULT --seconds <n>` | 1 hour to 30 days | — | match the strategy |
 
-The guardian review period comes after voting and is set by the protocol (`GuardianRegistry.reviewPeriod`, 30 min on mainnet 4663 since 2026-10-14), not the owner. **The chain is the authority for both 30-minute values**: read `MIN_VOTING_PERIOD()(uint256)` on your governor and `reviewPeriod()(uint256)` / `minReviewPeriod()(uint256)` on the GuardianRegistry (`0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72`); all read `1800`. The protocol's `v1-deploy` parameter file and the CLI's `governor set-voting-period` help still say 1h, so do not "correct" these values from either. A fresh vault starts with a 24h voting period; only the owner changes it. Why the periods are what they are, and why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing). A proposal keeps the voting and review periods it was created with, so a change applies to the next proposal. For a quick test cycle, set the voting period to 30 min (`1800`) before the first proposal: propose → vote ends +30 min → review ends +1 h → execute. With `--calldata-only`, each setter is one more transaction for the wallet to sign.
+The guardian review period comes after voting and is set by the protocol (`GuardianRegistry.reviewPeriod`, 30 min on mainnet 4663 since 2026-10-14), not the owner. **The chain is the authority for both 30-minute values**: read `MIN_VOTING_PERIOD()(uint256)` on your governor and `reviewPeriod()(uint256)` / `minReviewPeriod()(uint256)` on the GuardianRegistry (`0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72`); all read `1800`. The protocol's `v1-deploy` floors match (30 min since sherwood-protocol#391), and CLI 0.96.2's `governor set-voting-period` help says 30 min; older CLI help said 1h, so do not "correct" these values from it. A fresh vault starts with a 24h voting period; only the owner changes it. Why the periods are what they are, and why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing). A proposal keeps the voting and review periods it was created with, so a change applies to the next proposal. For a quick test cycle, set the voting period to 30 min (`1800`) before the first proposal: propose → vote ends +30 min → review ends +1 h → execute. With `--calldata-only`, each setter is one more transaction for the wallet to sign.
 
 
 ### Join existing vault
@@ -480,13 +480,12 @@ After creating a vault, and **before the first proposal**:
 
 1. **Allowlist batch 2: your vault.** Add the new vault and its governor (`sherwood vault info <subdomain>` and `sherwood governor info --vault 0xVAULT` print them) to the wallet policy first, so the steps below are not each held for email approval. See [Wallet policy](#wallet-policy-allowlist-and-outflow-cap).
 2. **Register yourself as an agent** (keyless create only; signed `vault create` already did it): `sherwood --calldata-only vault add --vault 0xVAULT --wallet <owner> --agent-id <id>`, then broadcast. Proposing requires it, even for the owner (`NotRegisteredAgent`).
-3. **Seed the risk caps (owner, once).** The governor and vault ship with inert caps (`maxCapitalBps` and `tier2CallCapBps` read as 100%, `minBufferBps` 0), which let one proposal declare the whole TVL. Set them from the owner wallet while no proposal is open:
+3. **Seed the risk caps (owner, once).** The governor and vault ship with inert caps (`maxCapitalBps` and `tier2CallCapBps` read as 100%, `minBufferBps` 0), which let one proposal declare the whole TVL. Set two of them from the owner wallet while no proposal is open:
    ```bash
-   sherwood governor set-max-capital --vault 0xVAULT --bps 8000     # one proposal may deploy at most 80% of TVL
-   sherwood governor set-tier2-call-cap --vault 0xVAULT --bps 8000  # one uncertified call may deploy at most 80% of TVL
-   sherwood vault set-min-buffer --vault 0xVAULT --bps 500          # keep 5% of the vault idle after any batch
+   sherwood governor set-max-capital --vault 0xVAULT --bps 8000   # one proposal may deploy at most 80% of TVL
+   sherwood vault set-min-buffer --vault 0xVAULT --bps 500        # keep 5% of the vault idle after any batch
    ```
-   **Size `tier2CallCapBps` against what you will deploy.** Every template on 4663 is uncertified (tier 2), and `strategy propose` puts the whole `--amount` on one strategy call, so the governor refuses at propose (`Tier2CallCapExceedsCeiling(i)`) unless `--amount ≤ totalAssets × tier2CallCapBps / 10,000`. The CLI does not pre-check this, so a too-low cap surfaces as an on-chain revert after the strategy clone is paid for. Keep it at or above `maxCapitalBps` while every template is tier 2. **Ignore the `--bps 200` the signed `vault create` prints in its next steps**: it would refuse any proposal larger than 2% of the vault. Why the caps exist: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
+   **Leave `tier2CallCapBps` at its default (100%) until the strategy is certified.** Every template on 4663 is uncertified (tier 2), and `strategy propose` puts the whole `--amount` on one strategy call, so the governor refuses at propose (`Tier2CallCapExceedsCeiling(i)`) unless `--amount ≤ totalAssets × tier2CallCapBps / 10,000`. The CLI does not pre-check this, so a too-low cap surfaces as an on-chain revert after the strategy clone is paid for. `maxCapitalBps` already bounds the whole proposal. CLI versions before 0.96.2 printed `--bps 200` as a next step after signed `vault create`; ignore it: it would refuse any proposal larger than 2% of the vault. Why the caps exist: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
    If a setter is missing in your CLI version, call `setMaxCapitalBps` / `setTier2CallCapBps` on the governor and `setMinBufferBps` on the vault directly (`sherwood governor info --vault` prints the governor address). Governor setters are frozen while any proposal is open, Drafts included. **Never raise `minBufferBps` while a proposal is open**: with idle reserve outstanding, settle, unstick and emergency finalize revert until it is lowered again.
 4. **Register other agents on the vault:** `sherwood vault add --wallet 0xAgent` (on a single-operator vault they cannot propose; see [Single-operator vaults](#single-operator-vaults)).
 5. **Approve depositors**, yourself included: `sherwood vault approve-depositor --vault 0xVAULT --depositor 0xADDR` (one address per call). See [Approve depositors](#approve-depositors).
@@ -813,7 +812,7 @@ sherwood strategy propose portfolio \
 
 # Submit the proposal
 sherwood proposal create \
-  --vault 0x... --name "TSLA/AMZN basket" \
+  --vault 0x... --strategy 0xCLONE --name "TSLA/AMZN basket" \
   --description "60/40 TSLA and AMZN, 7d" \
   --duration 7d --max-capital 200 \
   --execute-calls ./calls/execute.json \
@@ -1152,7 +1151,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.96.0` (the version pinned in Install) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.96.2` (the version pinned in Install) before continuing.
 2. **Confirm wallet matches.** `sherwood config show` only says whether a key is configured, not which one. With a configured key, `sherwood guardian status` prints the caller's address; confirm it is the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
@@ -1338,6 +1337,7 @@ Re-confirm if the user changes any field. Do not batch-confirm a list of command
 ```bash
 sherwood proposal create \
   --vault 0x... \
+  --strategy 0xCLONE \
   --name "TSLA/AMZN basket" \
   --description "60/40 TSLA and AMZN, 7d" \
   --duration 7d \
@@ -1349,6 +1349,7 @@ sherwood proposal create \
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--vault` | yes | Vault address the proposal targets |
+| `--strategy` | yes | Strategy clone the calls target, registered on the `StrategyFactory` (`strategy propose --write-calls` prints it as `Clone address`). Required from CLI 0.96.2; the governor refuses an unregistered or zero address (`StrategyNotRegistered`) |
 | `--name` | yes* | Strategy name (skipped if `--metadata-uri` provided) |
 | `--description` | yes* | Strategy rationale and risk summary (skipped if `--metadata-uri`) |
 | `--duration` | yes | Strategy duration. Accepts seconds or human format (`7d`, `24h`, `1h`) |
@@ -1586,7 +1587,7 @@ User wants to...
 ├── Create a vault     → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
 ├── Join a vault       → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
 ├── Review requests    → Phase 3: vault requests → vault approve/reject
-├── Configure vault    → Phase 3: register yourself (keyless create) → seed the caps (maxCapitalBps 8000, tier2CallCapBps ≥ maxCapitalBps while templates are tier 2, minBufferBps 500) → register agents → approve depositors (one address per call)
+├── Configure vault    → Phase 3: register yourself (keyless create) → seed the caps (maxCapitalBps 8000, minBufferBps 500; leave tier2CallCapBps at default until certified) → register agents → approve depositors (one address per call)
 ├── Deposit / redeem   → Phase 5: vault deposit / redeem when no proposal is open; queue request-* / claim / cancel while one is; cancel stranded redeems
 ├── Trade / swap / buy / sell tokens → Phase 4: PortfolioStrategy template (Uniswap v3/v4)
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only

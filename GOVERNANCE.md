@@ -28,6 +28,7 @@ If the proposal's strategy comes from `sherwood-strategies` (or from neither sou
 ```bash
 sherwood proposal create \
   --vault 0x... \
+  --strategy 0xCLONE \
   --name "TSLA/AMZN basket" \
   --description "60/40 TSLA and AMZN for 7 days" \
   --duration 7d \
@@ -39,6 +40,7 @@ sherwood proposal create \
 | Flag | Required | Description |
 |------|----------|-------------|
 | `--vault` | yes | Vault address the proposal targets |
+| `--strategy` | yes | Strategy clone the calls target, registered on the `StrategyFactory` (`strategy propose --write-calls` prints it as `Clone address`). Required from CLI 0.96.2; the governor refuses an unregistered or zero address (`StrategyNotRegistered`) |
 | `--name` | yes* | Strategy name (skipped if `--metadata-uri` provided) |
 | `--description` | yes* | Strategy rationale and risk summary (skipped if `--metadata-uri`) |
 | `--duration` | yes | Strategy duration. Accepts seconds or human format (`7d`, `24h`, `1h`); 1h–30d |
@@ -155,11 +157,11 @@ sherwood governor set-max-fee --vault 0x... --bps <n>                # ≤ 2500
 sherwood governor set-max-duration --vault 0x... --seconds <n>       # ≤ 30d
 sherwood governor set-cooldown --vault 0x... --seconds <n>           # 1h–30d
 sherwood governor set-max-capital --vault 0x... --bps <n>        # share of TVL one proposal may deploy; seed 8000
-sherwood governor set-tier2-call-cap --vault 0x... --bps <n>     # per-call cap for uncertified calls; seed ≥ max-capital (8000)
+sherwood governor set-tier2-call-cap --vault 0x... --bps <n>     # per-call cap for uncertified calls; leave at default until certified
 sherwood vault set-min-buffer --vault 0x... --bps <n>            # idle reserve kept after any batch; seed 500, ≤ 5000
 ```
 
-Each validates against the governor's bounds before submitting, and all governor setters revert `ParamsFrozenDuringProposal` while the vault has an open proposal (Drafts count). Seed the last three right after `vault create` and before the first proposal; never raise `minBufferBps` while a proposal is open. Every template on 4663 is tier 2 and `strategy propose` puts the whole `--amount` on one call, so a proposal needs `--amount ≤ totalAssets × tier2CallCapBps / 10,000`: keep the tier-2 cap at or above `maxCapitalBps`, and ignore the 200 bps that signed `vault create` prints. Why: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage). Protocol-wide fee splits (`governor set-mgmt-split` / `set-perf-split`) live on `ProtocolConfig` and are protocol-owner only.
+Each validates against the governor's bounds before submitting, and all governor setters revert `ParamsFrozenDuringProposal` while the vault has an open proposal (Drafts count). Seed `set-max-capital` and `set-min-buffer` right after `vault create` and before the first proposal; never raise `minBufferBps` while a proposal is open. Every template on 4663 is tier 2 and `strategy propose` puts the whole `--amount` on one call, so a proposal needs `--amount ≤ totalAssets × tier2CallCapBps / 10,000`: leave the tier-2 cap at its default (100%) until the strategy is certified, and ignore the 200 bps that signed `vault create` printed before CLI 0.96.2. Why: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage). Protocol-wide fee splits (`governor set-mgmt-split` / `set-perf-split`) live on `ProtocolConfig` and are protocol-owner only.
 
 ## Participation crons
 

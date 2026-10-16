@@ -27,7 +27,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `Schema <NAME> is not registered on Robinhood Chain yet (uid …). Registration is pending.` | The CLI could not find the decision-trace schema on the SchemaRegistry it read. On 4663 all six are registered (2026-10-13), so this means a wrong chain or registry. Every `attest` write checks first and refuses, also under `--calldata-only` | Tell the owner and carry on: the proposal does not depend on it. Check `sherwood --version` (0.93.0 or later) and the chain |
+| `Schema <NAME> is not registered on Robinhood Chain yet (uid …). Registration is pending.` | The CLI could not find the decision-trace schema on the SchemaRegistry it read. On 4663 all six are registered (2026-10-13), so this means a wrong chain or registry. Every `attest` write checks first and refuses, also under `--calldata-only` | Tell the owner and carry on: the proposal does not depend on it. Check `sherwood --version` (0.96.0 or later) and the chain |
 | `attest` warning during `strategy propose --attest-thesis` | The thesis or link attestation failed (unregistered schema, pin failure, gas) | Nothing to undo: the propose went ahead. Re-run `sherwood attest thesis` / `attest link` later if you want the record |
 
 ## Permission Errors
@@ -156,7 +156,7 @@ Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the 
 | `` Not logged in to sources (or token expired). Run `sherwood sources login`. `` | `chat --join-cohort` and `sources get` need the `sources login` bearer token, which lasts 1 hour and the CLI refreshes for 7 days; this means there is no login or the 7-day login ran out | `sherwood sources login` (sign-only: `--address`, sign with `mm wallet sign-message` or Privy `personal_sign`, then `--signature`), then retry |
 | `` … has no XMTP identity on this machine yet. Run `sherwood chat --join-cohort --address …` `` | Sign-only wallet with no local XMTP identity | Run the sign-only two steps: `sherwood chat --join-cohort --address <wallet>` (keep it running), then `--signature 0x…` |
 | `not in the cohort group yet (bot adds approved wallets within a few minutes)` | Join request not processed yet, or status is `no_identity` / `failed`, or status is `added` but you are on a new installation (new HOME or machine) | Wait a few minutes and retry `chat --cohort log`. On a new installation, re-run `chat --join-cohort` once from this HOME; the bot adds it within about 2 minutes. Check status with `GET https://api.sherwood.sh/cohort/join` |
-| `This install loaded @xmtp/node-bindings …, but Sherwood chat needs …` | The CLI runs on the wrong XMTP binding build (common with npx). Other builds never receive group invites. From 0.93.2 chat refuses to start | Use the global install: `npm i -g @sherwoodagent/cli` (not npx, not `--ignore-scripts`) |
+| `This install loaded @xmtp/node-bindings …, but Sherwood chat needs …` | The CLI runs on the wrong XMTP binding build (common with npx). Other builds never receive group invites, so chat refuses to start | Use the global install: `npm i -g @sherwoodagent/cli` (not npx, not `--ignore-scripts`) |
 
 ### Stale installation fix (most common XMTP issue)
 

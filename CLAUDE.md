@@ -10,7 +10,6 @@ The Sherwood agent skill pack — installed by users via `npx skills install she
 
 When bumping any of:
 - `.claude-plugin/plugin.json` `version` field (this skill's own version)
-- The pinned Sherwood CLI version (`@sherwoodagent/cli@X.Y.Z` in `SKILL.md`)
 - The pinned Hermes plugin version (`sherwoodagent/sherwood-hermes-plugin@vX.Y.Z` in `SKILL.md`)
 
 …the PR MUST also touch every spot the version is referenced. Today those are:
@@ -18,14 +17,13 @@ When bumping any of:
 | File | Pin | What it controls |
 |---|---|---|
 | `.claude-plugin/plugin.json` | `version` | Skill plugin manifest |
-| `SKILL.md` install section (Option A) | `@sherwoodagent/cli@X.Y.Z` | npm install command for the CLI |
 | `SKILL.md` "Running on Hermes Agent" → Install | `sherwood-hermes-plugin@vX.Y.Z` | Hermes plugin install command |
 
 Sub-skills under `skills/*/SKILL.md` carry their OWN `version` frontmatter — bump those independently when their behavior changes.
 
-## When to bump the CLI pin in this repo
+## CLI version
 
-After a CLI release lands on `main` of `sherwoodagent/sherwood` and is published to npm. Pull the version from `cli/package.json` in that repo. Do NOT track `@latest` — agents need a deterministic install for reproducibility.
+The skill installs `@sherwoodagent/cli@latest` and documents the flags of the latest release. Do not pin an exact CLI version. Keep one minimum-version line ("0.96.0 or later") in `SKILL.md` Install and in each sub-skill's `compatibility`, and raise it only when the skill depends on a command or flag older releases lack.
 
 ## When to bump the Hermes plugin pin in this repo
 
@@ -41,4 +39,4 @@ The Robinhood mainnet fork (a Tenderly vnet, chain 9994663) hosted the beta, whi
 
 Do not re-add Base / Base Sepolia / HyperEVM / hyperevm-testnet as deployment targets without an explicit decision in the PR. Frame it as "Sherwood deploys on Robinhood chains", never "Base/HyperEVM support removed". Base appears only as the chain x402 research payments settle on (USDC on Base).
 
-Wallets: the MetaMask Agent Wallet is the first choice (when `mm chains list` shows 4663), Privy the second; both are sign-only (`--calldata-only`), and Privy stays fully documented as an alternative, not a footnote. Every command and flag in `SKILL.md` must exist in the pinned CLI version: check `cli/src` in `sherwoodagent/sherwood` before documenting one.
+Wallets: the MetaMask Agent Wallet is the first choice (when `mm chains list` shows 4663), Privy the second; both are sign-only (`--calldata-only`), and Privy stays fully documented as an alternative, not a footnote. Every command and flag in `SKILL.md` must exist in the latest published CLI: check `cli/src` in `sherwoodagent/sherwood` before documenting one.

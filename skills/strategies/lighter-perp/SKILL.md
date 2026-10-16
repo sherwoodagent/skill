@@ -15,7 +15,7 @@ metadata:
 
 > **Unaudited.** `LighterPerpStrategy` comes from `sherwood-strategies` (`src/lighter/`), which has not been audited. Before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk. As an uncertified tier-2 template, each Lighter proposal books about 1× its deployed capital in guardian coverage (`strategy propose` gives settle calls a 0 cap), and the deposit must fit the vault's `tier2CallCapBps` ceiling.
 
-A `LighterPerpStrategy` clone owns its own Lighter perp account, funded with USDG from the vault. The agent trades that account off-chain through Lighter's API with a **trade-only L2 key** the contract registers. The proposer and the vault owner keep an on-chain kill switch: cancel orders, close positions, rotate the key, and drain the account. Requires `@sherwoodagent/cli@0.96.0` or later.
+A `LighterPerpStrategy` clone owns its own Lighter perp account, funded with USDG from the vault. The agent trades that account off-chain through Lighter's API with a **trade-only L2 key** the contract registers. The proposer and the vault owner keep an on-chain kill switch: cancel orders, close positions, rotate the key, and drain the account. Requires `@sherwoodagent/cli@0.96.2` or later.
 
 ```
 Vault (USDG)

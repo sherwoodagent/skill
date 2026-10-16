@@ -4,10 +4,10 @@ model: sonnet
 description: Instructs an AI agent acting as the owner of a Sherwood vault on Robinhood Chain (4663) — seeds the post-create caps, reviews its own proposal before sending it, monitors governance and live strategies, vetoes or emergency-cancels a bad proposal, sets vault and governor parameters, pauses, rescues, and recovers a stuck Executed proposal through unstick or the bonded emergency unwind (emergencySettleWithCalls → finalizeEmergencySettle). Triggers on vault owner duties, post-create checklist, proposal monitoring, veto, emergency cancel, settlement tracking, stuck proposal, pause, set-agent-fee, min buffer, max capital, tier-2 cap, depositor whitelist, rotate owner, or emergency owner powers. Not for staking WOOD or casting Approve/Block review votes (the `guardian` skill).
 allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch WebSearch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli@0.96.0 (default chain robinhood-mainnet, 4663), Foundry (cast) for the direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli@0.96.2 (default chain robinhood-mainnet, 4663), Foundry (cast) for the direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.5.0'
+  version: '0.5.1'
 ---
 
 # Vault Owner (Sherwood on Robinhood Chain, 4663)
@@ -30,7 +30,7 @@ Governance is optimistic: a proposal passes unless Against votes reach the veto 
   export GOVERNOR_ADDRESS=$(cast call $SYNDICATE_FACTORY "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)
   sherwood governor info --vault $VAULT_ADDRESS     # prints the same address and the live parameters
   ```
-- The Sherwood CLI, `@sherwoodagent/cli@0.96.0` or later (Node 22+). It defaults to Robinhood Chain; no `--chain` flag is needed. Foundry (`forge`, `cast`).
+- The Sherwood CLI, `@sherwoodagent/cli@0.96.2` or later (Node 22+). It defaults to Robinhood Chain; no `--chain` flag is needed. Foundry (`forge`, `cast`).
 
 ### Addresses
 
@@ -53,11 +53,9 @@ Run 2 (2026-10-13): ExposureLedger `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33`,
 
 ## 0. Right after `vault create` — the cohort caps
 
-Three owner setters, in this order, **before the first propose**. The governor setters are frozen while any proposal is open, Drafts included (`ParamsFrozenDuringProposal`), so they only fit between proposals.
+Two owner setters **before the first propose**; the third cap stays at its default. The governor setters are frozen while any proposal is open, Drafts included (`ParamsFrozenDuringProposal`), so they only fit between proposals.
 
 ```bash
-# Per-call cap on tier-2 (uncertified) calls: 80% of totalAssets per call at propose (Tier2CallCapExceedsCeiling(i))
-sherwood governor set-tier2-call-cap --vault $VAULT_ADDRESS --bps 8000
 # Ceiling on --max-capital: 80% of totalAssets, checked at propose and again at execute
 sherwood governor set-max-capital --vault $VAULT_ADDRESS --bps 8000
 # Idle float the vault must keep after every governor batch: 5% (max 5000 = 50%, BufferTooHigh)
@@ -67,7 +65,7 @@ sherwood vault set-min-buffer --vault $VAULT_ADDRESS --bps 500
 
 `setMinBufferBps` is a vault setter with no proposal gate, so it *can* be raised mid-proposal. **Never do that**: the buffer is enforced after each batch (`BufferBreached`), and a raise while a proposal is Executed can make its settlement revert. Lower it, if ever, only between proposals.
 
-Every core template on 4663 is uncertified (tier 2), and `strategy propose` puts the whole `--amount` on one strategy call, so a proposal needs `--amount ≤ totalAssets × tier2CallCapBps / 10,000`. Keep the tier-2 cap at or above `maxCapitalBps` while that holds. Do not use the 200 bps that signed `vault create` prints: it refuses any proposal above 2% of the vault, and the CLI does not pre-check it, so you find out from an on-chain revert after the clone is paid for. Why: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
+Every core template on 4663 is uncertified (tier 2), and `strategy propose` puts the whole `--amount` on one strategy call, so a proposal needs `--amount ≤ totalAssets × tier2CallCapBps / 10,000`. Leave the tier-2 cap (`governor set-tier2-call-cap`) at its default (unset reads 10,000) until the strategy is certified. Do not use the 200 bps that signed `vault create` printed before CLI 0.96.2: it refuses any proposal above 2% of the vault, and the CLI does not pre-check it, so you find out from an on-chain revert after the clone is paid for. Why: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
 
 Then whitelist depositors (`depositsRestricted` is on, so `--open-deposits` has no effect until it lifts):
 
@@ -203,7 +201,7 @@ For each Executed proposal:
 ### Governor (owner only, frozen while any proposal is open — Drafts count)
 
 ```bash
-sherwood governor set-voting-period    --vault $VAULT_ADDRESS --seconds <n>   # 30 min – 3 d (default 24 h); testing: 1800. Floor = live MIN_VOTING_PERIOD() (1800); CLI help's 1 h is stale
+sherwood governor set-voting-period    --vault $VAULT_ADDRESS --seconds <n>   # 30 min – 3 d (default 24 h); testing: 1800. Floor = live MIN_VOTING_PERIOD() (1800); CLI help before 0.96.2 said 1 h
 sherwood governor set-execution-window --vault $VAULT_ADDRESS --seconds <n>   # 1 h – 7 d (default 24 h)
 sherwood governor set-veto-threshold   --vault $VAULT_ADDRESS --bps <n>       # 2000 – 8000 (default 2000)
 sherwood governor set-max-fee          --vault $VAULT_ADDRESS --bps <n>       # ≤ 2500 (default 2000)

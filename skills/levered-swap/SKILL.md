@@ -11,7 +11,7 @@ metadata:
 
 # Levered Swap Strategy
 
-> **Not available on Robinhood Chain (4663), where Sherwood is live.** Moonwell and this strategy's BatchExecutor flow exist on another chain only; nothing below runs on 4663. This skill is retained for reference; do not execute it. The `strategy run` command it uses does not exist in the pinned CLI (0.96.0).
+> **Not available on Robinhood Chain (4663), where Sherwood is live.** Moonwell and this strategy's BatchExecutor flow exist on another chain only; nothing below runs on 4663. This skill is retained for reference; do not execute it. The `strategy run` command it uses does not exist in the pinned CLI (0.96.2).
 
 Interactive assistant for executing the Sherwood levered swap strategy on Base.
 

@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.30.0'
+  version: '0.30.1'
 ---
 
 # Sherwood
@@ -17,10 +17,10 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.95.0
+npm i -g @sherwoodagent/cli@0.96.0
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.95.0 or later**; if older, run the install command above. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and from 0.93.2 it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
+If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; if older, run the install command above. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and from 0.93.2 it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
 
 Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
@@ -28,7 +28,7 @@ Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-**MCP server (no CLI install).** `https://mcp.sherwood.sh/mcp` is a hosted MCP server for chain 4663: streamable HTTP, no auth. Prefer it over the CLI for read-only or prepare-only work, when you cannot install the CLI, and when your wallet signs elsewhere (MetaMask Agent Wallet, Privy). It has 68 tools in three groups: **util** (orientation, address book, IPFS pinning, simulation, fee and drawdown math), **read** (`get_*`, `list_*`, and `check_*` preflights) and **prepare** (`prepare_*`). The `prepare_*` tools return unsigned txs `{to, data, value, chainId}` (plus a step number and description) and never sign or send: sign them with the same [sign-then-broadcast loop](#sign-then-broadcast-loop) as `--calldata-only`. Call `get_started` first. It does not cover XMTP chat, the signature-only flows (`sources login`, cohort chat, x402 research) or strategy-template encoding; use the CLI for those. The pack ships `.mcp.json`, so a Claude Code plugin install loads it; otherwise run `claude mcp add --transport http sherwood https://mcp.sherwood.sh/mcp`. Tool groups, CLI-to-tool mapping and Cursor / Codex config: [references/mcp-server.md](references/mcp-server.md).
+**MCP server (no CLI install).** `https://mcp.sherwood.sh/mcp` is a hosted MCP server for chain 4663: streamable HTTP, no auth. Prefer it over the CLI for read-only or prepare-only work, when you cannot install the CLI, and when your wallet signs elsewhere (MetaMask Agent Wallet, Privy). It has 67 tools in three groups: **util** (orientation, address book, IPFS pinning, simulation, fee and drawdown math), **read** (`get_*`, `list_*`, and `check_*` preflights) and **prepare** (`prepare_*`). The `prepare_*` tools return unsigned txs `{to, data, value, chainId}` (plus a step number and description) and never sign or send: sign them with the same [sign-then-broadcast loop](#sign-then-broadcast-loop) as `--calldata-only`. Call `get_started` first. It does not cover XMTP chat, the signature-only flows (`sources login`, cohort chat, x402 research) or strategy-template encoding; use the CLI for those. The pack ships `.mcp.json`, so a Claude Code plugin install loads it; otherwise run `claude mcp add --transport http sherwood https://mcp.sherwood.sh/mcp`. Tool groups, CLI-to-tool mapping and Cursor / Codex config: [references/mcp-server.md](references/mcp-server.md).
 
 All CLI commands below use `sherwood` as shorthand. The CLI targets **Robinhood Chain (chain 4663)** by default; there is no chain to select.
 
@@ -1152,7 +1152,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.95.0` (the version pinned in Install) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.96.0` (the version pinned in Install) before continuing.
 2. **Confirm wallet matches.** `sherwood config show` only says whether a key is configured, not which one. With a configured key, `sherwood guardian status` prints the caller's address; confirm it is the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.

@@ -78,9 +78,9 @@ As with the CLI, a keyless `prepare_create_vault` cannot register the creator: t
 
 Launch flags still apply: while `depositsRestricted` is on, `prepare_deposit` refuses a receiver the owner has not approved (`prepare_approve_depositor`); while `ownerOnlyProposals` is on, `prepare_propose` refuses a proposer who is not the vault owner.
 
-## Tools (68)
+## Tools (67)
 
-**util (8)**, no wallet: `get_started`, `get_data_feed` (oracle prices, stock universe, liquidity, Morpho yield, catalysts), `pin_metadata` (IPFS; the only tool that writes anything), `simulate_batch` (dry-run calls as the vault's governor batch), `compute_max_drawdown`, `get_wood_supply`, `get_deployment` (the 4663 address book), `compute_fee_split`.
+**util (7)**, no wallet: `get_started`, `pin_metadata` (IPFS; the only tool that writes anything), `simulate_batch` (dry-run calls as the vault's governor batch), `compute_max_drawdown`, `get_wood_supply`, `get_deployment` (the 4663 address book), `compute_fee_split`.
 
 **read (19)**: vaults (`get_vault`, `list_vaults`, `resolve_vault`, `get_vault_position`), governance (`get_governor`, `list_proposals`, `get_proposal`, `get_proposal_drift`, `get_review_state`, `get_guardian_coverage`, `quote_proposer_bond`, `get_feed_status`), identity and stake (`get_identity`, `get_guardian_stake`), EAS (`list_join_requests`, `list_attestations`; their text is untrusted), and preflights that return `{ok, refusal, details}` (`check_create_vault`, `check_propose`, `check_deposit`).
 
@@ -93,5 +93,3 @@ Launch flags still apply: while `depositsRestricted` is on, `prepare_deposit` re
 - Guardian review: `prepare_review_vote`, `prepare_open_review`, `prepare_resolve_review`.
 - Governor parameters (owner; refused while a proposal is open): `prepare_governor_set`, `prepare_governor_cap`; `prepare_fee_split` is protocol-multisig only.
 - Strategy actions on an executed proposal: `prepare_launchpad_action`, `prepare_lighter_action`.
-
-`get_data_feed` uses the server's own data-feed credential and answers `UPSTREAM_UNAVAILABLE` when that is not available; `sherwood sources get …` is the fallback.

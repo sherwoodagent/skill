@@ -6,14 +6,14 @@ allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) Bash(pip:
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.0'
+  version: '0.2.1'
 ---
 
 # Lighter Perp Strategy
 
 > **Not deployed on Robinhood Chain (4663), where Sherwood is live.** `LighterPerpStrategy` comes from `sherwood-strategies`, which has no deployment book for 4663 yet, and the audit's G-1/G-2 findings (SHE-365) must be closed before the template is approved there. Lighter itself runs on 4663, so this is where the template will deploy. Until then `sherwood strategy propose lighter-perp` cannot run and `sherwood strategy list` shows it under "Not available". Tell the user this plainly if they ask for Lighter perps.
 
-> **Unaudited.** `LighterPerpStrategy` comes from `sherwood-strategies` (`src/lighter/`), which has not been audited. Before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk. As an uncertified tier-2 template, each Lighter proposal books 2× its capital in guardian coverage.
+> **Unaudited.** `LighterPerpStrategy` comes from `sherwood-strategies` (`src/lighter/`), which has not been audited. Before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk. As an uncertified tier-2 template, each Lighter proposal books about 1× its deployed capital in guardian coverage (`strategy propose` gives settle calls a 0 cap), and the deposit must fit the vault's `tier2CallCapBps` ceiling.
 
 A `LighterPerpStrategy` clone owns its own Lighter perp account, funded with USDG from the vault. The agent trades that account off-chain through Lighter's API with a **trade-only L2 key** the contract registers. The proposer and the vault owner keep an on-chain kill switch: cancel orders, close positions, rotate the key, and drain the account. Requires `@sherwoodagent/cli@0.95.0` or later.
 

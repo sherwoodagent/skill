@@ -28,8 +28,8 @@ heartbeat, 26h staleness bound; stock feeds pause over weekends). Explorer:
 | TierRegistry | `0x4614f058920941A0a9a852e62485fbDE692D75E1` |
 | StrategyFactory | `0xb06788F027268a9A06c3AD41a88559530D2E54b1` |
 | UniswapSwapAdapter | `0x54E6A7af53143556973493fDeC9d7837A77c67eF` |
-| WOOD/USD feed (WoodV3TwapFeed, 1h V3 TWAP x Chainlink ETH/USD; the ledger reads it since 2026-10-13) | `0x2D56Caf436917Daca28313EaF975926096198776` |
-| WoodPoolFeed (run-1 two-pool snapshot feed, retired 2026-10-13; nothing reads it) | `0xE031f1a5e8dBb5BAE98607BEC44c9fE91B608E09` |
+| WOOD/USD feed (WoodV3TwapFeed, 1h V3 TWAP x Chainlink ETH/USD; the ledger reads it since 2026-10-13; book key `WOOD_USD_TWAP_FEED`) | `0x2D56Caf436917Daca28313EaF975926096198776` |
+| WoodPoolFeed (run-1 two-pool snapshot feed, retired 2026-10-13; nothing reads it; book key `WOOD_USD_FEED`, despite the name) | `0xE031f1a5e8dBb5BAE98607BEC44c9fE91B608E09` |
 | Create3Factory | `0x231972653B1e4fc772fcF064F3FD2357d9Df371D` |
 
 There is no singleton `SyndicateGovernor`: each vault gets its own `BeaconProxy`,
@@ -47,7 +47,7 @@ until the Safe handoff.
 |----------|---------|
 | ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` |
 | ProposerBondEscrow | `0x7d25058c891d3AC5C8bc8Da6aA937DFeE648B5cF` |
-| ChallengeGame | `0x7046FececcA6c0f5E66Cc998099593ae71A1bbee` (filings paused through the beta) |
+| ChallengeGame | `0x7046FececcA6c0f5E66Cc998099593ae71A1bbee` (filings paused until the juror reserve is 30 days old) |
 | TokenCourt | `0xC30bA62727be65fd867385Ce27Ff7C78bd66A897` |
 
 The same addresses resolve live from any vault's governor: `governor.exposureLedger()`,
@@ -79,8 +79,9 @@ Chain**; `sherwood strategy list` shows them under "Not available". See
 The CLI has no command that buys WOOD. With the MetaMask Agent Wallet, swap USDG for WOOD
 with `mm swap` (quote first). Otherwise swap WETH for WOOD through the Uniswap SwapRouter
 below (or the V2 pair directly). The pools are shallow, so quote first, size the trade in
-tranches and expect price impact: 10,000 WOOD cost about $33 on the mainnet test, not the
-~$16 that spot implies. How much WOOD a creator needs: [Fund the wallet](SKILL.md#fund-the-wallet-eth-and-wood).
+tranches and expect price impact: 10,000 WOOD cost about $33 on the mainnet test, roughly
+the market price then. The lower price the ExposureLedger uses for bonds is a 50% haircut of
+market, not a buy price. How much WOOD a creator needs: [Fund the wallet](SKILL.md#fund-the-wallet-eth-and-wood).
 The CLI quotes the proposer bond in WOOD; use that number.
 
 ## Tokens

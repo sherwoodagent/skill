@@ -37,6 +37,6 @@ These numbers are for one portfolio proposal only. Work out your own from your s
 
 A 60 USDG META/MSFT/GME 40/30/30 Portfolio in a 90 USDG vault, maxDrawdown 15%:
 
-- `rebalanceDelta()` only restores the weights set at init. Changing weights reverts `WeightsFrozen`/`RoutesFrozen`. Feeds older than 26 h revert, so nothing works from about Sat 18:40 UTC to Mon 00:00 UTC.
-- maxDrawdown is checked on the whole vault's price per share at settle. Floor: 0.85 × 90 = 76.5 USDG. The 30 USDG idle in the vault counts, so the basket must return at least 46.5 USDG, a −22.5% basket loss. Below that, a normal settle reverts.
+- `rebalanceDelta()` only restores the weights set at init. Changing weights reverts `WeightsFrozen`/`RoutesFrozen`. Feeds older than 26 h revert, so nothing works from about Sat 18:40 UTC to Mon 00:00 UTC (observed; `sources get calendar` has the live window, [why](https://docs.sherwood.sh/explanations/oracle-staleness)).
+- maxDrawdown is checked on the whole vault's price per share at settle ([why](https://docs.sherwood.sh/explanations/settlement-and-drawdown)). Floor: 0.85 × 90 = 76.5 USDG. The 30 USDG idle in the vault counts, so the basket must return at least 46.5 USDG, a −22.5% basket loss. Below that, a normal settle reverts.
 - Plan: rebalance only if a leg drifts more than 5 points. Warn at −5%, recommend settling at −8%, settle the same day at −12% (well above −22.5%). META reports inside the window, so settle that day before the report. Check twice on weekdays.

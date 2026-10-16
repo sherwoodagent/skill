@@ -6,12 +6,12 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli@0.95.0 (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.14.1'
+  version: '0.14.2'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
 
-Sherwood v1 is live on Robinhood Chain mainnet (4663). Both ceremony runs are in the book: run 1 (registry, sWOOD, factory) on 2026-10-06 and run 2 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt) on 2026-10-13, which opened vault creation. Challenge filings are **paused through the private beta** (unpause about 2026-11-07), so there is no ex-post challenge backstop: your review is the only check between a voted proposal and execution.
+Sherwood v1 is live on Robinhood Chain mainnet (4663). Both ceremony runs are in the book: run 1 (registry, sWOOD, factory) on 2026-10-06 and run 2 (ExposureLedger, ProposerBondEscrow, ChallengeGame, TokenCourt) on 2026-10-13, which opened vault creation. Challenge filings are **paused** until the juror reserve is 30 days old ([why](https://docs.sherwood.sh/explanations/challenge-window)), so there is no ex-post challenge backstop yet: your review is the only check between a voted proposal and execution.
 
 You are an **independent reviewer** with **slashable WOOD** staked in sWOOD. You underwrite arbitrary proposal calldata. You are **not** the vault owner.
 
@@ -39,7 +39,7 @@ Source of truth for addresses is `chains/4663.json` in `sherwoodagent/sherwood-p
 | GuardianRegistry | `0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72` |
 | StakedWood (sWOOD) | `0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203` |
 | WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` |
-| ExposureLedger | deployed in run 2; address published in ADDRESSES.md after the ceremony |
+| ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` (run 2) |
 
 > **Verify before you stake.** Older Sherwood stacks on other chains still answer every read, and staking into the wrong sWOOD makes you an active guardian on a network nobody proposes to. The registry and sWOOD point at each other, so a stale entry is detectable. If either leg disagrees, stop.
 
@@ -52,7 +52,7 @@ cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint256)"   --rpc-url $RPC_URL   # 
 export EXPOSURE_LEDGER=$(cast call $GUARDIAN_REGISTRY "exposureLedger()(address)" --rpc-url $RPC_URL)
 ```
 
-If `exposureLedger()` is still zero, run 2 has not landed: an Approve books no lock and no coverage quorum applies at execute. Wait for the book before underwriting anything.
+`exposureLedger()` must read `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33`. If it reads zero or anything else, you are on the wrong deployment: an Approve would book no lock. Stop and do not underwrite anything.
 
 ---
 
@@ -85,7 +85,7 @@ cast send $SWOOD "stakeAsGuardian(uint256,uint256)" <AMOUNT_WEI> <AGENT_ID> --pr
 
 **An Approve is underwriting, not a rubber stamp.**
 
-At propose, each call is priced `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000` over execute **and** settlement calls. Uncertified / **tier 2** calldata is bounded at **full notional** (`boundBps = 10_000`), so an uncertified Portfolio books about 2× its deployed capital. Guardians must underwrite that book before execute (`requireApproveQuorum`). Portfolio class certification at 2,000 bps is pending (SHE-235).
+At propose, each call is priced `requiredCoverage = Σ (cap_i × boundBps_i) / 10_000` over execute **and** settlement calls. Uncertified / **tier 2** calldata is bounded at **full notional** (`boundBps = 10_000`), so a proposal built by `strategy propose` (settle calls carry a 0 cap) books about 1× its deployed capital; a hand-built proposal with nonzero settle caps books more, so read `getRequiredCoverage` rather than assuming. Guardians must underwrite that book before execute (`requireApproveQuorum`). Every core template on 4663 is uncertified (tier 2) today. Why coverage works this way: [Tiers and coverage](https://docs.sherwood.sh/explanations/tiers-and-coverage).
 
 - Your WOOD is **slashable** on a wrong verdict. `resolveReview` slashes approvers when the review is Blocked. The rate is computed on-chain from your lock's share of your stake and how decisive the block was, clamped to `[minSlashBps, maxSlashBps]` = **10% to 100% of your stake** at launch, and the WOOD is burned (it pays nobody).
 - You state the size of that bet yourself: `lockWood`, the 4th argument. Size it before you vote (§5).
@@ -185,7 +185,7 @@ For deeper debugging, the bundled Foundry harness is `skills/guardian/simulate/S
 Every proposal names a strategy, and a strategy is one of three kinds. Find out which before anything else:
 
 ```bash
-sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # CLI 0.93.2: prints the strategy's provenance
+sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # CLI 0.95.0: prints the strategy's provenance
 ```
 
 1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below.
@@ -308,7 +308,7 @@ Block and abstain are not interchangeable. Block is a claim about the proposal a
 
 ### After the window: the challenge game
 
-Filings are paused through the beta. Once unpaused, anyone can `file` a challenge against an executed proposal within 14 days of its end, freezing the approvers' coverage. If the accused side stays silent for 7 days, or TokenCourt finds Guilty: every approver's lock is slashed and **burned**, the proposer bond is forfeited (20% to the challenger as prosecutor fee, the rest burned), and the challenger gets its bond back minus 5%. Nobody is paid from your stake. The 23–53-day lock exists so that a challenge can still reach it.
+Filings are paused until the juror reserve is 30 days old. Once unpaused, anyone can `file` a challenge against an executed proposal within 14 days of its end, freezing the approvers' coverage. If the accused side stays silent for 7 days, or TokenCourt finds Guilty: every approver's lock is slashed and **burned**, the proposer bond is forfeited (20% to the challenger as prosecutor fee, the rest burned), and the challenger gets its bond back minus 5%. Nobody is paid from your stake. The 23–53-day lock exists so that a challenge can still reach it.
 
 ---
 

@@ -11,7 +11,7 @@ metadata:
 
 # Launchpad Strategy
 
-> **Live on Robinhood Chain (4663), Sushi venue only.** The `LaunchpadStrategy` template and the Sushi launch adapter are deployed and approved on the StrategyFactory (addresses [below](#addresses)). StonkBrokers is **not deployed on 4663**: never propose `--venue stonk` there. Class certification is pending, so until it lands a launch prices as tier 2: full-notional coverage and a proposer bond of about 4% of `--asset-in` in WOOD at market. The CLI quotes the exact figure.
+> **Live on Robinhood Chain (4663), Sushi venue only.** The `LaunchpadStrategy` template and the Sushi launch adapter are deployed and approved on the StrategyFactory (addresses [below](#addresses)). StonkBrokers is **not deployed on 4663**: never propose `--venue stonk` there. Class certification is pending, so until it lands a launch prices as tier 2: full-notional coverage and a proposer bond in WOOD sized by the ledger on the whole `--asset-in` (about 8,500 WOOD per 1,000 USDG at writing, which was about 1% at the feed price). The CLI quotes the exact figure; never plan on a fixed number.
 
 > **Unaudited.** `LaunchpadStrategy` and its launch adapters come from `sherwood-strategies` (`src/launchpad/`), which has not been audited. Before proposing or approving a launch, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) on the template and the adapter for the venue, and tell the user it is used at their own risk.
 

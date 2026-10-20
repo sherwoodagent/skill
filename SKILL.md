@@ -998,7 +998,7 @@ Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--po
 
 #### LaunchpadStrategy
 
-**Deployed on Robinhood Chain (4663)**, Sushi venue only. Addresses in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited). Requires CLI 0.98.0 or later. Class certification is pending, so until it lands a launch prices as tier 2: full-notional coverage and a proposer bond of about 4% of `--asset-in` in WOOD at market. The CLI quotes the exact figure.
+**Deployed on Robinhood Chain (4663)**, Sushi venue only. Addresses in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited). Requires CLI 0.98.0 or later. Class certification is pending, so until it lands a launch prices as tier 2: full-notional coverage and a proposer bond in WOOD sized by the ledger on the whole `--asset-in` (about 8,500 WOOD per 1,000 USDG at writing, which was about 1% at the feed price). The CLI quotes the exact figure; never plan on a fixed number.
 
 **From `sherwood-strategies`, unaudited:** run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) on the template and the launch adapter for the venue, and tell the user, before proposing or approving a launch.
 

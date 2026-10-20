@@ -1409,8 +1409,10 @@ Anyone can call. Verifies proposal is Approved, within execution window, no othe
 ### Settle an executed proposal
 
 ```bash
-sherwood proposal settle --vault <addr> --id <proposalId> [--calls <path-to-json>]
+sherwood proposal settle --vault <addr> --id <proposalId> [--calls <path-to-json>] [--dry-run] [--caller <addr>]
 ```
+
+Dry-run first: add `--dry-run` to simulate the settle with `eth_call` and print `OK` or the decoded revert, without signing (exits non-zero on a revert). With `--calldata-only`, pass `--caller <wallet>`; the calldata still prints on stdout and the verdict goes to stderr.
 
 Auto-routes to the correct settlement path:
 - **Proposer:** `settleProposal` — the proposer may settle early, but not immediately: `MIN_STRATEGY_DURATION_BEFORE_SELF_SETTLE` is a hard **1-hour** floor from `executedAt`. Settling before it reverts `StrategyDurationNotElapsed()`.

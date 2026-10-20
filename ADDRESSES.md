@@ -61,10 +61,25 @@ The same addresses resolve live from any vault's governor: `governor.exposureLed
 | MorphoSupplyStrategy | `0x5B55E1Da361573CB0788e750038567D2569BE41d` |
 | ConcentratedLiquidityStrategy | `0xcba9C84F2d382729D1519c5F7f4a9AAaC075f8B5` |
 
-`LaunchpadStrategy`, its Sushi / StonkBrokers launch adapters and `LighterPerpStrategy`
-come from `sherwood-strategies`, are unaudited, and are **not deployed on Robinhood
-Chain**; `sherwood strategy list` shows them under "Not available". See
+### Launchpad (from `sherwood-strategies`, unaudited)
+
+Deployed on 2026-10-20 in blocks 93,737,582 to 93,737,603. Source: `deployments/4663.json`
+in `sherwood-strategies`. Both contracts are verified on Sourcify (exact match). The template
+is approved on the StrategyFactory `0xb06788F027268a9A06c3AD41a88559530D2E54b1`.
+
+| Contract | Address |
+|----------|---------|
+| LaunchpadStrategy (template) | `0xbc4fDF5949caa74c730bed632E368cEa4ea5832D` |
+| SushiLaunchAdapter (implementation; each launch uses its own ERC-1167 clone) | `0x52901614748ACFDC083D305Aa5301E484d4B15F8` |
+| Sushi Launchpad V2 (venue proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
+
+The adapter and the Sushi Launchpad V2 proxy are granted as TierRegistry counterparties.
+The StonkBrokers launch adapter is **not deployed on Robinhood Chain**, so only
+`--venue sushi` works here. These contracts are unaudited. See
 [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
+
+`LighterPerpStrategy` comes from `sherwood-strategies`, is unaudited, and is **not deployed
+on Robinhood Chain**; `sherwood strategy list` shows it under "Not available".
 
 ## WOOD and where to buy it
 

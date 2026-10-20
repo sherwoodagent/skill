@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.30.3'
+  version: '0.30.4'
 ---
 
 # Sherwood
@@ -687,7 +687,7 @@ Its **Strategy** section prints the strategy's address and one of these (signed 
 Where the rest comes from:
 
 - **Template addresses before you propose.** `sherwood strategy list` prints `Template: <address>` for every template deployed on the active chain.
-- **Launchpad adapters.** The template calls a launch adapter for its venue (Sushi or StonkBrokers), and the adapter needs the same three checks. For an existing clone, including one a proposal names, `sherwood launchpad status <strategy>` prints `Launch adapter: <address>`. Before a clone exists, no CLI command prints the adapter addresses; the Launchpad template and its adapters are not deployed on Robinhood Chain (4663) yet, so until they appear in [ADDRESSES.md](ADDRESSES.md) ask the vault owner for them and verify each on the explorer.
+- **Launchpad adapters.** The template calls a launch adapter for its venue (Sushi or StonkBrokers), and the adapter needs the same three checks. For an existing clone, including one a proposal names, `sherwood launchpad status <strategy>` prints `Launch adapter: <address>`. Before a clone exists, no CLI command prints the adapter address; on Robinhood Chain (4663) the Sushi launch adapter implementation is `0x52901614748ACFDC083D305Aa5301E484d4B15F8` (each launch uses its own ERC-1167 clone of it), listed with the template in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited). There is no StonkBrokers adapter on 4663.
 - **Explorer.** Use the block explorer of the chain the vault is on; the CLI prints links to it for the transactions it sends.
 - **Repository.** https://github.com/sherwoodagent/sherwood-strategies: Launchpad in `src/launchpad/` (template and adapters), Lighter in `src/lighter/`.
 
@@ -704,14 +704,14 @@ Choosing a template marked unaudited? Run the checks in [Strategies from `sherwo
 | **PortfolioStrategy** | `portfolio` | Core protocol (outside the notice) | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
 | **MorphoSupplyStrategy** | `morpho-supply` | Core protocol (outside the notice) | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Core protocol (outside the notice) | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
-| **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 or StonkBrokers; holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. **Not deployed on Robinhood Chain (4663) yet** |
+| **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 (StonkBrokers is not on 4663); holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. Deployed on Robinhood Chain (4663); class certification pending, so it prices as tier 2 |
 | **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. **Not deployed on Robinhood Chain (4663) yet** |
 
-On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply and Concentrated Liquidity** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
+On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity and Launchpad** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
 
 There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` and `lighter-perp` resolve nowhere today.
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` resolves on 4663 (Sushi venue only). `lighter-perp` resolves nowhere today.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -998,22 +998,28 @@ Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--po
 
 #### LaunchpadStrategy
 
-**Not deployed on Robinhood Chain (4663) yet**, so `strategy propose launchpad` cannot run today (`sherwood strategy list` shows it under "Not available").
+**Deployed on Robinhood Chain (4663)**, Sushi venue only. Addresses in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited). Requires CLI 0.98.0 or later. Class certification is pending, so until it lands a launch prices as tier 2: full-notional coverage and a proposer bond of about 4% of `--asset-in` in WOOD at market. The CLI quotes the exact figure.
 
 **From `sherwood-strategies`, unaudited:** run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) on the template and the launch adapter for the venue, and tell the user, before proposing or approving a launch.
 
-Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) or **StonkBrokers** (`--venue stonk`) with vault capital, holds back a reserve, and lets share holders claim a pro-rata slice during a claim window. Operator commands: `sherwood launchpad status | claim | claim-for | collect-fees | finalize`.
+Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) with vault capital, holds back a reserve, and lets share holders claim a pro-rata slice during a claim window. Operator commands: `sherwood launchpad status | claim | claim-for | collect-fees | finalize`.
 
 - **A launch settles as a vault-asset LOSS of about `--asset-in`, by design on v1.** The reserve is a dividend in kind to holders; v1 books no value for the launch token. The CLI sets `--max-drawdown-bps` to `ceil(assetIn × 10,000 / totalAssets) + 200` when omitted, refuses a lower value, and refuses the proposal above 9000 bps. Say this to the user before proposing.
 - **Holders do not need to claim.** During the claim window the Sherwood keeper calls `claimFor` for every holder at the snapshot, batched, on its own gas; tokens always go to the holder. Keep `--claim-window` at an hour or more so it gets several passes, and use `launchpad claim-for` only as a fallback
-- Creator fees go to the **vault**, pushed by the permissionless `sherwood launchpad collect-fees`
-- Sushi `--fee-mode holders` (DISTRIBUTE_TO_HOLDERS) is refused. WOOD is not a supported quote yet. Pons is out of scope
+- Creator fees go to the **vault**, pushed by the permissionless `sherwood launchpad collect-fees`. Fee collection is operator-driven: run it on a schedule so no large fee lump sits in the venue
+- Sushi `--fee-mode holders` (DISTRIBUTE_TO_HOLDERS) is refused. WOOD is not a registered Sushi quote. Pons is out of scope
+
+**Mainnet rules on 4663.** CLI 0.98.0 enforces them:
+
+1. **The quote must equal the vault asset.** A USDG vault launches against USDG. The CLI refuses any other `--quote`, so the launch has no asset-to-quote swap leg.
+2. **`--min-tokens-out` defaults to `--reserve` on Sushi.** Omit it. An explicit value above `--reserve` is refused (the extra tokens would reach the vault in kind, where nothing can dispose of them), and one below it is refused too.
+3. **Size `--reserve` from a measured launch.** Sushi V2 has no dev-buy quoter, so the CLI cannot quote the dev buy. The measured reference is about 164.56M tokens per 1,000 USDG. Set `--reserve` a little under what the dev buy will return: the launch fee also comes out of `--asset-in`, and a dev buy below the reserve reverts at execute.
 
 ```bash
 sherwood strategy propose launchpad \
   --vault 0x... \
   --venue sushi --quote USDG \
-  --asset-in 1000 --reserve 10% --min-tokens-out 120000000 \
+  --asset-in 1000 --reserve 155000000 \
   --claim-window 7d \
   --token-name "Robin Fund" --token-symbol ROBIN \
   --name "Launch ROBIN" --duration 8d

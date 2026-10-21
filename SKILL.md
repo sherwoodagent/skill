@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.31.0'
+  version: '0.31.1'
 ---
 
 # Sherwood
@@ -705,13 +705,13 @@ Choosing a template marked unaudited? Run the checks in [Strategies from `sherwo
 | **MorphoSupplyStrategy** | `morpho-supply` | Core protocol (outside the notice) | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Core protocol (outside the notice) | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
 | **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 (StonkBrokers is not on 4663); holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. Deployed on Robinhood Chain (4663); class certification pending, so it prices as tier 2 |
-| **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. **Not deployed on Robinhood Chain (4663) yet** |
+| **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. Deployed on Robinhood Chain (4663); uncertified, so it prices as tier 2 |
 
-On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity and Launchpad** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
+On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity, Launchpad and Lighter Perp** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
 
 There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` resolves on 4663 (Sushi venue only). `lighter-perp` resolves nowhere today.
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` (Sushi venue only) and `lighter-perp` (CLI 0.97.0 or later) resolve on 4663.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -1039,7 +1039,7 @@ sherwood strategy propose launchpad \
 
 Agent-traded perpetuals on Lighter (zkLighter). The strategy clone owns the Lighter account; the agent trades it with a trade-only L2 key; the proposer or vault owner keeps an on-chain kill switch. USDG vaults only.
 
-- **Not deployed on Robinhood Chain (4663) yet**, and the template has open audit findings, so `strategy propose lighter-perp` cannot run today. `sherwood strategy list` shows it under "Not available" until that changes.
+- **Deployed on Robinhood Chain (4663)** at `0x5A0d30EF02192CE94193fDCf9869375e53669Aa6` (CLI 0.97.0 or later). It is uncertified, so each proposal books its deployed capital at full notional in guardian coverage.
 - Exit is three steps: `sherwood lighter initiate-return` → `sherwood lighter queue-withdraw --all` → settle, with `sherwood lighter prepare-settle` (rotates the agent key to a burn key) before settle
 
 ```bash
@@ -1612,7 +1612,7 @@ User wants to...
 ├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (registry must allowlist its tokens)
 ├── Launch a fund token / "IPO" → delegate to `strategies/launchpad` skill (unaudited, from `sherwood-strategies`; settles as a loss of ~asset-in)
 ├── Claim launch reserve / collect launch fees → `sherwood launchpad claim | collect-fees` (see `strategies/launchpad`)
-├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (unaudited, from `sherwood-strategies`; not deployed on 4663)
+├── Perps on Lighter   → delegate to `strategies/lighter-perp` skill (unaudited, from `sherwood-strategies`; tier 2 on 4663)
 ├── Propose strategy   → Governance: strategy propose <template> or proposal create (execute-calls + settle-calls JSON); check the weekend feed gap for stock baskets
 ├── Get the bond back  → Governance: proposal reclaim-bond --vault <addr> --id <id> after any terminal state
 ├── Vote on proposal   → Governance: proposal vote --vault <addr> --id <id> --support for|against|abstain (not in the propose second)

@@ -78,8 +78,13 @@ The StonkBrokers launch adapter is **not deployed on Robinhood Chain**, so only
 `--venue sushi` works here. These contracts are unaudited. See
 [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited).
 
-`LighterPerpStrategy` comes from `sherwood-strategies`, is unaudited, and is **not deployed
-on Robinhood Chain**; `sherwood strategy list` shows it under "Not available".
+`LighterPerpStrategy` also comes from `sherwood-strategies` and is unaudited. It is deployed on
+Robinhood Chain (2026-10-20) and left uncertified, so proposals price at tier 2:
+
+| Item | Address |
+|------|---------|
+| LighterPerpStrategy (template) | `0x5A0d30EF02192CE94193fDCf9869375e53669Aa6` |
+| zkLighter proxy (venue; TierRegistry counterparty) | `0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d` |
 
 ## WOOD and where to buy it
 

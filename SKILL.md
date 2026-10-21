@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.30.4'
+  version: '0.31.0'
 ---
 
 # Sherwood
@@ -998,20 +998,26 @@ Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--po
 
 #### LaunchpadStrategy
 
-**Deployed on Robinhood Chain (4663)**, Sushi venue only. Addresses in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited). Requires CLI 0.98.0 or later. Class certification is pending, so until it lands a launch prices as tier 2: full-notional coverage and a proposer bond in WOOD sized by the ledger on the whole `--asset-in` (about 8,500 WOOD per 1,000 USDG at writing, which was about 1% at the feed price). The CLI quotes the exact figure; never plan on a fixed number.
+**Deployed on Robinhood Chain (4663)**, Sushi venue only. Addresses in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited). Requires CLI 0.99.0 or later. Class certification is pending, so until it lands a launch prices as tier 2: full-notional coverage and a proposer bond in WOOD sized by the ledger on the whole `--asset-in` (about 8,500 WOOD per 1,000 USDG at writing, which was about 1% at the feed price). The CLI quotes the exact figure; never plan on a fixed number.
 
 **From `sherwood-strategies`, unaudited:** run the checks in [Strategies from `sherwood-strategies` are unaudited](#strategies-from-sherwood-strategies-are-unaudited) on the template and the launch adapter for the venue, and tell the user, before proposing or approving a launch.
 
-Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) with vault capital, holds back a reserve, and lets share holders claim a pro-rata slice during a claim window. Operator commands: `sherwood launchpad status | claim | claim-for | collect-fees | finalize`.
+Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) with vault capital, holds back a reserve, and lets share holders claim a pro-rata slice during a claim window. Operator commands: `sherwood launchpad status | arm | claim | claim-for | collect-fees | finalize`.
 
 - **A launch settles as a vault-asset LOSS of about `--asset-in`, by design on v1.** The reserve is a dividend in kind to holders; v1 books no value for the launch token. The CLI sets `--max-drawdown-bps` to `ceil(assetIn × 10,000 / totalAssets) + 200` when omitted, refuses a lower value, and refuses the proposal above 9000 bps. Say this to the user before proposing.
 - **Holders do not need to claim.** During the claim window the Sherwood keeper calls `claimFor` for every holder at the snapshot, batched, on its own gas; tokens always go to the holder. Keep `--claim-window` at an hour or more so it gets several passes, and use `launchpad claim-for` only as a fallback
 - Creator fees go to the **vault**, pushed by the permissionless `sherwood launchpad collect-fees`. Fee collection is operator-driven: run it on a schedule so no large fee lump sits in the venue
 - Sushi `--fee-mode holders` (DISTRIBUTE_TO_HOLDERS) is refused. WOOD is not a registered Sushi quote. Pons is out of scope
 
-**Mainnet rules on 4663.** CLI 0.98.0 enforces them:
+**Mainnet rules on 4663.** CLI 0.99.0 enforces them:
 
-1. **The quote must equal the vault asset.** A USDG vault launches against USDG. The CLI refuses any other `--quote`, so the launch has no asset-to-quote swap leg.
+1. **The quote defaults to the vault asset.** A USDG vault launching against USDG has no swap leg. Any other quote the venue supports (`quoteSupported`; on Sushi, a token with a registered price feed, such as TSLA or NVDA) is allowed with swap-leg guardrails:
+   - `--min-quote-out` defaults to the swap adapter's quote less `--max-slippage-bps` (default 50, at most 100; above 100 is refused). A lower floor is refused.
+   - A pool whose price impact at `--asset-in` exceeds `--max-slippage-bps` is refused, and so is a pool more than 300 bps under the venue's own feeds.
+   - `--asset-in` is at most 35% of `totalAssets`.
+   - The venue's quote feed must be under 3 days old. Stock feeds do not update on weekends or market holidays, so propose and execute on market days.
+   - The launch is proposed **disarmed** (`deadline = 1`) and `--deadline` is refused. It cannot execute until the proposer runs `sherwood launchpad arm <strategy>` right before execute. `arm` re-quotes, raises `minQuoteOut` to the fresh floor (never lowers it) and opens a window of `--swap-deadline` (default 10m, at most 1h). Submit the execute right after: the window is public.
+   - Creator fees arrive in the quote token and the launch token, and v1 `totalAssets` does not count them.
 2. **`--min-tokens-out` defaults to `--reserve` on Sushi.** Omit it. An explicit value above `--reserve` is refused (the extra tokens would reach the vault in kind, where nothing can dispose of them), and one below it is refused too.
 3. **Size `--reserve` from a measured launch.** Sushi V2 has no dev-buy quoter, so the CLI cannot quote the dev buy. The measured reference is about 164.56M tokens per 1,000 USDG. Set `--reserve` a little under what the dev buy will return: the launch fee also comes out of `--asset-in`, and a dev buy below the reserve reverts at execute.
 

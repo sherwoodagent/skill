@@ -6,7 +6,7 @@ allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch 
 license: MIT
 metadata:
   author: sherwood
-  version: '0.3.1'
+  version: '0.4.0'
 ---
 
 # Launchpad Strategy
@@ -17,7 +17,7 @@ metadata:
 
 A `LaunchpadStrategy` proposal launches a token for the fund with vault capital. It holds back a **reserve** of that token, and the fund's share holders **claim a pro-rata slice** of the reserve during a claim window. Shares are not burned. The CLI knows two venues: **Sushi Launchpad V2** (`--venue sushi`, default) and **StonkBrokers** Smart Launch V2 (`--venue stonk`). Only Sushi is deployed on 4663.
 
-Requires `@sherwoodagent/cli` 0.98.0 or later, which enforces the [mainnet rules on 4663](#mainnet-rules-on-4663). Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed as available before proposing.
+Requires `@sherwoodagent/cli` 0.99.0 or later, which enforces the [mainnet rules on 4663](#mainnet-rules-on-4663). Run `sherwood strategy list` and confirm `Launchpad (launchpad)` is listed as available before proposing.
 
 ```
 Vault (USDG or WETH)
@@ -33,10 +33,10 @@ Vault (asset minus ~--asset-in; launch token and fees held outside totalAssets)
 1. **A launch settles as a LOSS of about `--asset-in`. This is by design on v1.** v1 measures P&L as the vault's asset balance change and books no value for the launch token. The reserve is a dividend in kind to holders, not a vault asset. Tell the user this in plain words before proposing, and do not describe a launch as a yield or profit strategy.
 2. **Never pass a `--max-drawdown-bps` below what the CLI derives.** The CLI uses `ceil(assetIn / totalAssets × 10000) + 200` bps when the flag is omitted and refuses anything lower, because a lower value makes `settleProposal` revert `SettlePriceBelowFloor`. The safe default is to omit the flag. If the CLI says the required value is above 9000 bps, lower `--asset-in`; do not try to work around it.
 3. **Never use `--fee-mode holders`.** Sushi's `DISTRIBUTE_TO_HOLDERS` is refused: nothing in this stack could collect those fees for the vault.
-4. **On 4663 the quote is the vault asset.** A USDG vault launches against USDG; the CLI refuses any other quote. WOOD is not a registered Sushi quote.
+4. **Quote in the vault asset unless there is a reason not to.** A USDG vault launching against USDG has no swap leg. A launch quoted in another supported token (a stock token such as TSLA) swaps the asset into it at execute, and the CLI guards that swap ([mainnet rules](#mainnet-rules-on-4663)). Such a launch is proposed disarmed and must be armed with `sherwood launchpad arm` right before execute. WOOD is not a registered Sushi quote.
 5. **Do not propose on Pons.** It is out of scope; its factory only launches for whitelisted addresses.
 6. **On Sushi, size `--reserve` from the measured launch and omit `--min-tokens-out`.** The floor defaults to `--reserve` and must equal it. A floor of a few tokens would hand a sandwich budget to anyone watching the vote; a floor above the reserve strands tokens in the vault.
-7. **Collect fees often.** On 4663 the quote is the vault asset, so those fees raise `totalAssets` the moment they land. With no proposal open, someone can deposit, call `collect-fees`, and redeem with a cut. Fee collection is operator-driven: run `sherwood launchpad collect-fees` on a schedule so no large lump is ever pending.
+7. **Collect fees often.** On a launch quoted in the vault asset, the quote half of the fees raises `totalAssets` the moment it lands. With no proposal open, someone can deposit, call `collect-fees`, and redeem with a cut. Fee collection is operator-driven: run `sherwood launchpad collect-fees` on a schedule so no large lump is ever pending.
 8. **Never sell the fund token to "recover" value.** The template never does, because that price can be moved inside the selling transaction. Launch tokens that reach the vault are disposed of by a later proposal.
 
 ## Workflow
@@ -57,7 +57,7 @@ The proposer must be a registered agent on the vault and hold WOOD for the propo
 | --- | --- | --- |
 | On 4663 | **Deployed** | **Not deployed**: do not propose |
 | `--venue` | `sushi` | `stonk` |
-| Quotes | Any quote with a Sushi price feed: USDG and WETH at writing. On 4663 the quote must also be the vault asset | One pad per quote: WETH, STONK, USDG, GME, NVDA, AAPL, SPCX, USO |
+| Quotes | Any quote with a Sushi price feed: USDG, WETH, TSLA, NVDA and SPCX at writing. The default is the vault asset | One pad per quote: WETH, STONK, USDG, GME, NVDA, AAPL, SPCX, USO |
 | Reserve source | The dev buy, so `--min-tokens-out` equals `--reserve` | Kept from the minted supply |
 | Trading | Live from the launch block | Bonding curve, then `sherwood launchpad finalize` graduates and bonds a locked LP |
 | Launch fee | Native fee, read live (`--max-fee-in` caps it) | None |
@@ -72,11 +72,32 @@ The CLI checks every `_initialize` condition before sending anything: both adapt
 
 #### Mainnet rules on 4663
 
-CLI 0.98.0 enforces these on Robinhood Chain (4663):
+CLI 0.99.0 enforces these on Robinhood Chain (4663):
 
-1. **The quote must equal the vault asset.** A USDG vault launches against USDG. The CLI refuses any other `--quote`, so the launch has no asset-to-quote swap leg (that leg's floor is a fixed voted number anyone executing the proposal could sandwich).
+1. **The quote defaults to the vault asset; any venue-supported quote is allowed.** A USDG vault launching against USDG has no swap leg. Another `--quote` the venue supports (`quoteSupported`) runs an asset-to-quote swap at execute. That swap's floor is a voted number, and anyone can execute the proposal, so the CLI guards it (see [Quoting in another token](#quoting-in-another-token)).
 2. **`--min-tokens-out` defaults to `--reserve` on Sushi.** Omit it. An explicit value above `--reserve` is refused: tokens the dev buy delivers above the reserve are never claimable and reach the vault in kind, where nothing can dispose of them. A value below `--reserve` is refused too.
 3. **Size `--reserve` from a measured launch.** Sushi V2 has no dev-buy quoter, so the CLI cannot quote the dev buy. The measured reference is about 164.56M tokens per 1,000 USDG at writing (the supply is 1B, so that is about 16.5%, under the 20% cap). The launch fee also comes out of `--asset-in`, and a dev buy that returns less than the reserve reverts at execute, so set `--reserve` a little under the measured figure.
+
+#### Quoting in another token
+
+When `--quote` is not the vault asset (say TSLA on a USDG vault), the CLI adds these rules. Each one refuses the proposal; none is clamped.
+
+- **Floor.** `--min-quote-out` defaults to the swap adapter's quote for the swap amount, less `--max-slippage-bps`. The default is 50 bps and the most is 100. A lower `--min-quote-out` is refused; a higher one is kept.
+- **Thin pool.** The price impact at `--asset-in` must not exceed `--max-slippage-bps`. The refusal says roughly how much the pool can take. Lower `--asset-in`.
+- **Pool vs feed (Sushi).** The quote at size may sit at most 300 bps under what the venue's own asset and quote feeds imply.
+- **Size cap.** `--asset-in` is at most 35% of `totalAssets`.
+- **Fresh feed.** The venue's quote feed must have updated within 3 days. Stock feeds do not update on weekends or market holidays, so propose, arm and execute on market days.
+- **Disarmed until armed.** The launch is proposed with `deadline = 1`, so execute reverts `DeadlineExpired` until it is armed. `--deadline` is refused. Right before you execute:
+
+```bash
+sherwood launchpad arm <strategy>                  # re-quote, raise minQuoteOut, open a 10-minute window
+sherwood launchpad arm <strategy> --swap-deadline 30m --max-slippage-bps 50
+sherwood proposal execute --vault <vault> --id <proposal-id>   # right after; the window is public
+```
+
+`arm` re-runs the feed, thin-pool and feed-skew checks at current prices, then calls `updateParams` with `minQuoteOut` raised to the fresh floor (never lowered) and a deadline at most 1h out. It refuses when the pool now quotes under the voted floor, when you are not the proposer, when the clone has executed, or when the launch is quoted in the vault asset. If propose printed a route other than the default, pass it again with `--quote-swap-route`. With a sign-only wallet, add `--calldata-only --proposer <address>`. `sherwood launchpad status` shows `Deadline: DISARMED` until it is armed. A launch never armed expires at `executeBy` with the vault untouched.
+
+- **Fees and settle.** Creator fees arrive at the vault in the quote token and the launch token. Nothing converts them, and v1 `totalAssets` does not count them; only a later proposal can dispose of them. At settle, leftover quote (dust) is swapped back to the asset if it can be, and pushed in kind if not.
 
 Example for a USDG vault, spending 1,000 USDG:
 
@@ -98,13 +119,13 @@ Required flags (`--min-tokens-out` is optional on Sushi):
 | Flag | Meaning |
 | --- | --- |
 | `--asset-in <n>` | Vault-asset budget for the launch, human units |
-| `--quote <token>` | Quote token the fund token pairs against, symbol or address. On 4663 it must equal the vault asset |
+| `--quote <token>` | Quote token the fund token pairs against, symbol or address. The vault asset runs no swap leg; any other venue-supported quote gets the rules in [Quoting in another token](#quoting-in-another-token) |
 | `--reserve <n>` | Launch tokens held back for claims, whole tokens or a percent of supply like `10%`; at most 20% |
 | `--min-tokens-out <n>` | Slippage floor on the dev buy, whole launch tokens. Sushi: optional, defaults to `--reserve` and must equal it. StonkBrokers: required, nonzero |
 | `--claim-window <duration>` | How long holders may claim, e.g. `7d`; at most 14d, clamped to the proposal duration − 5m. The keeper distributes the reserve during it, so give it at least an hour |
 | `--token-name <name>` / `--token-symbol <symbol>` | Launch token metadata |
 
-Common optional flags: `--venue` (default `sushi`), `--max-drawdown-bps` (default derived; see hard rule 2), `--min-quote-out`, `--deadline`, `--settle-slippage-bps` (1-1000, default 500), `--max-fee-in` (default live cost + 25%; lower than live cost is refused), `--quote-swap-route`, `--fee-swap-route`, `--launch-adapter`.
+Common optional flags: `--venue` (default `sushi`), `--max-drawdown-bps` (default derived; see hard rule 2), `--min-quote-out`, `--max-slippage-bps` (non-asset quote only; 1-100, default 50), `--deadline` (asset quote only), `--settle-slippage-bps` (1-1000, default 500), `--max-fee-in` (default live cost + 25%; lower than live cost is refused), `--quote-swap-route`, `--fee-swap-route`, `--launch-adapter`.
 
 Sushi only: `--liquidity standard|moon` (default `standard`), `--fee-mode direct|burn|buyback` (default `direct`).
 
@@ -112,9 +133,11 @@ StonkBrokers only (not deployed on 4663): `--stonk-supply` (default 1000000000),
 
 Set `--duration` longer than `--claim-window`: the window is clamped to end 5 minutes before the duration does. Settlement opens after the window ends, or when the duration elapses, whichever comes first.
 
-`--min-tokens-out`, `--min-quote-out`, `--settle-slippage-bps` and `--deadline` can change only before execute, and only in the tightening direction.
+`--min-tokens-out`, `--min-quote-out`, `--settle-slippage-bps` and `--deadline` can change only before execute, and only by the proposer. The floors may only rise and the settle slippage may only fall; the deadline may move freely, which is how `arm` opens the window.
 
 ### Step 4: Execute
+
+A launch quoted in another token must be armed first (`sherwood launchpad arm <strategy>`, above).
 
 ```bash
 sherwood proposal execute --vault <vault> --id <proposal-id>
@@ -155,7 +178,7 @@ Run it regularly for the life of the launch, not just once (hard rule 7). Fees k
 sherwood proposal settle --vault <vault> --id <proposal-id>
 ```
 
-Settlement converts leftover quote to the vault asset, then pushes the asset, any unconvertible quote, and the unclaimed reserve to the vault. After it, the clone holds nothing. Report the result as expected: a loss of about `--asset-in`, with the reserve distributed to holders in kind.
+Settlement converts leftover quote to the vault asset when it can, then pushes the asset, any unconvertible quote, and the unclaimed reserve to the vault. After it, the clone holds nothing. Report the result as expected: a loss of about `--asset-in`, with the reserve distributed to holders in kind.
 
 ## Batch calls
 

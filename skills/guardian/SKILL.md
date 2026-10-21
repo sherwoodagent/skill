@@ -6,7 +6,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.14.2'
+  version: '0.15.0'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -196,7 +196,7 @@ sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # CLI 0.96.0: prin
 
    Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
 
-   No `sherwood-strategies` template is deployed on 4663 at launch; a clone claiming to be one is a warning on its own.
+   On 4663 the only `sherwood-strategies` template deployed is `LaunchpadStrategy` (`0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, Sushi venue only); a clone claiming to be any other one is a warning on its own.
 3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
 
 If provenance cannot be read, treat the strategy as hand-written.
@@ -211,6 +211,18 @@ The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written s
 - The management-fee agent share on the whole fund goes to the **proposer**, not the owner.
 - **Weekends:** Chainlink stock feeds on 4663 gap 52–55 h every weekend against the 26 h price-age bound, so a Portfolio holding stock tokens cannot execute, settle or rebalance from about Saturday 18:40 to Monday 00:00 UTC. Flag execution windows and strategy ends that land there.
 - **Stock splits:** no stock slot across an announced split until the feed basis is settled.
+
+### Launchpad proposals
+
+A `LaunchpadStrategy` launch quoted in the vault asset (a USDG vault launching against USDG) has no swap leg. One quoted in another token (a stock token such as TSLA on a USDG vault) swaps the asset into it at execute. That is allowed. Do not Block it for having a swap leg. Read the clone's getters (`quoteToken`, `asset`, `assetIn`, `minQuoteOut`, `deadline`, `swapAdapter`, `launchAdapter`) and check:
+
+- [ ] `quoteToken` is venue-supported: `cast call <launchAdapter> "quoteSupported(address)(bool)" <quoteToken>` returns true.
+- [ ] `minQuoteOut` is no lower than a current quote at the declared slippage. Get the quote with `cast call <swapAdapter> "quote(address,address,uint256,bytes)(uint256)" <asset> <quoteToken> <amountIn> <route>`, where `amountIn` is `assetIn` less the launch fee when that fee is paid in the asset, and compare: the floor should sit at most 100 bps under it (the CLI default is 50 bps). Quotes move, so re-check close to your vote. A floor far below the quote is a sandwich budget: Block.
+- [ ] The quote swap route (`quoteSwapData`) is a plain route on the allowlisted swap adapter. It has no getter; decode it from the clone's initialize calldata, and match it to the route the description names.
+- [ ] `assetIn` ≤ 35% of the vault's `totalAssets`.
+- [ ] You and your user expect creator fees in the quote token and the launch token, held by the vault but not counted in `totalAssets`.
+
+**`deadline = 1` means disarmed, not broken.** The CLI proposes these launches with `deadline = 1`, so the adapter reverts `DeadlineExpired` and the execute simulates as `SIMULATION_FAILED`. That is expected: a disarmed launch cannot execute, so nobody can execute it at the voted floor. The proposer opens a short window (the CLI caps it at 1h) with `sherwood launchpad arm` right before execute; `arm` can only raise `minQuoteOut` (`updateParams` refuses a lower one). Judge the rest of the batch from the decoded calls and the value trace. Flag the opposite case: a non-asset launch proposed with `deadline = 0` (no deadline) or one far in the future can be executed by anyone at the voted floor for the whole execution window.
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
 

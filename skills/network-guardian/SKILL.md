@@ -6,7 +6,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.7.0'
+  version: '0.7.1'
 ---
 
 # Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -187,7 +187,7 @@ sherwood proposal show <proposalId> --vault <vault>   # CLI 0.96.0: prints the s
 
    Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
 
-   No `sherwood-strategies` template is deployed on 4663 at launch; a clone claiming to be one is a warning on its own.
+   On 4663 the only `sherwood-strategies` template deployed is `LaunchpadStrategy` (`0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, Sushi venue only); a clone claiming to be any other one is a warning on its own.
 3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
 
 If provenance cannot be read, treat the strategy as hand-written.

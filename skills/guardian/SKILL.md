@@ -6,7 +6,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.15.0'
+  version: '0.16.0'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -196,7 +196,7 @@ sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # CLI 0.96.0: prin
 
    Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
 
-   On 4663 the only `sherwood-strategies` template deployed is `LaunchpadStrategy` (`0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, Sushi venue only); a clone claiming to be any other one is a warning on its own.
+   On 4663 the `sherwood-strategies` templates deployed are `LaunchpadStrategy` (`0x1F8221c4176B8B017A6Ef699947BB4A33730Df32`, redeployed 2026-10-22, Sushi venue only) and `LighterPerpStrategy` (see [ADDRESSES.md](../../ADDRESSES.md)). The first Launchpad template, `0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, is no longer approved: a clone of it is legitimate only if it was created before 2026-10-22. A clone claiming to be any other template is a warning on its own.
 3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
 
 If provenance cannot be read, treat the strategy as hand-written.
@@ -222,7 +222,9 @@ A `LaunchpadStrategy` launch quoted in the vault asset (a USDG vault launching a
 - [ ] `assetIn` ≤ 35% of the vault's `totalAssets`.
 - [ ] You and your user expect creator fees in the quote token and the launch token, held by the vault but not counted in `totalAssets`.
 
-**`deadline = 1` means disarmed, not broken.** The CLI proposes these launches with `deadline = 1`, so the adapter reverts `DeadlineExpired` and the execute simulates as `SIMULATION_FAILED`. That is expected: a disarmed launch cannot execute, so nobody can execute it at the voted floor. The proposer opens a short window (the CLI caps it at 1h) with `sherwood launchpad arm` right before execute; `arm` can only raise `minQuoteOut` (`updateParams` refuses a lower one). Judge the rest of the batch from the decoded calls and the value trace. Flag the opposite case: a non-asset launch proposed with `deadline = 0` (no deadline) or one far in the future can be executed by anyone at the voted floor for the whole execution window.
+**The deadline is live; the floor is the protection.** A non-asset launch is proposed with the same live `deadline` as an asset-quoted one (a future timestamp, by default the governor windows plus one day; `0` means none), and anyone can execute it at the voted floor for its whole execution window. So the `minQuoteOut` check above is the one that matters: weigh the floor against the quote you expect when it can execute, not only against the quote today. The proposer may optionally tighten it right before execute with `sherwood launchpad arm` (a fresh, higher `minQuoteOut` and a deadline at most 1h out; `updateParams` refuses a lower floor and a past deadline). Nothing requires arming.
+
+**A failed execute simulation is a real finding.** A launch with `deadline = 1` can no longer be created on 4663: the current template refuses a non-zero deadline that is not in the future (`DeadlineInPast`). Do not read `SIMULATION_FAILED` on a launch's execute as an expected "disarmed" state. Find the cause in the trace (an expired deadline, a floor above the live quote, a stale feed, a dev buy under the reserve) and judge it. Only a clone of the first template (`0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, created before 2026-10-22) could still carry `deadline = 1`; it cannot execute until the proposer moves its deadline with `updateParams`, so judge the floor that will apply when they do.
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
 

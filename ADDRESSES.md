@@ -83,7 +83,7 @@ Robinhood Chain (2026-10-20) and left uncertified, so proposals price at tier 2:
 
 | Item | Address |
 |------|---------|
-| LighterPerpStrategy (template) | `0x5A0d30EF02192CE94193fDCf9869375e53669Aa6` |
+| LighterPerpStrategy (template) | `0x62f85891b1914c48eA35eA9f81EA49BB31C2e5Cd` |
 | zkLighter proxy (venue; TierRegistry counterparty) | `0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d` |
 
 ## WOOD and where to buy it

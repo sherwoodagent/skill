@@ -11,11 +11,11 @@ metadata:
 
 # Lighter Perp Strategy
 
-> **Deployed on Robinhood Chain (4663) since 2026-10-20.** The template is `0x5A0d30EF02192CE94193fDCf9869375e53669Aa6`, recorded in `sherwood-strategies` `deployments/4663.json` and approved on the 4663 `StrategyFactory`. `sherwood strategy propose lighter-perp` needs `@sherwoodagent/cli` 0.97.0 or later.
+> **Deployed on Robinhood Chain (4663) since 2026-10-20.** The template is `0x62f85891b1914c48eA35eA9f81EA49BB31C2e5Cd`, recorded in `sherwood-strategies` `deployments/4663.json` and approved on the 4663 `StrategyFactory`. `sherwood strategy propose lighter-perp` needs `@sherwoodagent/cli` 0.99.2 or later.
 
 > **Unaudited.** `LighterPerpStrategy` comes from `sherwood-strategies` (`src/lighter/`), which has not been audited. Before proposing or approving it, run the checks in [Strategies from `sherwood-strategies` are unaudited](../../../SKILL.md#strategies-from-sherwood-strategies-are-unaudited) and tell the user it is used at their own risk. As an uncertified tier-2 template, each Lighter proposal books about 1× its deployed capital in guardian coverage (`strategy propose` gives settle calls a 0 cap), and the deposit must fit the vault's `tier2CallCapBps` ceiling.
 
-A `LighterPerpStrategy` clone owns its own Lighter perp account, funded with USDG from the vault. The agent trades that account off-chain through Lighter's API with a **trade-only L2 key** the contract registers. The proposer and the vault owner keep an on-chain kill switch: cancel orders, close positions, rotate the key, and drain the account. Requires `@sherwoodagent/cli` 0.97.0 or later on 4663.
+A `LighterPerpStrategy` clone owns its own Lighter perp account, funded with USDG from the vault. The agent trades that account off-chain through Lighter's API with a **trade-only L2 key** the contract registers. The proposer and the vault owner keep an on-chain kill switch: cancel orders, close positions, rotate the key, and drain the account. Requires `@sherwoodagent/cli` 0.99.2 or later on 4663.
 
 ```
 Vault (USDG)
@@ -31,7 +31,7 @@ Vault (USDG + PnL)
 
 ## Hard rules
 
-1. **Check that the CLI enables it.** Run `sherwood strategy list` first. If `Lighter Perp (lighter-perp)` is under "Not available", upgrade the CLI to 0.97.0 or later; on another chain, stop.
+1. **Check that the CLI enables it.** Run `sherwood strategy list` first. If `Lighter Perp (lighter-perp)` is under "Not available", upgrade the CLI to 0.99.2 or later; on another chain, stop.
 2. **The vault asset must be USDG.** Init reverts `AssetMismatch` otherwise.
 3. **The agent key is a hot credential that can lose 100% of the deployed capital.** It cannot withdraw, but it can trade the account into the ground or against an attacker's account. The contract cannot cap size, leverage or trade rate. Size each proposal as if all of it can be lost.
 4. **The exit is three steps, in order.** `initiate-return` → wait for the closes to fill → `queue-withdraw --all` → wait for maturity → `prepare-settle` → settle. Never skip a step and never reorder them.
@@ -160,6 +160,6 @@ While the proposal is open, instant deposits and redemptions are closed. Queued 
 | --- | --- |
 | USDG (vault asset) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` (`chains/4663.json`) |
 | zkLighter proxy | `0x94bAB9693Ba2f6358507eFfcbd372b0660AFfF9d` (Lighter's own contract; `TierRegistry` counterparty) |
-| LighterPerpStrategy template | `0x5A0d30EF02192CE94193fDCf9869375e53669Aa6` (see [ADDRESSES.md](../../../ADDRESSES.md)) |
+| LighterPerpStrategy template | `0x62f85891b1914c48eA35eA9f81EA49BB31C2e5Cd` (see [ADDRESSES.md](../../../ADDRESSES.md)) |
 
 Contract spec: sherwood-strategies `docs/lighter/LighterPerpStrategy.md`. Docs: https://docs.sherwood.sh/protocol/strategies/lighter-perp

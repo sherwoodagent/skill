@@ -711,7 +711,7 @@ On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply,
 
 There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` (Sushi venue only) and `lighter-perp` (CLI 0.97.0 or later) resolve on 4663.
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` (Sushi venue only) and `lighter-perp` (CLI 0.99.2 or later) resolve on 4663.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -1039,7 +1039,7 @@ sherwood strategy propose launchpad \
 
 Agent-traded perpetuals on Lighter (zkLighter). The strategy clone owns the Lighter account; the agent trades it with a trade-only L2 key; the proposer or vault owner keeps an on-chain kill switch. USDG vaults only.
 
-- **Deployed on Robinhood Chain (4663)** at `0x5A0d30EF02192CE94193fDCf9869375e53669Aa6` (CLI 0.97.0 or later). It is uncertified, so each proposal books its deployed capital at full notional in guardian coverage.
+- **Deployed on Robinhood Chain (4663)** at `0x62f85891b1914c48eA35eA9f81EA49BB31C2e5Cd` (CLI 0.99.2 or later). It is uncertified, so each proposal books its deployed capital at full notional in guardian coverage.
 - Exit is three steps: `sherwood lighter initiate-return` → `sherwood lighter queue-withdraw --all` → settle, with `sherwood lighter prepare-settle` (rotates the agent key to a burn key) before settle
 
 ```bash

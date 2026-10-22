@@ -63,13 +63,20 @@ The same addresses resolve live from any vault's governor: `governor.exposureLed
 
 ### Launchpad (from `sherwood-strategies`, unaudited)
 
-Deployed on 2026-10-20 in blocks 93,737,582 to 93,737,603. Source: `deployments/4663.json`
-in `sherwood-strategies`. Both contracts are verified on Sourcify (exact match). The template
-is approved on the StrategyFactory `0xb06788F027268a9A06c3AD41a88559530D2E54b1`.
+The template was redeployed on 2026-10-22 at block 95,339,932 with the `DeadlineInPast` fix
+(`sherwood-strategies` #14: a clone refuses a non-zero deadline that is not in the future, at
+init and in `updateParams`). It is approved on the StrategyFactory
+`0xb06788F027268a9A06c3AD41a88559530D2E54b1`. The Sushi adapter is unchanged from the first
+deployment (2026-10-20, blocks 93,737,582 to 93,737,603). Source: `deployments/4663.json` in
+`sherwood-strategies` and the factory's `approvedTemplate`. Both contracts are verified on
+Sourcify (exact match).
+
+The first template, `0xbc4fDF5949caa74c730bed632E368cEa4ea5832D` (2026-10-20), is no longer
+approved: no new clones come from it, and a clone that already exists keeps working.
 
 | Contract | Address |
 |----------|---------|
-| LaunchpadStrategy (template) | `0xbc4fDF5949caa74c730bed632E368cEa4ea5832D` |
+| LaunchpadStrategy (template) | `0x1F8221c4176B8B017A6Ef699947BB4A33730Df32` |
 | SushiLaunchAdapter (implementation; each launch uses its own ERC-1167 clone) | `0x52901614748ACFDC083D305Aa5301E484d4B15F8` |
 | Sushi Launchpad V2 (venue proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
 

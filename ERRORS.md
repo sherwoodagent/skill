@@ -100,6 +100,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `NotProposer` | Non-proposer tried to `updateParams()` | Only the original proposer can tune parameters |
 | `NotExecuted` | Tried to settle or update params before execution | Strategy must be in Executed state |
 | `AlreadyExecuted` | Tried to execute an already-executed strategy | Each strategy executes once |
+| `DeadlineInPast` | A Launchpad clone was initialized, or `updateParams` called, with a non-zero deadline that is not in the future (template redeployed 2026-10-22) | Pass a future `--deadline` (a duration such as `3d`), omit it for the default (the governor windows plus one day), or `0` for none. CLI 0.99.3 refuses a past deadline before sending |
 | `InvalidAmount` / `InvalidWeights` / `TooManyTokens` | Portfolio init with a zero amount, weights that do not sum to 10,000 bps, or more than 20 tokens | Fix the basket |
 | `InvalidSlippage` | Portfolio `--max-slippage` outside 50–1000 bps, or Concentrated Liquidity `--settle-slippage-bps` outside 50–1000 (fixed for the clone's life) | Choose a value in range |
 | `ProposerNoLongerAgent` | `updateParams` / rebalance from a proposer the owner has since removed from the vault | Only a registered agent can tune a live strategy; ask the owner to re-register, or wait for settlement |

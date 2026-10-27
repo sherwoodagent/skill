@@ -36,7 +36,7 @@ Vault (asset minus ~--asset-in; launch token and fees held outside totalAssets)
 4. **Quote in the vault asset unless there is a reason not to.** A USDG vault launching against USDG has no swap leg. A launch quoted in another supported token (a stock token such as TSLA) swaps the asset into it at execute, and the CLI guards that swap ([mainnet rules](#mainnet-rules-on-4663)). It gets the same live deadline as an asset-quoted launch and is executable as voted; `sherwood launchpad arm` can tighten its floor and deadline right before execute, but is optional. WOOD is not a registered Sushi quote.
 5. **Do not propose on Pons.** It is out of scope; its factory only launches for whitelisted addresses.
 6. **On Sushi, size `--reserve` from the measured launch and omit `--min-tokens-out`.** The floor defaults to `--reserve` and must equal it. A floor of a few tokens would hand a sandwich budget to anyone watching the vote; a floor above the reserve strands tokens in the vault.
-7. **Collect fees often.** On a launch quoted in the vault asset, the quote half of the fees raises `totalAssets` the moment it lands. With no proposal open, someone can deposit, call `collect-fees`, and redeem with a cut. Fee collection is operator-driven: run `sherwood launchpad collect-fees` on a schedule so no large lump is ever pending.
+7. **Collect fees often.** On a launch quoted in the vault asset, the quote half of the fees raises `totalAssets` the moment it lands. With no proposal open, someone can deposit, call `collect-fees`, and redeem with a cut. Sherwood's keeper sweeps fees to the vault on a short cadence so no large lump is pending; `sherwood launchpad collect-fees` is the manual fallback if it is down.
 8. **Never sell the fund token to "recover" value.** The template never does, because that price can be moved inside the selling transaction. Launch tokens that reach the vault are disposed of by a later proposal.
 
 ## Workflow
@@ -171,7 +171,9 @@ A claim in the execute block reverts `SnapshotNotFinal`. Shares escrowed in the 
 sherwood launchpad collect-fees <strategy>   # permissionless; pays the vault, never the caller
 ```
 
-Run it regularly for the life of the launch, not just once (hard rule 7). Fees keep accruing after settlement and still go to the vault. The propose preflight prints a note that the Sherwood keeper calls `collectFees` on a short cadence. No keeper job collects fees today, so the operator runs this command.
+You normally don't need to. Sherwood's keeper calls `collectFees` on a short cadence (batched through Multicall3) for the life of the launch, including after settlement. Path: on Sushi the venue keeps 30% of trading fees; the creator share goes to the launch clone, which forwards it to the vault in the same call.
+
+Read fees with `sherwood launchpad status`: it shows **uncollected** fees (simulated `collectFees`) and **collected so far** (sum of the clone's `FeesCollected` events). Uncollected 0 on a launch with volume usually means the keeper already swept it — check collected. Preview a manual collection with `sherwood launchpad collect-fees <strategy> --dry-run [--json]`; run it for real only if the keeper is down.
 
 ### Step 7: Settle
 

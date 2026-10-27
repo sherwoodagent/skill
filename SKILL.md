@@ -1006,7 +1006,7 @@ Launches a fund token on **Sushi Launchpad V2** (`--venue sushi`, default) with 
 
 - **A launch settles as a vault-asset LOSS of about `--asset-in`, by design on v1.** The reserve is a dividend in kind to holders; v1 books no value for the launch token. The CLI sets `--max-drawdown-bps` to `ceil(assetIn × 10,000 / totalAssets) + 200` when omitted, refuses a lower value, and refuses the proposal above 9000 bps. Say this to the user before proposing.
 - **Holders do not need to claim.** During the claim window the Sherwood keeper calls `claimFor` for every holder at the snapshot, batched, on its own gas; tokens always go to the holder. Keep `--claim-window` at an hour or more so it gets several passes, and use `launchpad claim-for` only as a fallback
-- Creator fees go to the **vault**, pushed by the permissionless `sherwood launchpad collect-fees`. Fee collection is operator-driven: run it on a schedule so no large fee lump sits in the venue
+- Creator fees go to the **vault**, swept automatically by Sherwood's keeper (Sushi keeps 30%; the rest goes clone → vault). `sherwood launchpad status` shows uncollected and collected-so-far; `collect-fees [--dry-run]` and `claim-for` are manual fallbacks
 - Sushi `--fee-mode holders` (DISTRIBUTE_TO_HOLDERS) is refused. WOOD is not a registered Sushi quote. Pons is out of scope
 
 **Mainnet rules on 4663.** CLI 0.99.3 enforces them:

@@ -81,6 +81,8 @@ approved: no new clones come from it, and a clone that already exists keeps work
 | Sushi Launchpad V2 (venue proxy) | `0xF1716eBf85836ffE2985db9A50dd29e5814caBe9` |
 
 The adapter and the Sushi Launchpad V2 proxy are granted as TierRegistry counterparties.
+The template is class-certified on the TierRegistry since 2026-10-27 (tier 0, 3,500 bps, for
+`execute()` and `settle()`), so a launch prices at 35% of its `--asset-in`.
 The StonkBrokers launch adapter is **not deployed on Robinhood Chain**, so only
 `--venue sushi` works here. These contracts are unaudited. See
 [Strategies from `sherwood-strategies` are unaudited](SKILL.md#strategies-from-sherwood-strategies-are-unaudited).

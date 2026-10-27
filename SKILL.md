@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.32.0'
+  version: '0.32.1'
 ---
 
 # Sherwood
@@ -704,7 +704,7 @@ Choosing a template marked unaudited? Run the checks in [Strategies from `sherwo
 | **PortfolioStrategy** | `portfolio` | Core protocol (outside the notice) | Weighted portfolio of tokens (stock tokens, crypto) with rebalancing |
 | **MorphoSupplyStrategy** | `morpho-supply` | Core protocol (outside the notice) | Supply the vault asset to one Morpho Blue market; settle withdraws it with interest |
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Core protocol (outside the notice) | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
-| **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 (StonkBrokers is not on 4663); holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. Deployed on Robinhood Chain (4663); class certification proposed, not yet certified, so it prices as tier 2 |
+| **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 (StonkBrokers is not on 4663); holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. Deployed on Robinhood Chain (4663); class-certified at tier 0 (3,500 bps) since 2026-10-27, so coverage and the bond are sized on 35% of the capital in |
 | **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. Deployed on Robinhood Chain (4663); uncertified, so it prices as tier 2 |
 
 On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity, Launchpad and Lighter Perp** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).

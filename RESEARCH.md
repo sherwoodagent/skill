@@ -85,7 +85,7 @@ Without a key, `news` exits 1 with `No FLASH API key. Get one (free during the b
 
 **Output.** Items print newest first: UTC time, impact pips (`●●●●○` is impact 4), headline, source name and article URL; ticker tags with sentiment on the next line; `whyItMatters` indented under impact 4 and 5; the FLASH credit last, once. When FLASH has nothing, the CLI prints `FLASH has no items for <target> in the last <n> days` and exits 0 (with `--json` the record still prints, `matchStatus: "no_match"` and empty `items`), so a script can tell no news from a failure.
 
-Sample output, produced from the CLI's test fixture through its own formatter. The headlines and links are illustrative, not real articles:
+Sample output. The headlines, sources and links are placeholders in the shape the CLI prints; run `sherwood news --asset NFLX --limit 3` for live items:
 
 ```
 $ sherwood news --asset NFLX --limit 3
@@ -99,14 +99,14 @@ Research Query
 
 ✔ news data received from flash
 
-2026-10-27 21:14Z  ●●●●○  Netflix shares jump 9% after Q3 beat as ad tier passes 90M monthly users — Financial Times  https://www.ft.com/content/0b5a7d1e-netflix-q3-earnings
+2026-10-27 21:14Z  ●●●●○  Example: Netflix reports quarterly results ahead of estimates — Example Business Daily  https://example.com/news/netflix-quarterly-results
     NFLX (Positive)
-      Advertising is now a second revenue engine: a higher margin target with slowing subscriber adds tells investors growth no longer depends on price rises alone.
+      Example: FLASH's why-it-matters line, shown under impact 4 and 5 items.
 
-2026-10-27 15:42Z  ●●●○○  Netflix, Nvidia lead Nasdaq rebound as TSMC results ease AI spending worries — Reuters  https://www.reuters.com/markets/us/nasdaq-rebound-tsmc-2026-10-27/
+2026-10-27 15:42Z  ●●●○○  Example: Netflix and Nvidia lead a Nasdaq rebound — Example Wire  https://example.com/markets/nasdaq-rebound
     NFLX (Positive)  NVDA (Positive)
 
-2026-10-26 11:05Z  ●●●○○  Streaming price rises outpace US inflation for a third straight year, survey finds — Axios  https://www.axios.com/2026/10/26/streaming-prices-inflation-survey
+2026-10-26 11:05Z  ●●●○○  Example: Streaming prices rise faster than inflation, survey finds — Example Wire  https://example.com/business/streaming-prices-survey
 
 Powered by FLASH  https://flash.im
 ```

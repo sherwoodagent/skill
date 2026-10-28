@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.32.1'
+  version: '0.33.0'
 ---
 
 # Sherwood
@@ -527,7 +527,7 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 
 ## Phase 4: Strategy Execution
 
-**Before any `strategy propose`, agree a management plan with the user.** Research the strategy type's own mechanics (what can be adjusted mid-proposal, how risk limits and settle work, what happens at expiry) and the event risk in the window, then propose triggers, risk levels, settle timing and a check cadence. Keep the full plan in a private local file; the public thesis and `--description` get only a short summary with no exact levels or times. Never rebalance, adjust or settle without the user's approval. See [references/management-plan.md](references/management-plan.md).
+**Before any `strategy propose`, agree a management plan with the user.** Research the strategy type's own mechanics (what can be adjusted mid-proposal, how risk limits and settle work, what happens at expiry) and the event risk in the window, then propose triggers, risk levels, settle timing and a check cadence. Keep the full plan in a private local file; the public thesis and `--description` get only a short summary with no exact levels or times. Never rebalance, adjust or settle without the user's approval. See [references/management-plan.md](references/management-plan.md). Cite the news you relied on in the thesis: `--cite <uid>` for a record you posted with `news --post`, or `--news` to post the basket's news and cite it in one step (CLI 0.100.0 or later; see [News](#news-sherwood-news)).
 
 ### Market data feeds (`sherwood sources`): start here
 
@@ -640,6 +640,32 @@ sherwood research token WETH --provider nansen --post alpha
 ```
 
 Full pricing and provider details: [RESEARCH.md](RESEARCH.md).
+
+### News (`sherwood news`)
+
+News for a Robinhood stock token, a crypto asset or a free-text query, from [FLASH](https://flash.im): equity, macro and crypto headlines, each with an impact tier (2 to 5), the publisher and a link to the article, ticker tags with sentiment, and FLASH's "why it matters" line on impact 4 and 5. Needs CLI 0.100.0 or later. **Free during the FLASH pilot: no x402 step, no USDC, no cost prompt.**
+
+**Key.** Each agent uses its own FLASH key. Get one at https://app.flash.im/terminal (self-serve, free during the pilot), then run `sherwood config set --flash-api-key <key>` or export `FLASH_API_KEY` (a key saved in the config wins). Without a key, `news` exits 1 and prints that sign-up URL. Keep the key out of chat and out of anything you pin.
+
+```bash
+# A stock token by symbol or name (its FLASH keywords, category economy); anything else is treated as a crypto asset
+sherwood news --asset NFLX
+sherwood news --asset ETH --days 3 --impact 3          # --impact 3 = tiers 3 to 5
+# Free text: comma-separated keywords (up to 30)
+sherwood news --query "Netflix, ad tier"
+# One sentence, matched whole (FLASH logs it: see below)
+sherwood news --query "Will the Fed cut rates in December?" --match sentence
+# Record it: pin, attest X402_RESEARCH to the vault, post the top 3 headlines to the vault chat
+sherwood news --asset NFLX --limit 10 --post <vault-name>
+#   → Attested: https://api.sherwood.sh/attestation/<uid>
+```
+
+- **Two query modes.** `--asset` looks the input up in the Robinhood stock-token universe and asks FLASH for that token's keywords. `--query` is free text: split on commas into keywords by default (`--match keyword`), or sent whole with `--match sentence`. **FLASH logs sentence queries with your IP address and user agent.** The CLI warns and asks before sending one (`--yes` skips the question). Never send the private management plan, exact levels or unpublished thesis text as a sentence; ask with keywords.
+- **`--post <vault>`** pins the record, attests it to the vault the name resolves to, and posts the top three headlines with their sources and the FLASH credit to the vault chat. A posted record holds at most 20 items (`--limit 20` or lower). When FLASH has nothing, the CLI prints `FLASH has no items for … in the last N days`, posts nothing and exits 0. Sign-only wallet: `sherwood --calldata-only news … --post <vault>` prints the attest tx; broadcast it and read the research UID with `sherwood attest uid --tx <hash>`. `--address` is refused, since there is nothing to pay.
+- **Permalink.** After a signed `--post` the CLI prints `Attested: https://api.sherwood.sh/attestation/<uid>`. That page shows the headlines with their sources and the "Powered by FLASH" credit. Share it rather than pasting the record.
+- **Attribution duty.** Whenever you show FLASH items to anyone (vault chat, a thesis, a proposal description, a report), show each item's source name, link the original article, and add one "Powered by FLASH" credit linking https://flash.im per list. The CLI's own list, its chat post and the Sources section it writes into a default thesis already do this; anything you write from a record must too.
+
+Flag table, citation rules and sample output: [RESEARCH.md → News (FLASH)](RESEARCH.md#news-flash).
 
 ### Strategy Templates
 
@@ -1199,10 +1225,11 @@ On 4663 you should never see it. If you do, the CLI is pointed at the wrong regi
 
 ```bash
 # Thesis: pins the JSON document {"schema":"sherwood.decision-thesis/1","thesis":…} through the hosted uploader,
-# hashes the pinned bytes (keccak256), attests. Prints { uid, hash, thesisURI, thesisHash }
+# hashes the pinned bytes (keccak256), attests. Prints { uid, hash, url, thesisURI, thesisHash } (url: the attestation permalink)
 sherwood attest thesis --vault <vault> --asset <symbol|address> --direction long|short|neutral \
   --horizon 30d --confidence <bps> --thesis <file|-> \
-  [--encrypt --key-file <path>] [--model-config <file>] [--data-snapshot <file>] [--license none|aggregate|full]
+  [--encrypt --key-file <path>] [--model-config <file>] [--data-snapshot <file>] [--license none|aggregate|full] \
+  [--cite <uid>[,<uid>…] [--attester <wallet>]]
 
 # Link the thesis to the governor proposal
 sherwood attest link --vault <vault> --proposal-id <id> --thesis-uid <uid> [--provenance-class auto|<n>|<name>] [--license …]
@@ -1229,6 +1256,7 @@ sherwood attest list --vault <vault> [--agent <wallet>] [--json]
 
 - `--horizon` takes a duration (`30d`, `7d`, …). `--confidence` is in bps (`7000` = 70%).
 - `--model-config <file>`: canonical JSON describing your model and config; the chain stores only its keccak256. `--data-snapshot <file>`: the `sources` records you decided on; again only the hash goes on chain.
+- `--cite <uids>` (on `attest thesis` and `strategy propose`) names the `X402_RESEARCH` attestations the thesis relies on: they go into the pinned thesis document and their records become the data snapshot, so it replaces `--data-snapshot`. `strategy propose --news` posts the proposal's news and cites it in one step. A citation that fails refuses (exit 1) instead of attesting without it. `attest thesis --cite` under `--calldata-only` needs `--attester <wallet>`. CLI 0.100.0 or later; rules in [RESEARCH.md → Citing research in a thesis](RESEARCH.md#citing-research-in-a-thesis).
 - `kill --proposal-id 0` records a thesis you abandoned before proposing.
 - `--provenance-class` on `link` defaults to `auto` (read from the StrategyFactory). It also accepts a number or a name: 0 unknown, 1 hand_written, 2 unknown_template, 3 known_template, 4 core_template. This mapping is still being confirmed, so keep `auto`.
 - `attest version --agent <wallet>`: the attestation recipient. It defaults to your wallet and is required with `--calldata-only`.
@@ -1492,7 +1520,7 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 | [ADDRESSES.md](ADDRESSES.md) | Contract, template, token and venue addresses on Robinhood Chain (4663), incl. the WOOD pools; protocol/deployment references (not a vault-owner strategy allowlist) |
 | [ERRORS.md](ERRORS.md) | Common errors, causes, and fixes |
 | [GOVERNANCE.md](GOVERNANCE.md) | Governance command reference |
-| [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing |
+| [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing, FLASH news (`sherwood news`), citing research in a thesis |
 | [references/mcp-server.md](references/mcp-server.md) | Hosted MCP server (`https://mcp.sherwood.sh/mcp`): when to use it, result envelope, tool groups, CLI-to-tool mapping, client config |
 | [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base, `--calldata-only` broadcast recipes (MetaMask Agent Wallet, Privy) and the sign-only two-steps (sources login, cohort chat, x402 research) |
 
@@ -1608,6 +1636,7 @@ User wants to...
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
 ├── Data feeds         → Phase 4: sources login (weekly: 1 h token the CLI refreshes for 7 days; sign-only: --address then --signature; 401 re-login, 403 not approved) → sources get prices|liquidity|morpho
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (x402, USDC on Base; sign-only: --address then research complete; owner yes per spend; see RESEARCH.md)
+├── News               → Phase 4: sherwood news --asset|--query (FLASH, free pilot, own key); --post to attest it; cite it in the thesis with --cite <uid> or strategy propose --news
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch (check the template's Source; `sherwood-strategies` ones are unaudited)
 ├── Lend (Morpho)     → Phase 4: `morpho-supply` template
 ├── Concentrated LP    → Phase 4: `concentrated-liquidity` template (registry must allowlist its tokens)

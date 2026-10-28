@@ -22,6 +22,10 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `research` refuses under `--calldata-only` | x402 needs a signature and no key is configured | Use the two-step: `sherwood research … --address <wallet>` (keep it running), sign the typed data, `sherwood research complete --signature 0x…` (see [RESEARCH.md](RESEARCH.md)) |
 | `research complete` exits 1 | No step 1 is waiting for this wallet, or the payment deadline passed | Start step 1 again, then sign the new typed data |
 | `x402 payment window too short (deadline …)` | The provider's payment window is shorter than the time left to sign (Messari gives 60 s) | Have the signer ready before step 1, or use Nansen (300 s) |
+| `No FLASH API key. Get one (free during the beta) at https://app.flash.im/terminal, …` | `sherwood news` (or `strategy propose --news`) found no key in the config or `FLASH_API_KEY` | Get your own key at https://app.flash.im/terminal, then `sherwood config set --flash-api-key <key>` or set `FLASH_API_KEY` |
+| `FLASH API 401: …` / `FLASH API 403: …` | The FLASH key is missing, wrong or revoked | Check the key in the config / `FLASH_API_KEY`; get a new one at https://app.flash.im/terminal |
+| `--post: a posted record holds at most 20 items; use --limit 20 or lower` | `news --post` with `--limit` above 20 | Re-run with `--limit 20` or lower |
+| `flash takes no payment; a sign-only wallet uses --calldata-only for --post` | `news` with `--address`: FLASH is free, there is nothing to sign | Drop `--address`; to post from a sign-only wallet, use `sherwood --calldata-only news … --post <vault>` |
 
 ## Attestations (public track record)
 
@@ -29,6 +33,10 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 |-------|-------|-----|
 | `Schema <NAME> is not registered on Robinhood Chain yet (uid …). Registration is pending.` | The CLI could not find the decision-trace schema on the SchemaRegistry it read. On 4663 all six are registered (2026-10-13), so this means a wrong chain or registry. Every `attest` write checks first and refuses, also under `--calldata-only` | Tell the owner and carry on: the proposal does not depend on it. Check `sherwood --version` (0.96.0 or later) and the chain |
 | `attest` warning during `strategy propose --attest-thesis` | The thesis or link attestation failed (unregistered schema, pin failure, gas) | Nothing to undo: the propose went ahead. Re-run `sherwood attest thesis` / `attest link` later if you want the record |
+| `cite <uid>: …` (`not found`, `is not X402_RESEARCH`, `attester … is not this wallet`, `recipient … is not vault …`, `is over 200000 bytes`, …) | A `--cite` UID failed a check; nothing was attested or proposed | Cite only `X402_RESEARCH` attestations your wallet made to this vault (`sherwood attest uid --tx <hash>` reads a UID). A UID from a tx you just broadcast may not be indexed yet: retry shortly. See [RESEARCH.md → Citing research in a thesis](RESEARCH.md#citing-research-in-a-thesis) |
+| `--news needs a signing wallet: the research UID is unknown until the attest tx is broadcast. …` | `strategy propose --news` under `--calldata-only` | Run the printed `news … --post` command, broadcast its tx, read the UID with `attest uid --tx`, then propose again with `--cite <uid>` in place of `--news` |
+| `--cite/--news derive the data snapshot; drop --data-snapshot` (or `… drop --encrypt`, `… drop --no-attest`, `… which --write-calls skips`) | `--cite`/`--news` with a flag that conflicts with a cited thesis | Drop the named flag |
+| `--cite under --calldata-only requires --attester <wallet> …` | `attest thesis --cite` keyless without `--attester` | Add `--attester <wallet>`: the wallet that attested the research and will sign the thesis |
 
 ## Permission Errors
 

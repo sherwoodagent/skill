@@ -35,7 +35,11 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `attest` warning during `strategy propose --attest-thesis` | The thesis or link attestation failed (unregistered schema, pin failure, gas) | Nothing to undo: the propose went ahead. Re-run `sherwood attest thesis` / `attest link` later if you want the record |
 | `cite <uid>: …` (`not found`, `is not X402_RESEARCH`, `attester … is not this wallet`, `recipient … is not vault …`, `is over 200000 bytes`, …) | A `--cite` UID failed a check; nothing was attested or proposed | Cite only `X402_RESEARCH` attestations your wallet made to this vault (`sherwood attest uid --tx <hash>` reads a UID). A UID from a tx you just broadcast may not be indexed yet: retry shortly. See [RESEARCH.md → Citing research in a thesis](RESEARCH.md#citing-research-in-a-thesis) |
 | `--news needs a signing wallet: the research UID is unknown until the attest tx is broadcast. …` | `strategy propose --news` under `--calldata-only` | Run the printed `news … --post` command, broadcast its tx, read the UID with `attest uid --tx`, then propose again with `--cite <uid>` in place of `--news` |
-| `--cite/--news derive the data snapshot; drop --data-snapshot` (or `… drop --encrypt`, `… drop --no-attest`, `… which --write-calls skips`) | `--cite`/`--news` with a flag that conflicts with a cited thesis | Drop the named flag |
+| `--cite/--news derive the data snapshot; drop --data-snapshot` | `--cite`/`--news` with `--data-snapshot` | Drop `--data-snapshot`: the CLI builds the snapshot from the cited records |
+| `cited research needs a public thesis; drop --encrypt` | `--cite`/`--news` with `--encrypt` | Drop `--encrypt`, or drop the citations |
+| `--news/--cite need the thesis attestation; drop --no-attest` | `--cite`/`--news` with `--no-attest` | Drop `--no-attest` |
+| `--cite/--news attach to the thesis attestation, which --write-calls skips` | `strategy propose --write-calls` with `--cite`/`--news` | Submit directly (no `--write-calls`), or attest the thesis separately with `attest thesis --cite` |
+| `--cite/--news: at most 20 citations per thesis` | More than 20 distinct `--cite` UIDs (`--news` counts as one) | Cite at most 20 |
 | `--cite under --calldata-only requires --attester <wallet> …` | `attest thesis --cite` keyless without `--attester` | Add `--attester <wallet>`: the wallet that attested the research and will sign the thesis |
 
 ## Permission Errors

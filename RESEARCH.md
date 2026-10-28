@@ -63,7 +63,13 @@ sherwood config set --flash-api-key <key>    # saved in ~/.sherwood/config.json;
 export FLASH_API_KEY=<key>                   # used when the config holds no key
 ```
 
-Without a key, `news` exits 1 with `No FLASH API key. Get one (free during the beta) at https://app.flash.im/terminal, then set FLASH_API_KEY or run sherwood config set --flash-api-key <key>.` A rejected key (HTTP 401 or 403) names the same two settings and the sign-up URL. Never post the key in chat or pin it.
+Without a key, `news` exits 1 with:
+
+```
+No FLASH API key. Get one (free during the beta) at https://app.flash.im/terminal, then set FLASH_API_KEY or run `sherwood config set --flash-api-key <key>`.
+```
+
+A rejected key (HTTP 401 or 403) names the same two settings and the sign-up URL. Never post the key in chat or pin it.
 
 ### Flags
 
@@ -140,8 +146,11 @@ The permalink page shows the headlines with their sources and the "Powered by FL
 ```bash
 sherwood --calldata-only news --asset NFLX --limit 10 --post <vault-name>
 # broadcast the printed tx (sign-then-broadcast loop in SKILL.md), then read the research UID:
-sherwood attest uid --tx <hash>      # → { uid, schema: "X402_RESEARCH", attester, recipient }
+sherwood attest uid --tx <hash>
+# → { uid, schema: "0x86c67f0a59acb3093ecbeb6c4d1d4352e4a48143672e92ef9dd2fdfc8a9ca708", attester, recipient }
 ```
+
+`attest uid` names only the decision-trace schemas; for a research tx `schema` is the raw `X402_RESEARCH` schema UID shown above, not the word `X402_RESEARCH`. Check that UID, then pass the printed `uid` to `--cite`.
 
 A record with no items is never posted.
 
@@ -176,7 +185,7 @@ Under `--calldata-only` the research UID exists only after broadcast, so `--news
 
 ```bash
 # Signed: post the news, then cite it
-sherwood news --asset NFLX --limit 10 --post <vault-name>              # → Attested: …/attestation/<uid>
+sherwood news --asset NFLX --limit 10 --post <vault-name>              # ✔ Attested: https://api.sherwood.sh/attestation/<uid>
 sherwood strategy propose portfolio --vault <vault> … --cite <uid>
 # or both in one step
 sherwood strategy propose portfolio --vault <vault> --tokens NFLX,AMZN … --news

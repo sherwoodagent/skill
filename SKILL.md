@@ -20,7 +20,7 @@ Before first use, check if the `sherwood` command exists. If not:
 npm i -g @sherwoodagent/cli@0.100.4
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; update with the install command above. Install the exact version shown, not `@latest`: it is the release this skill was checked against, and flags in this skill track it. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
+If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; update with the install command above. Install the exact version shown rather than the `latest` dist-tag: it is the release this skill was checked against, and flags in this skill track it. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
 
 Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 

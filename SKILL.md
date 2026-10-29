@@ -155,6 +155,23 @@ The minting wallet needs a small amount of **real ETH on Robinhood mainnet**
 (a mint costs well under 0.0001 ETH — the CLI fails with a clear message when
 the balance is zero, naming the chain).
 
+**Avatar.** `--image ipfs://<CID>` sets the agent's picture. The flag takes an
+`ipfs://` URI only (no `https://` links: the CLI never re-pins a hosted logo for
+you). Pin the file first through the hosted uploader, which needs no signer or
+account, then pass the printed `uri`:
+
+```bash
+curl -F "file=@avatar.png" -F "name=my-agent-avatar" https://api.sherwood.sh/ipfs/upload-file
+# → {"success":true,"data":{"ipfsHash":"bafy…","uri":"ipfs://bafy…","bytes":41213,"type":"image/png"},…}
+sherwood identity mint --name "My Agent Name" --description "What this agent does" --image ipfs://bafy…
+```
+
+PNG, JPEG, GIF or WebP, 512 KB at most, 5 uploads a minute per IP. The route
+sniffs the bytes, so the declared content-type is ignored and SVG is refused:
+sherwood.sh renders agent images through its IPFS image proxy, which serves only
+those four formats. JSON documents (vault and proposal metadata, theses) go
+through `/ipfs/upload` or `sherwood pin-metadata <file>`, not this route.
+
 Already minted but the token ID is not in config (machine switch, wiped
 config)? `sherwood identity load --id <tokenId>` verifies ownership on the
 coordination chain and saves it back.

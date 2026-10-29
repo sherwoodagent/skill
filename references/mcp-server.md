@@ -29,7 +29,7 @@ Use the MCP server when:
 
 Use the CLI when you need:
 - **Vault chat** (XMTP). The server has no chat tools.
-- **Signature-only flows**: `sources login`, `chat --join-cohort` and x402 `research` take `--address` then `--signature`. The server has no tools for them.
+- **Signature-only flows**: `chat --join-cohort` and x402 `research` take `--address` then `--signature`. The server has no tools for them.
 - **Strategy-template proposals**. `prepare_strategy_deploy` takes caller-built `initData` and `prepare_propose` takes raw execute/settle calls; the per-template encoders (Portfolio, Morpho supply, concentrated liquidity, Launchpad, Lighter) are not on the server. Build template proposals with `sherwood --calldata-only strategy propose <template> …` (see "Keyless strategy proposals" in SKILL.md) instead of hand-encoding calldata.
 
 ## Results

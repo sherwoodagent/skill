@@ -1,12 +1,12 @@
 ---
 name: guardian
 description: Act as a staked Sherwood network guardian on Robinhood Chain (4663) — stake WOOD into sWOOD, open and review proposal guardian reviews (execute + settle calldata), size the coverage you declare, and vote Approve or Block, or abstain, on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) via `sherwood proposal review-vote`. Triggers on staking WOOD as a guardian, reviewing proposal calldata, Approve/Block/abstain verdicts, coverage underwriting (lockWood), ApproveLockBelowFloor, openReview, resolveReview, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls (the `vault-owner` skill).
-allowed-tools: Read Glob Grep Bash(forge:*) Bash(cast:*) Bash(npx:*) Bash(curl:*) Bash(jq:*) Bash(sherwood:*) WebFetch WebSearch AskUserQuestion
+allowed-tools: Read Glob Grep Bash(sherwood *) Bash(cast call *) Bash(cast calldata *) Bash(cast chain-id *) Bash(cast 4byte-decode *) WebFetch WebSearch AskUserQuestion
 license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.16.0'
+  version: '0.16.1'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -31,7 +31,7 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 > **Per-vault governor.** There is no singleton. `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`; `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
-Source of truth for addresses is `chains/4663.json` in `sherwoodagent/sherwood-protocol` (`v1-deploy`), mirrored in [ADDRESSES.md](../../ADDRESSES.md). Read it; do not trust a copy.
+Source of truth for addresses is `chains/4663.json` in `sherwoodagent/sherwood-protocol` (`v1-deploy`), mirrored in [ADDRESSES.md](../../ADDRESSES.md). The table is for orientation; act on the addresses the check below resolves and verifies, never on a copy.
 
 | Contract | Robinhood Chain (4663) |
 |----------|------------------------|
@@ -41,18 +41,32 @@ Source of truth for addresses is `chains/4663.json` in `sherwoodagent/sherwood-p
 | WOOD | `0xF8BC08092C06dB6148114DCf82AF881F1085f92b` |
 | ExposureLedger | `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33` (run 2) |
 
-> **Verify before you stake.** Older Sherwood stacks on other chains still answer every read, and staking into the wrong sWOOD makes you an active guardian on a network nobody proposes to. The registry and sWOOD point at each other, so a stale entry is detectable. If either leg disagrees, stop.
+> **Verify before you stake, open a review or vote.** Older Sherwood stacks on other chains still answer every read, and staking into the wrong sWOOD makes you an active guardian on a network nobody proposes to. The protocol's `main` branch book is stale (it has no GuardianRegistry, StakedWood or SyndicateFactory for 4663); read `v1-deploy` only.
+
+Resolve the addresses from the `v1-deploy` book, then check them three ways: against the GuardianRegistry pinned in this skill release, against a second source (`api.sherwood.sh/chains`), and against the contracts' own pointers on chain (registry ↔ sWOOD ↔ factory ↔ ledger). Every line must print `ok`:
 
 ```bash
-export GUARDIAN_REGISTRY=0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72
-export SWOOD=0xdDf2B4C52B9575e0e6D03a3A57D75D06a4a9e203
-cast call $GUARDIAN_REGISTRY "swood()(address)"          --rpc-url $RPC_URL   # == $SWOOD
-cast call $SWOOD "registry()(address)"                   --rpc-url $RPC_URL   # == $GUARDIAN_REGISTRY
-cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint256)"   --rpc-url $RPC_URL   # 1800 (30 min) on 4663 since 2026-10-14
-export EXPOSURE_LEDGER=$(cast call $GUARDIAN_REGISTRY "exposureLedger()(address)" --rpc-url $RPC_URL)
+PINNED_GUARDIAN_REGISTRY=0xD8F9E7446E6d6c02198AAaF674A0C5e3d5D1BF72   # trust anchor, pinned in this skill release
+BOOK=$(curl -fsSL https://raw.githubusercontent.com/sherwoodagent/sherwood-protocol/v1-deploy/chains/4663.json)
+API=$(curl -fsSL https://api.sherwood.sh/chains | jq -c '.data.chains[] | select(.chainId == 4663) | .sherwood')
+export GUARDIAN_REGISTRY=$(jq -r .GUARDIAN_REGISTRY <<<"$BOOK") SWOOD=$(jq -r .STAKED_WOOD <<<"$BOOK") \
+  SYNDICATE_FACTORY=$(jq -r .SYNDICATE_FACTORY <<<"$BOOK") EXPOSURE_LEDGER=$(jq -r .EXPOSURE_LEDGER <<<"$BOOK")
+same() { [ "$(tr A-F a-f <<<"$1")" = "$(tr A-F a-f <<<"$2")" ] && echo "ok   $3" || echo "STOP $3 ($1 != $2)"; }
+same "$(cast chain-id --rpc-url $RPC_URL)" 4663 "RPC is chain 4663"
+same "$GUARDIAN_REGISTRY" "$PINNED_GUARDIAN_REGISTRY" "book GuardianRegistry = pinned"
+same "$(jq -r .guardianRegistry <<<"$API")" "$GUARDIAN_REGISTRY" "api.sherwood.sh GuardianRegistry = book"
+same "$(jq -r .stakedWood <<<"$API")" "$SWOOD" "api.sherwood.sh StakedWood = book"
+same "$(jq -r .factory <<<"$API")" "$SYNDICATE_FACTORY" "api.sherwood.sh SyndicateFactory = book"
+same "$(jq -r .exposureLedger <<<"$API")" "$EXPOSURE_LEDGER" "api.sherwood.sh ExposureLedger = book"
+same "$(cast call $GUARDIAN_REGISTRY 'swood()(address)' --rpc-url $RPC_URL)" "$SWOOD" "registry.swood() = StakedWood"
+same "$(cast call $SWOOD 'registry()(address)' --rpc-url $RPC_URL)" "$GUARDIAN_REGISTRY" "StakedWood.registry() = registry"
+same "$(cast call $SWOOD 'factory()(address)' --rpc-url $RPC_URL)" "$SYNDICATE_FACTORY" "StakedWood.factory() = factory"
+same "$(cast call $SYNDICATE_FACTORY 'guardianRegistry()(address)' --rpc-url $RPC_URL)" "$GUARDIAN_REGISTRY" "factory.guardianRegistry() = registry"
+same "$(cast call $GUARDIAN_REGISTRY 'exposureLedger()(address)' --rpc-url $RPC_URL)" "$EXPOSURE_LEDGER" "registry.exposureLedger() = ExposureLedger"
+cast call $GUARDIAN_REGISTRY "reviewPeriod()(uint256)" --rpc-url $RPC_URL   # 1800 (30 min) on 4663 since 2026-10-14
 ```
 
-`exposureLedger()` must read `0x99D789E7C8E65dB5597dCa692F082B47BE30AB33`. If it reads zero or anything else, you are on the wrong deployment: an Approve would book no lock. Stop and do not underwrite anything.
+Any `STOP` means the RPC is not 4663, a source was changed, or you are on the wrong deployment. Stake nothing, open no review and cast no vote; tell the user which line failed. An ExposureLedger mismatch is the same stop: an Approve there would book no lock. The pinned registry changes only with a new skill release, and a new GuardianRegistry would be a redeployment you hear about first, not a silent book edit.
 
 ---
 

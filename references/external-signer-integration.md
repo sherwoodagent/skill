@@ -31,7 +31,7 @@ Commands that normally read your address from the configured key need it explici
 ### MetaMask Agent Wallet
 
 ```bash
-npm i -g @metamask/agent-wallet@latest
+npm i -g @metamask/agent-wallet@7.3.0
 mm login          # prints a device code; a human approves it once
 mm chains list    # needs mm login; check that it shows 4663 (Robinhood Chain); if it does not, use Privy
 ```
@@ -66,7 +66,7 @@ Try the direct path first. If Privy's chain registry carries Robinhood Chain, `e
 ### 1. Provision the wallet (one-time, needs a human)
 
 ```bash
-P="pnpm --package=@privy-io/agent-wallet-cli dlx privy-agent-wallet"
+P="pnpm --package=@privy-io/agent-wallet-cli@0.3.10 dlx privy-agent-wallet"
 $P login          # prints a device code; a human approves it at agents.privy.io
 $P list-wallets   # prints the provisioned ETH address
 ```

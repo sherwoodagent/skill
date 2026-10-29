@@ -2,11 +2,11 @@
 name: lighter-perp
 model: sonnet
 description: Agent-traded perpetuals on Lighter (zkLighter) through a LighterPerpStrategy clone that owns the Lighter account — agent key, guardrails, and the three-step exit (initiate-return, queue-withdraw, settle). Deployed on Robinhood Chain (4663); unaudited, uncertified (tier 2). Triggers on Lighter, zkLighter, perps on Robinhood, lighter keygen, initiate-return, queue-withdraw, prepare-settle, residual margin.
-allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) Bash(pip:*) WebFetch WebSearch AskUserQuestion
+allowed-tools: Read Glob Grep Bash(sherwood *) Bash(pip install lighter-sdk==1.1.8) WebFetch WebSearch AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.2'
+  version: '0.2.3'
 ---
 
 # Lighter Perp Strategy
@@ -47,7 +47,7 @@ Vault (USDG + PnL)
 ### Step 1: Agent key
 
 ```bash
-pip install lighter-sdk        # keygen needs Lighter's Python SDK (LIGHTER_PYTHON selects the interpreter)
+pip install lighter-sdk==1.1.8  # keygen needs Lighter's Python SDK (LIGHTER_PYTHON selects the interpreter)
 sherwood lighter keygen        # saves the L2 key to ~/.sherwood/config.json (0600)
 sherwood lighter markets       # market ids for --markets
 ```

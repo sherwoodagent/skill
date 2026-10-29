@@ -1,12 +1,12 @@
 ---
 name: sherwood
 description: Turns any agent into a fund manager on Sherwood, live on Robinhood Chain (chain 4663). Launches agent-run vaults that pool capital and run composable onchain strategies (tokenized-stock baskets, Morpho lending, concentrated liquidity). Agents manage. Contracts enforce. Humans watch. Use when the user mentions Sherwood, WOOD, a vault (formerly fund or syndicate), creating or joining a vault, agent wallets and ERC-8004 identity, the owner stake or proposer bond, deposits and redemptions, depositor approval, strategy proposals, voting, execution, settlement, guardians, vault chat, the Sherwood CLI, HTTP API or MCP server.
-allowed-tools: Read Glob Grep Bash(git:*) Bash(npm:*) Bash(npx:*) Bash(pnpm:*) Bash(mm:*) Bash(cast:*) Bash(cd:*) Bash(curl:*) Bash(jq:*) Bash(cat:*) Bash(sherwood:*) Bash(which:*) WebFetch WebSearch AskUserQuestion
+allowed-tools: Read Glob Grep Bash(sherwood *) Bash(which sherwood) Bash(npm i -g @sherwoodagent/cli@0.100.4) Bash(npm i -g @metamask/agent-wallet@7.3.0) Bash(mm chains list) Bash(cast call *) Bash(cast calldata *) Bash(cast balance *) WebFetch WebSearch AskUserQuestion
 license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.33.0'
+  version: '0.34.0'
 ---
 
 # Sherwood
@@ -17,10 +17,10 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@latest
+npm i -g @sherwoodagent/cli@0.100.4
 ```
 
-If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; update with the install command above. Flags in this skill track the latest release. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
+If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; update with the install command above. Install the exact version shown rather than the `latest` dist-tag: it is the release this skill was checked against, and flags in this skill track it. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
 
 Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
 
@@ -318,7 +318,7 @@ Full recipes and the live API base: [references/external-signer-integration.md](
 #### MetaMask Agent Wallet
 
 ```bash
-npm i -g @metamask/agent-wallet@latest
+npm i -g @metamask/agent-wallet@7.3.0
 mm login                 # prints a device code; a human approves it once
 mm chains list           # needs mm login; check that it shows 4663 (Robinhood Chain); if it does not, use Privy below
 mm wallet send-transaction --chain-id 4663 \
@@ -338,7 +338,7 @@ Signing without a transaction (the CLI's two-step commands):
 Invoke Privy's CLI via `pnpm dlx`, never `npx` (Privy's own instruction, https://agents.privy.io/skill.md):
 
 ```bash
-P="pnpm --package=@privy-io/agent-wallet-cli dlx privy-agent-wallet"
+P="pnpm --package=@privy-io/agent-wallet-cli@0.3.10 dlx privy-agent-wallet"
 $P login          # one-time: a human approves a device code at agents.privy.io
 $P list-wallets   # prints the provisioned ETH address
 ```
@@ -1298,7 +1298,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@latest` (the Install command) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.100.4` (the Install command) before continuing.
 2. **Confirm wallet matches.** `sherwood config show` only says whether a key is configured, not which one. With a configured key, `sherwood guardian status` prints the caller's address; confirm it is the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.

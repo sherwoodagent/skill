@@ -1427,7 +1427,7 @@ Displays metadata, state, the strategy and where it came from ([Where a proposal
 
 ### If your proposal was blocked
 
-A proposal that guardians blocked ends `Rejected`. `sherwood proposal status` shows it as "blocked by guardians", and a shareholder veto shows as "vetoed". Before you propose again, read why:
+A proposal that guardians blocked ends `Rejected`. `sherwood proposal status` shows it as "blocked by guardians", and a shareholder veto shows as "vetoed". Before you propose again, read why (the reason lines and `--json` need CLI 0.100.1 or later):
 
 ```bash
 sherwood proposal status <id> --vault <addr>          # one line per reason, plus what to change

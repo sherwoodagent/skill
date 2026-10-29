@@ -1200,11 +1200,23 @@ sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626
 
 While deposits are restricted, the depositor must be approved by the vault owner first: see [Approve depositors](#approve-depositors). Depositors need no WOOD. Confirm the amount with the user before any deposit ([Ask before funds move](#ask-before-funds-move)).
 
-**While a proposal is open** (from `propose` until it reaches a terminal state, not only while a strategy is live) the instant paths are locked: `vault deposit` and `vault redeem` revert and `maxDeposit` / `maxRedeem` read 0. Use the withdrawal queue instead: `sherwood queue request-deposit` and `sherwood queue request-redeem`, then `sherwood queue claim` once the proposal settles, or `sherwood queue cancel` to back out. A queued deposit claims at the live price as soon as the vault unlocks; a queued redeem claims at the price stamped when that proposal **settles**. A redeem queued under a proposal that ends **Cancelled, Rejected or Expired is never stamped**: its claim reverts `NotSettled` forever and its shares ride the next proposal with no veto weight unless the depositor cancels it first. Check `sherwood queue list --vault 0xVAULT` after any proposal ends without settling and cancel stranded redeems before the next propose. Why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing).
+**While a proposal is open** (from `propose` until it reaches a terminal state, not only while a strategy is live) the instant paths are locked: `vault deposit` and `vault redeem` revert and `maxDeposit` / `maxRedeem` read 0. Use the withdrawal queue instead (it takes requests only while a proposal is open, `NoOpenProposal` otherwise): `sherwood queue request-deposit` and `sherwood queue request-redeem`, then `sherwood queue claim` once the request is claimable (table below), or `sherwood queue cancel` to back out. A queued deposit claims at the live price as soon as the vault unlocks; a queued redeem claims at the price stamped when that proposal **settles**. A redeem queued under a proposal that ends **Cancelled, Rejected or Expired is never stamped**: its claim reverts `NotSettled` forever and its shares ride the next proposal with no veto weight unless the depositor cancels it first. Check `sherwood queue list --vault 0xVAULT` after any proposal ends without settling and cancel stranded redeems before the next propose. Why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing).
+
+**The two lanes follow different rules** (`VaultWithdrawalQueue`):
+
+| | Queued deposit | Queued redeem |
+|---|---|---|
+| Escrowed | The asset, held by the queue outside `totalAssets` (never swept into a strategy) | Your shares |
+| Claimable | As soon as no proposal is open: after that proposal **settles or ends any other way** (cancelled, rejected, expired) | Only after the proposal it was queued under **settles**, with the vault unlocked |
+| Price | Live, at the moment of the claim (`previewDeposit`), not a price frozen at settlement | The price stamped at that settlement |
+| Who claims | Anyone: `claim` is permissionless and the shares always mint to the request's receiver. Sherwood's keeper claims open deposit requests once the vault unlocks; claim it yourself if one is still open | You. No keeper claims redeems |
+| Cancel | Any time until it is claimed, by the receiver; the asset goes back to the receiver | Only before that proposal settles; after that, claim is the only exit |
+
+The CLI help for `queue request-deposit` ("settles at the frozen per-proposal price") and `queue cancel` ("only before the pid is stamped") describes the redeem lane; the table is what the contract does.
 
 **Units.** `vault redeem --shares` takes whole shares; `queue request-redeem --shares` takes a **raw integer** in share base units (shares have 12 decimals on a USDG vault, so 1 share = `1000000000000`), whatever its help text says.
 
-**Sign-only wallets have no CLI queue path.** None of the `queue` subcommands (nor `vault remove-depositor`, `vault set-agent-fee` or `vault update-metadata`) accepts `--calldata-only`. Build the txs with `cast calldata` and broadcast them from the wallet ([Sign-then-broadcast loop](#sign-then-broadcast-loop)):
+**Sign-only wallets have no CLI queue path.** None of the `queue` subcommands (nor `vault remove-depositor`, `vault set-agent-fee` or `vault update-metadata`) accepts `--calldata-only`, and `queue list` reads only the configured key's requests (the MCP's `get_vault_position` lists a wallet's). Build the txs with `cast calldata`, or with the MCP's `prepare_request_deposit`, `prepare_request_redeem`, `prepare_queue_claim` and `prepare_queue_cancel`, and broadcast them from the wallet ([Sign-then-broadcast loop](#sign-then-broadcast-loop)):
 
 ```bash
 # Queue a redeem (to: the vault). <shares> is the raw 12-decimal integer
@@ -1216,6 +1228,20 @@ cast calldata "requestDeposit(uint256,address)" <assets> <receiver>            #
 cast calldata "claim(uint256)" <requestId>
 cast calldata "cancel(uint256)" <requestId>
 ```
+
+### What Sherwood's keeper does (and does not)
+
+Sherwood runs a keeper that pays its own gas and never moves fund assets to itself. Count on it for these:
+
+- **Queued deposits.** It claims open deposit requests once the vault unlocks; the shares mint to each request's receiver. It does not claim redeems.
+- **Launchpad launches.** It pays each snapshot holder's reserve slice (`claimFor`) during the claim window and sweeps creator fees to the vault (`collectFees`). See the `strategies/launchpad` skill.
+
+Do not count on it to:
+
+- **Settle your proposal.** Settling is the proposer's job (`sherwood proposal settle`). The keeper's overdue-settle backstop is off unless Sherwood turns it on, and even then it waits 6 hours past the strategy's end.
+- **Run guardian review.** Opening and resolving reviews belongs to the guardian network (`sherwood proposal open-reviews` / `resolve-reviews`; see the `guardian` skill).
+- **Roll the WOOD price.** The WOOD/USD feed the ledger reads has needed no keeper since 2026-10-13: it reads the WOOD/WETH V3 pool's 1 h TWAP and Chainlink ETH/USD live.
+- **Clean up after you.** Stranded redeems are the depositor's to cancel, and a stuck vault is the owner's to recover (below).
 
 ### Stuck proposal recovery (vault-owner skill)
 

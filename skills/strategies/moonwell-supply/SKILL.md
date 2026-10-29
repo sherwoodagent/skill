@@ -2,11 +2,11 @@
 name: moonwell-supply
 model: sonnet
 description: Moonwell USDC supply strategy via governance proposals — supply to lending market, earn yield, redeem on settlement. Not available on Robinhood Chain (4663), where Sherwood is live; retained for reference only. Triggers on Moonwell, mToken supply, lending-market yield strategies.
-allowed-tools: Read Glob Grep Bash(sherwood:*) Bash(npm:*) Bash(npx:*) WebFetch WebSearch AskUserQuestion
+allowed-tools: Read Glob Grep Bash(sherwood *) WebFetch WebSearch AskUserQuestion
 license: MIT
 metadata:
   author: sherwood
-  version: '0.2.3'
+  version: '0.2.4'
 ---
 
 # Moonwell Supply Strategy

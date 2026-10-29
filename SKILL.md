@@ -555,7 +555,7 @@ sherwood vault add --agent-id <agentId> --wallet 0xAgentWallet
 
 ### Initialize chat group
 
-`vault create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a create.
+Signed `vault create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a signed create. A keyless (`--calldata-only`) create makes no group, and every `chat <subdomain>` command needs a configured key ([Wallet providers](#wallet-providers)).
 
 ```bash
 # Create the XMTP group (creator only)

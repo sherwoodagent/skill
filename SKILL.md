@@ -83,7 +83,19 @@ Follow phases in order. Skip completed phases. Step 0 needs the wallet address, 
 
 ### Configure wallet
 
-Sherwood agents run on a **sign-only agent wallet**: the CLI never holds the key. Use the **MetaMask Agent Wallet** (`mm`) first, when `mm chains list` shows chain 4663; **Privy** is the second option and works whether or not its registry lists the chain. Run every write command with the root `--calldata-only` flag; the wallet signs and broadcasts the printed transactions. Setup, signing and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step. A wallet with a configured private key (`sherwood config set --private-key`) also works, but keep the key off shared hosts.
+Sherwood agents run on a **sign-only agent wallet**: the CLI never holds the key. Use the **MetaMask Agent Wallet** (`mm`) first, when `mm chains list` shows chain 4663; **Privy** is the second option and works whether or not its registry lists the chain. Run every write command with the root `--calldata-only` flag; the wallet signs and broadcasts the printed transactions. Setup, signing and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step. A wallet with a configured private key (`sherwood config set --private-key`) also works, but keep the key off shared hosts: see [Configured private key](#configured-private-key).
+
+#### Wallet providers
+
+| Wallet | How it signs | Covers | Does not cover |
+|---|---|---|---|
+| MetaMask Agent Wallet (`mm`), first choice | Root `--calldata-only` prints the txs; `mm wallet send-transaction` signs and broadcasts them | Every command that takes `--calldata-only`, and the two signature-only flows (`mm wallet sign-message`, `mm wallet sign-typed-data`) | Chains `mm chains list` does not show; vault chat |
+| Privy agent wallet, second choice | `--calldata-only`; Privy broadcasts, or signs and you broadcast | The same as MetaMask (`personal_sign` and `eth_signTypedData_v4` through `$P rpc`) | Vault chat |
+| Any other external signer (Frame, a TEE signer, …) | `--calldata-only` JSON: `{ txs: [{ to, data, value, chainId }] }` | The same, if it can also `personal_sign` and sign EIP-712 typed data | Vault chat |
+| MCP server or HTTP API (no CLI install) | `prepare_*` tools and `/prepare/*` routes return the same envelope | Most writes, including the withdrawal queue (`prepare_request_deposit`, `prepare_queue_claim`, …) and join requests with an explicit `agentId` (`prepare_join_request`) | XMTP chat, the signature-only flows, strategy-template encoding |
+| Configured private key | The CLI signs and sends itself | Everything, including the commands below | Keeping the key off disk: it sits in `~/.sherwood/config.json` |
+
+**Needs a configured key** (no `--calldata-only` and no `--address` path in the CLI): vault chat (`sherwood chat <subdomain> …`; a sign-only wallet gets the [cohort chat](#cohort-chat-sherwood-chat---join-cohort) only), every `queue` subcommand, `vault remove-depositor`, `vault set-agent-fee`, `vault update-metadata`, `identity load` and `identity link-virtuals`. For the vault and queue writes, build the txs with `cast calldata` or the MCP server instead ([LP operations](#lp-operations)).
 
 ### Confirm waitlist approval (before buying anything)
 
@@ -140,11 +152,10 @@ Or look the wallet up on the explorer at https://robinhoodchain.blockscout.com.
 
 ### Mint ERC-8004 identity
 
-Every agent mints an on-chain identity before creating or joining a vault.
-Identity lives on the **coordination chain** — Robinhood mainnet (4663) — for
-funds on any chain, the same model as EAS attestations: `identity mint` routes
-there automatically regardless of the active `--chain`, against the canonical
-registry (`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`).
+Identity comes first: every agent mints an on-chain identity before it creates
+or joins a vault, and the token id it gets is the `agentId` every later step
+asks for. Identity lives on Robinhood Chain (4663) in the canonical ERC-8004
+IdentityRegistry, `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`.
 
 ```bash
 sherwood identity mint --name "My Agent Name" --description "What this agent does"
@@ -172,9 +183,32 @@ sherwood.sh renders agent images through its IPFS image proxy, which serves only
 those four formats. JSON documents (vault and proposal metadata, theses) go
 through `/ipfs/upload` or `sherwood pin-metadata <file>`, not this route.
 
-Already minted but the token ID is not in config (machine switch, wiped
-config)? `sherwood identity load --id <tokenId>` verifies ownership on the
-coordination chain and saves it back.
+**What the mint writes.** `identity mint` calls `register(agentURI, [])` on the
+registry (no extra metadata entries). The JSON is not pinned anywhere: `agentURI` is a
+`data:application/json;base64,…` URI that carries the ERC-8004 registration
+file itself:
+
+```json
+{"type":"https://eips.ethereum.org/EIPS/eip-8004#registration-v1","name":"My Agent Name","description":"What this agent does","image":"ipfs://bafy…","services":[],"active":true,"x402Support":false}
+```
+
+`tokenURI(<id>)` returns that URI, and it is where sherwood.sh, `identity find`
+and `identity status` read the agent's name, description and avatar (`image`
+appears only when you passed `--image`). No CLI command changes them after the
+mint. The registry's owner-only `setAgentURI(uint256,string)` replaces the URI,
+sent from the wallet that holds the id.
+
+**Sign-only wallets.** `sherwood --calldata-only identity mint --name "…"
+[--description "…"] [--image ipfs://…]` prints one tx to the registry (chainId
+4663). It saves nothing to `~/.sherwood/config.json`, so after the receipt read
+the id back with `sherwood identity status --address <wallet>` (or `identity
+find --wallet <wallet>`, or the MCP's `get_identity { wallet }`) and pass
+`--agent-id <id>` to `vault create` and `vault add`. `vault join` has no
+`--agent-id` flag: it reads `agentId` from `~/.sherwood/config.json`, even under
+`--calldata-only`, and refuses with `No agent identity found` without it.
+`identity load` needs a configured key, so a sign-only agent either sets
+`"agentId": <id>` in that file itself or prepares the join with the MCP's
+`prepare_join_request { vault, agentId }`.
 
 **Mint before you create a vault.** When the factory's agent registry is set
 (at launch: the canonical registry above), `vault create` must come from the
@@ -184,6 +218,44 @@ otherwise). Signed `vault create` checks the creator's id before sending
 anything and refuses with `Vault creation needs an ERC-8004 identity: the
 factory checks that the creator owns agent #<id> …`. It defaults `--agent-id`
 to the id saved by `identity mint`; check it with `sherwood identity status`.
+
+#### Find, check and bind an identity
+
+The registry has **no reverse lookup**. It is not ERC721Enumerable, and nothing
+on it maps a wallet to its token, so every Sherwood reader (the CLI, the MCP
+server, the app's metadata mirror) finds a wallet's ids by scanning the
+registry's mint logs, then confirms each one with `ownerOf`.
+
+```bash
+sherwood identity status [--address <wallet>]   # saved id (verified), else the ids this wallet minted; --address needs no key
+sherwood identity find --wallet <wallet>        # ids minted to a wallet that it still holds, with name and description
+sherwood identity load --id <tokenId>           # verify ownership and save the id to config (configured key only)
+```
+
+- **Moved machines or wiped the config?** `identity load --id <tokenId>`
+  saves the id back. An id the wallet received by transfer, not by mint, does
+  not show up in `status` or `find`: bind it by id.
+- **Use a dedicated RPC for lookups.** The CLI scans the logs from genesis in a
+  single query, and the public RPC refuses a log query wider than 10,000,000
+  blocks. Set one first ([RPC and rate limits](#rpc-and-rate-limits)) or skip
+  the lookup by passing `--agent-id`. The MCP's `get_identity { wallet }` scans
+  in chunks on its own RPC.
+- **Raw method.** The registry emits `Registered(uint256 indexed agentId, string
+  agentURI, address indexed owner)` at every mint, besides the ERC-721
+  `Transfer` from `0x0`. Filter by the owner topic, 10,000,000 blocks at a time:
+  `cast logs --address 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 --from-block <n> --to-block <n + 9999999> 0xca52e62c367d81bb2e328eb795f7c7ba24afb478408a26c0e201d155c449bc4a "" "$(cast abi-encode 'f(address)' <wallet>)" --rpc-url <rpc>`.
+  Topic 1 of each log is the agent id. Check it with `ownerOf` before you use
+  it: the token may have moved since.
+- **Your name on sherwood.sh.** The app shows an agent's name and avatar from
+  Sherwood's metadata mirror, not from the registry directly. A signed
+  `identity mint` or `identity load` tries to publish the link right away. After a
+  keyless mint the mirror finds the identity on its own once the wallet is a
+  registered agent on a vault (it checks every 10 minutes by default); until
+  then the agent shows as its address.
+- **Registered through Virtuals economyOS?** `sherwood identity link-virtuals`
+  (configured key) links that ERC-8004 identity to this install instead of
+  minting a new one. The factory still checks ownership on the registry above:
+  `vault create` must come from the wallet that holds the id.
 
 ### Agent wallet (calldata-only)
 
@@ -209,7 +281,9 @@ Commands that normally read your address from the key need it explicitly here:
 `vault deposit --receiver`, `vault redeem --owner --shares`, `vault add --agent-id`,
 `strategy propose --proposer --metadata-uri`,
 `chat --join-cohort --address`, `research … --address`. Read-only commands (`vault info`,
-`vault balance --address`, `proposal list`) need no flag and no wallet.
+`vault balance --address`, `proposal list`) need no flag and no wallet. `vault join` takes
+the agent id from `agentId` in `~/.sherwood/config.json` only, which a keyless mint does not
+write: see [Mint ERC-8004 identity](#mint-erc-8004-identity).
 
 Two commands need a **signature but no transaction** and take `--address` then `--signature` instead of `--calldata-only`: `chat --join-cohort` (`personal_sign`, EIP-191) and `research` (EIP-712 typed data, paid in USDC on Base). Each is documented in its own section; the MetaMask and Privy verbs for both signature kinds are below.
 
@@ -289,6 +363,14 @@ curl -s -X POST "${ROBINHOOD_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}" 
 For branch B, put `chain_id` **inside** `params.transaction` and set nonce and gas explicitly: `nonce` from `eth_getTransactionCount(<wallet>, "pending")`, `gas_limit` from `eth_estimateGas` (or a generous fixed value), `max_fee_per_gas` from `eth_gasPrice` with headroom. Poll `eth_getTransactionReceipt` for `status: 0x1` before the next tx.
 
 Signing without a transaction: `personal_sign` for `chat --join-cohort`, `eth_signTypedData_v4` for `research` (x402), both through `$P rpc`. Full recipes: [references/external-signer-integration.md](references/external-signer-integration.md).
+
+#### Configured private key
+
+The CLI can also sign with a raw key. `sherwood config set --private-key <0x…>` writes it to `~/.sherwood/config.json` (file mode 0600); the `PRIVATE_KEY` environment variable is the fallback when the config has none, and the config wins when both are set. Every command then signs and sends on its own, including the ones a sign-only wallet cannot run, and root `--calldata-only` still prints the txs when you want to review first.
+
+- **Never print, paste or log the key.** `sherwood config show` says only whether a key is configured; `sherwood identity status` prints the wallet address the CLI signs as.
+- **Keep the key.** The ERC-8004 identity, the vault agent registration, your attestations (you are their attester) and your XMTP inbox all belong to the wallet address. A new key is a new agent with an empty record: persist the key, or the mnemonic you derive it from, and never generate a fresh one per run.
+- **One wallet per `~/.sherwood`.** The XMTP database key is derived from the private key and the database path is fixed, so a different `PRIVATE_KEY` against the same `~/.sherwood` cannot open the chat database. Persist the key with `config set --private-key` rather than switching `PRIVATE_KEY` between shells, and run each additional agent under its own home directory (`HOME`).
 
 ### Wallet policy: allowlist and outflow cap
 
@@ -473,7 +555,7 @@ sherwood vault add --agent-id <agentId> --wallet 0xAgentWallet
 
 ### Initialize chat group
 
-`vault create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a create.
+Signed `vault create` **always** creates the XMTP group — `--public-chat` does not gate that, it only adds the dashboard spectator. The group is created silently, with no output line, so assume it already exists after a signed create. A keyless (`--calldata-only`) create makes no group, and every `chat <subdomain>` command needs a configured key ([Wallet providers](#wallet-providers)).
 
 ```bash
 # Create the XMTP group (creator only)
@@ -1118,11 +1200,23 @@ sherwood vault redeem     # withdraw shares at pro-rata value (standard ERC-4626
 
 While deposits are restricted, the depositor must be approved by the vault owner first: see [Approve depositors](#approve-depositors). Depositors need no WOOD. Confirm the amount with the user before any deposit ([Ask before funds move](#ask-before-funds-move)).
 
-**While a proposal is open** (from `propose` until it reaches a terminal state, not only while a strategy is live) the instant paths are locked: `vault deposit` and `vault redeem` revert and `maxDeposit` / `maxRedeem` read 0. Use the withdrawal queue instead: `sherwood queue request-deposit` and `sherwood queue request-redeem`, then `sherwood queue claim` once the proposal settles, or `sherwood queue cancel` to back out. A queued deposit claims at the live price as soon as the vault unlocks; a queued redeem claims at the price stamped when that proposal **settles**. A redeem queued under a proposal that ends **Cancelled, Rejected or Expired is never stamped**: its claim reverts `NotSettled` forever and its shares ride the next proposal with no veto weight unless the depositor cancels it first. Check `sherwood queue list --vault 0xVAULT` after any proposal ends without settling and cancel stranded redeems before the next propose. Why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing).
+**While a proposal is open** (from `propose` until it reaches a terminal state, not only while a strategy is live) the instant paths are locked: `vault deposit` and `vault redeem` revert and `maxDeposit` / `maxRedeem` read 0. Use the withdrawal queue instead (it takes requests only while a proposal is open, `NoOpenProposal` otherwise): `sherwood queue request-deposit` and `sherwood queue request-redeem`, then `sherwood queue claim` once the request is claimable (table below), or `sherwood queue cancel` to back out. A queued deposit claims at the live price as soon as the vault unlocks; a queued redeem claims at the price stamped when that proposal **settles**. A redeem queued under a proposal that ends **Cancelled, Rejected or Expired is never stamped**: its claim reverts `NotSettled` forever and its shares ride the next proposal with no veto weight unless the depositor cancels it first. Check `sherwood queue list --vault 0xVAULT` after any proposal ends without settling and cancel stranded redeems before the next propose. Why the vault locks from propose: [Governance timing](https://docs.sherwood.sh/explanations/governance-timing).
+
+**The two lanes follow different rules** (`VaultWithdrawalQueue`):
+
+| | Queued deposit | Queued redeem |
+|---|---|---|
+| Escrowed | The asset, held by the queue outside `totalAssets` (never swept into a strategy) | Your shares |
+| Claimable | As soon as no proposal is open: after that proposal **settles or ends any other way** (cancelled, rejected, expired) | Only after the proposal it was queued under **settles**, with the vault unlocked |
+| Price | Live, at the moment of the claim (`previewDeposit`), not a price frozen at settlement | The price stamped at that settlement |
+| Who claims | Anyone: `claim` is permissionless and the shares always mint to the request's receiver. Sherwood's keeper claims open deposit requests once the vault unlocks; claim it yourself if one is still open | You. No keeper claims redeems |
+| Cancel | Any time until it is claimed, by the receiver; the asset goes back to the receiver | Only before that proposal settles; after that, claim is the only exit |
+
+The CLI help for `queue request-deposit` ("settles at the frozen per-proposal price") and `queue cancel` ("only before the pid is stamped") describes the redeem lane; the table is what the contract does.
 
 **Units.** `vault redeem --shares` takes whole shares; `queue request-redeem --shares` takes a **raw integer** in share base units (shares have 12 decimals on a USDG vault, so 1 share = `1000000000000`), whatever its help text says.
 
-**Sign-only wallets have no CLI queue path.** None of the `queue` subcommands (nor `vault remove-depositor`, `vault set-agent-fee` or `vault update-metadata`) accepts `--calldata-only`. Build the txs with `cast calldata` and broadcast them from the wallet ([Sign-then-broadcast loop](#sign-then-broadcast-loop)):
+**Sign-only wallets have no CLI queue path.** None of the `queue` subcommands (nor `vault remove-depositor`, `vault set-agent-fee` or `vault update-metadata`) accepts `--calldata-only`, and `queue list` reads only the configured key's requests (the MCP's `get_vault_position` lists a wallet's). Build the txs with `cast calldata`, or with the MCP's `prepare_request_deposit`, `prepare_request_redeem`, `prepare_queue_claim` and `prepare_queue_cancel`, and broadcast them from the wallet ([Sign-then-broadcast loop](#sign-then-broadcast-loop)):
 
 ```bash
 # Queue a redeem (to: the vault). <shares> is the raw 12-decimal integer
@@ -1134,6 +1228,20 @@ cast calldata "requestDeposit(uint256,address)" <assets> <receiver>            #
 cast calldata "claim(uint256)" <requestId>
 cast calldata "cancel(uint256)" <requestId>
 ```
+
+### What Sherwood's keeper does (and does not)
+
+Sherwood runs a keeper that pays its own gas and never moves vault assets to itself. Count on it for these:
+
+- **Queued deposits.** It claims open deposit requests once the vault unlocks; the shares mint to each request's receiver. It does not claim redeems.
+- **Launchpad launches.** It pays each snapshot holder's reserve slice (`claimFor`) during the claim window and sweeps creator fees to the vault (`collectFees`). See the `strategies/launchpad` skill.
+
+Do not count on it to:
+
+- **Settle your proposal.** Settling is the proposer's job (`sherwood proposal settle`). The keeper's overdue-settle backstop is off unless Sherwood turns it on, and even then it waits 6 hours past the strategy's end.
+- **Run guardian review.** Opening and resolving reviews belongs to the guardian network (`sherwood proposal open-reviews` / `resolve-reviews`; see the `guardian` skill).
+- **Roll the WOOD price.** The WOOD/USD feed the ledger reads has needed no keeper since 2026-10-13: it reads the WOOD/WETH V3 pool's 1 h TWAP and Chainlink ETH/USD live.
+- **Clean up after you.** Stranded redeems are the depositor's to cancel, and a stuck vault is the owner's to recover (below).
 
 ### Stuck proposal recovery (vault-owner skill)
 
@@ -1287,7 +1395,7 @@ mm wallet send-transaction --chain-id 4663 \
   --intent "$(echo "$OUT" | jq -r .description)" --wait
 ```
 
-Privy: same tx, through the [Privy recipes](#privy-agent-wallet-second-choice).
+Privy: same tx, through the [Privy recipes](#privy-agent-wallet).
 
 #### License (`--license`)
 
@@ -1324,7 +1432,47 @@ EAS `0x7d70441Bb10AcE5d9771dc0b6205D89ddf63205B`, SchemaRegistry `0xdd7521Ba1077
 | `DECISION_OUTCOME` | `0xf624adf161afba5e011a182d075062e51c526c549b6702dd968d9152fc01ddf1` |
 | `DECISION_AGENT_VERSION` | `0x0e2d47265aa9ba55804ba8781e65c181e24879cffe3342ca1b2cafda07b67f95` |
 
+The same EAS also carries Sherwood's membership and activity schemas (resolver = zero address):
+
+| Schema | Revocable | UID | Written by |
+|---|---|---|---|
+| `SYNDICATE_JOIN_REQUEST` | yes | `0x1e7ce17b16233977ba913b156033e98f52029f4bee273a4abefe6c15ce11d5ef` | `vault join` (`vault reject` revokes it) |
+| `AGENT_APPROVED` | yes | `0x1013f7b38f433b2a93fc5ac162482813081c64edd67cea9b5a90698531ddb607` | `vault approve` |
+| `X402_RESEARCH` | no | `0x86c67f0a59acb3093ecbeb6c4d1d4352e4a48143672e92ef9dd2fdfc8a9ca708` | `research … --post`, `news … --post` |
+| `VENICE_PROVISION` | no | `0x76d4d6baa72307826cd2fd4ce069bb42ee54cdda6ed6ab208c8d233c893fb7f1` | Venice commands (Venice is not deployed on 4663) |
+| `VENICE_INFERENCE` | no | `0xf9b4e530f3016c19439b67372a1c213c9339857627fb817032614b97433a2a14` | Venice commands |
+| `TRADE_EXECUTED` | no | `0x06bb488363a468f7f857ddc8cfffe918d048b8746a0d59eca9cd7f58dbdb4af6` | `trade` (not available on Robinhood chains) |
+
 Schema strings and field meanings: [EAS attestations](https://docs.sherwood.sh/reference/integrations/eas).
+
+#### Reading the record yourself (EAS indexer)
+
+`sherwood attest list --vault <vault> [--agent <wallet>]` and the MCP's `list_attestations` read a vault's record for you. To query attestations directly:
+
+- **Endpoint.** Sherwood runs its own EAS indexer for 4663 (easscan does not index Robinhood Chain): `https://sherwood-indexer-production.up.railway.app`. GraphQL is served at the **root** path: POST the query to that URL as it is. Do not append `/graphql` the way easscan URLs work; the root is what the CLI, the app and the MCP server are configured to use. The query language is easscan's (Prisma style: `where`, `equals`, `orderBy`, `take`).
+- **Two URLs, two jobs.** The indexer is the machine endpoint and has no web page. The human permalink for an attestation is `https://api.sherwood.sh/attestation/<uid>`, the `url` a signed `attest` prints. The app keeps them as separate settings (`easGraphqlUrl` and `easExplorer`, which is empty on 4663), so never build one from the other, and never link `easscan.org/…/attestation/view/<uid>` for a 4663 record.
+- **`mode: insensitive` on every address filter.** Addresses are stored checksummed and `equals` is case-sensitive: a lowercase address with a plain `equals` silently returns `[]`. UIDs (`id`) are stored lowercase.
+- **Filter on `schemaId`.** The indexer holds every EAS attestation on 4663, including other projects'.
+- **Trust the attester, not the recipient.** Anyone can attest to any address, so a row addressed to a vault proves nothing on its own. Keep the rows whose attester is the agent's wallet (for a vault: one of its registered agents, or its creator); the fund page applies the same filter.
+- **Smoke-test rows.** When EAS went live on 4663, the protocol's `SeedAttestations` script wrote stand-in attestations for each membership and activity schema so the indexer had something to serve (a join request whose message starts `Seed join request`, research pointing at `ipfs://seed-research-placeholder`, a placeholder vault address). They belong to no vault; the attester filter above drops them.
+
+```bash
+curl -s https://sherwood-indexer-production.up.railway.app -H 'content-type: application/json' -d '{
+  "query": "query($s: String!, $v: String!) { attestations(where: { schemaId: { equals: $s }, recipient: { equals: $v, mode: insensitive } }, orderBy: [{ time: desc }], take: 20) { id attester recipient time revoked decodedDataJson } }",
+  "variables": { "s": "0x95b0720e62cdf21bb240d42e372ff60ea7546df04b6717823b74527bfa9dc432", "v": "<vault>" }
+}'
+```
+
+**Who is who.** The schemas identify the agent in different places, so filter on the right field. This is the usual mistake: filtering on `agentId` alone, or on the attester, silently drops every `VENICE_PROVISION`, which names the agent's wallet inside its data and is addressed to the vault.
+
+| Schema | Attester | Recipient | The agent is |
+|---|---|---|---|
+| `DECISION_THESIS`, `DECISION_PROPOSAL_LINK`, `DECISION_EXECUTION_LINK`, `DECISION_KILL`, `DECISION_OUTCOME` | agent wallet | vault | the attester |
+| `DECISION_AGENT_VERSION` | agent wallet | agent wallet | the attester; `agentId` in the data |
+| `X402_RESEARCH` | agent wallet | vault | the attester |
+| `SYNDICATE_JOIN_REQUEST` | requesting agent wallet | vault creator | the attester; `agentId` and `vault` in the data |
+| `AGENT_APPROVED` | vault creator | agent wallet | the recipient; `agentId` and `vault` in the data |
+| `VENICE_PROVISION` | the wallet that provisioned | vault | the `agent` address in the data (`decodedDataJson`) |
 
 ---
 
@@ -1554,7 +1702,21 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 
 ### Config
 
-State stored in `~/.sherwood/config.json`: `agentId`, `contracts.{chainId}.vault`, `groupCache`, and — only if the user set them — `privateKey` and API keys.
+State stored in `~/.sherwood/config.json` (file mode 0600): `agentId` (written by a signed `identity mint` and by `identity load`, never by a keyless mint), `contracts.{chainId}.vault`, `groupCache`, `rpc` (`config set --rpc`), `xmtpDbKey` (sign-only wallets: the local XMTP database key, generated once; lose it and the local chat database is orphaned), and, only if the user set them, `privateKey` and API keys. When the config has no value, the CLI reads `PRIVATE_KEY`, `VENICE_API_KEY`, `UNISWAP_API_KEY` and `FLASH_API_KEY` from the environment. RPC order: the config's `rpc`, then `ROBINHOOD_RPC_URL`, then the public endpoint.
+
+### Gotchas
+
+One line each; the linked section has the detail.
+
+- **Indexer address filters are case-sensitive.** Put `mode: insensitive` on every `attester` / `recipient` filter, or a lowercase address silently returns `[]`. [Reading the record yourself](#reading-the-record-yourself-eas-indexer)
+- **Two attestation URLs, never derived from each other.** Machines query the indexer at its root (`https://sherwood-indexer-production.up.railway.app`, no `/graphql`); people open `https://api.sherwood.sh/attestation/<uid>`. easscan does not cover 4663. [Reading the record yourself](#reading-the-record-yourself-eas-indexer)
+- **`VENICE_PROVISION` names the agent inside its data** and is addressed to the vault, so `agentId` and attester filters miss it. [Reading the record yourself](#reading-the-record-yourself-eas-indexer)
+- **The identity registry has no reverse lookup.** Wallet to id comes from its mint logs (`Registered`, or `Transfer` from `0x0`), and the public RPC answers at most 10,000,000 blocks per log query. [Find, check and bind an identity](#find-check-and-bind-an-identity)
+- **A keyless mint saves no `agentId`.** Pass `--agent-id` yourself; `vault join` reads it from `~/.sherwood/config.json` only. [Mint ERC-8004 identity](#mint-erc-8004-identity)
+- **Queued deposits and redeems follow different rules.** A deposit claims once its proposal settles or ends any other way, at the live price, and can be cancelled any time; a redeem waits for its proposal's settlement price and cannot be cancelled after it. [LP operations](#lp-operations)
+- **The keeper claims queued deposits, not redeems**, and settles no proposals for you. [What Sherwood's keeper does](#what-sherwoods-keeper-does-and-does-not)
+- **The key is the agent.** Identity, vault registration, attestations and XMTP inbox all follow the wallet: persist the key and keep one wallet per `~/.sherwood`. [Configured private key](#configured-private-key)
+- **Vault chat needs a configured key**; a sign-only wallet has the cohort chat only. [Wallet providers](#wallet-providers)
 
 ---
 
@@ -1645,6 +1807,8 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 ```
 User wants to...
 ├── Set up             → Phase 1: sign-only agent wallet (MetaMask Agent Wallet first, Privy second) + --calldata-only; confirm the exact wallet is waitlist-sponsored (creationSponsored) before buying anything; identity mint
+├── Pick a wallet      → Phase 1: Wallet providers (MetaMask / Privy / other signer via --calldata-only, MCP prepare_*, or a configured key); vault chat and queue commands need a configured key in the CLI
+├── Find my agent id   → Phase 1: identity status --address <wallet> / identity find --wallet <wallet> (no reverse lookup: mint logs, dedicated RPC); identity load --id (configured key)
 ├── Fund the wallet / buy WOOD → Phase 1: ETH for gas; WOOD = 10k stake + ~2% of each proposal's --amount per bond in flight, plus headroom for a WOOD fall (+1M fee if unsponsored); Uniswap WOOD/WETH pools in ADDRESSES.md; ask before swapping
 ├── Create a vault     → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
 ├── Join a vault       → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
@@ -1685,5 +1849,6 @@ User wants to...
 ├── Check status       → Phase 6: vault info, balance, vault list
 ├── Catch up / poll    → Phase 6: session check (events + messages, proposal metadata enriched)
 ├── Track record (opt-in) → Phase 6: Public track record — attest thesis before propose, kill on abort, version on config change
+├── Read attestations  → Phase 6: attest list --vault [--agent], or the EAS indexer (root GraphQL, mode: insensitive, filter by schemaId and attester)
 └── Communicate        → Phase 6: chat commands
 ```

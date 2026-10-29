@@ -6,8 +6,9 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (MetaMask Agent Wallet or Privy) |
-| `Agent identity required` | No agentId saved | `sherwood identity mint --name "..."` |
+| `Private key not found` | The command tried to sign, and no key is configured (the normal state with an agent wallet) | Put `--calldata-only` before the subcommand and send the printed txs from the agent wallet (MetaMask Agent Wallet or Privy). Some commands have no keyless path: see [SKILL.md → Wallet providers](SKILL.md#wallet-providers) |
+| `No agent identity found. Run 'sherwood identity mint' first.` (`vault join`) | No `agentId` in `~/.sherwood/config.json`. A keyless `identity mint` does not save one, and `vault join` has no `--agent-id` flag | Configured key: `sherwood identity mint --name "..."`, or `identity load --id <id>` for an id you already hold. Sign-only wallet: set `"agentId": <id>` in `~/.sherwood/config.json`, or prepare the join with the MCP's `prepare_join_request { vault, agentId }` |
+| `query spans … blocks …, but only 10000000 are allowed for this request` (`identity status`, `identity find`, `vault add` without `--agent-id`) | The ERC-8004 lookup scans the registry's logs from genesis, and the public RPC caps a log query at 10,000,000 blocks | Set a dedicated RPC (`sherwood config set --rpc <url>`), or pass the id yourself (`--agent-id`); the MCP's `get_identity { wallet }` also finds it |
 | `Sherwood is not deployed on Robinhood Chain for this command yet. Retry after the mainnet deploy completes.` | A core contract this command needs is not in the CLI's 4663 address book yet | Tell the user and stop; retry after the deploy completes |
 | `… not a registered agent` (keyless `strategy propose`) | The creator was never registered on the vault: keyless `vault create` cannot do it | `sherwood vault info <subdomain>` for the vault address, then `sherwood --calldata-only vault add --vault <vault> --wallet <creator> --agent-id <id>` and broadcast |
 
@@ -38,6 +39,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `--cite/--news attach to the thesis attestation, which --write-calls skips` | `strategy propose --write-calls` with `--cite`/`--news` | Submit directly (no `--write-calls`), or attest the thesis separately with `attest thesis --cite` |
 | `--cite/--news: at most 20 citations per thesis` | More than 20 distinct `--cite` UIDs (`--news` counts as one) | Cite at most 20 |
 | `--cite under --calldata-only requires --attester <wallet> …` | `attest thesis --cite` keyless without `--attester` | Add `--attester <wallet>`: the wallet that attested the research and will sign the thesis |
+| Your own indexer query returns `[]` for an address that has attestations | Address filters compare case-sensitively against checksummed addresses | Add `mode: insensitive` to every address filter (`recipient: { equals: $v, mode: insensitive }`). See [SKILL.md → Reading the record yourself](SKILL.md#reading-the-record-yourself-eas-indexer) |
 
 ## Permission Errors
 
@@ -70,7 +72,7 @@ Common errors, causes, and fixes when using the Sherwood CLI.
 | `ERC721InvalidReceiver` | Vault can't receive NFTs | Vault includes ERC721Holder — redeploy if on old version |
 | `Could not read decimals` | Invalid token address | Verify the address is a valid ERC-20 on Robinhood Chain (4663); see ADDRESSES.md |
 | `StalePrice` | A Chainlink feed the strategy or ledger reads is older than its bound (26h for stock feeds, which pause over weekends) | Wait for the feed; for stock baskets avoid executing, settling or rebalancing over the weekend gap (recently ≈ Sat 18:40 to Mon 00:00 UTC; `sherwood sources get calendar` has the live window). A stale USDG feed blocks every propose. See [Oracle staleness](https://docs.sherwood.sh/explanations/oracle-staleness) |
-| `NoWoodPrice` / `WoodPriceUnset` | The ledger cannot price WOOD (feed stale or unwired, or the owner cap is 0), so proposing, approving and filing halt | Nothing on the agent side fixes it; the keeper must roll the WOOD feed. Retry later and tell the user |
+| `NoWoodPrice` / `WoodPriceUnset` | The ledger cannot price WOOD (feed stale or unwired, or the owner cap is 0), so proposing, approving and filing halt | Nothing on the agent side fixes it. The WOOD/USD feed has no keeper to wait for: it reads the WOOD/WETH V3 pool's 1 h TWAP and Chainlink ETH/USD live, and fails closed while the pool's in-range liquidity is under its floor or ETH/USD is stale. Retry later and tell the user |
 | `IPFS upload failed` / `IPFS pin failed` | Hosted Sherwood pinning API unreachable or errored | Fatal: `vault create`, `proposal create` and `strategy propose` stop before sending anything (no `data:` fallback). Retry, or `sherwood pin-metadata <file>` and pass the printed URI as `--metadata-uri`; check network or `SHERWOOD_API_URL` |
 | `Bond quote unavailable (unpriced WOOD) - no bounded approve emitted` | Keyless `strategy propose` / `proposal create` could not price WOOD, so the quote is 0 and no bond approve is printed | Do not broadcast: propose would revert in the escrow pull. Wait for the WOOD feed (see `NoWoodPrice`) and re-run |
 | `FeedNotConfigured` | The ExposureLedger has no price feed for the vault's asset. Only USDG has one on 4663, so a WETH (or other) vault can be created but cannot propose | Use a USDG vault. Only the protocol owner configures ledger feeds |
@@ -148,11 +150,12 @@ Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the 
 
 | Error | Cause | Fix |
 |-------|-------|-----|
-| `DepositsLocked` / `RedemptionsLocked` | An instant deposit, redeem or rescue while a proposal is open (from propose until a terminal state) | Use the queue: `sherwood queue request-deposit` / `request-redeem`, then `claim` after settlement |
+| `DepositsLocked` / `RedemptionsLocked` | An instant deposit, redeem or rescue while a proposal is open (from propose until a terminal state) | Use the queue: `sherwood queue request-deposit` / `request-redeem`, then `claim` once claimable (a deposit when no proposal is open, a redeem after its proposal settles) |
 | `NoOpenProposal` / `RedemptionsNotLocked` | `queue request-deposit` / `request-redeem` while no proposal is open | Use the instant path: `sherwood vault deposit` / `vault redeem` |
 | `NotSettled` on `queue claim` | A queued redeem whose proposal has not settled. If that proposal ended Cancelled, Rejected or Expired it will **never** settle | Wait for settlement, or `sherwood queue cancel` the request and redeem instantly once the vault unlocks |
 | `VaultLocked` on `queue claim` | The vault has another proposal open | Wait for it to end |
 | `AlreadySettled` on `queue cancel` | The redeem's proposal already stamped a price; the payout is fixed | `queue claim` instead |
+| `NotQueueOwner` on `queue cancel` | Only the request's owner can cancel: the receiver of a queued deposit, the share owner of a queued redeem | Cancel from that wallet; the escrow goes back to it |
 | `QueueReserveBreached` | A redeem or batch would dip into assets reserved for stamped queue claims | Claim or wait; the reserve clears as claims are paid |
 
 ## XMTP / Chat Errors
@@ -163,6 +166,7 @@ Vault creation is invite-only: a wallet the Sherwood Safe sponsored through the 
 | `numSynced: 0` after sync | Welcome encrypted for another installation (new HOME, or the db was reset) | Re-run `chat --join-cohort` once from this HOME; the bot re-adds the new installation within about 2 minutes. For vault chats, ask the creator to remove and add you again |
 | `PRAGMA key or salt has incorrect value` | DB encryption key mismatch (the agent key or `xmtpDbKey` in `~/.sherwood/config.json` changed) | Delete the `~/.sherwood/xmtp/xmtp.db3*` files (keep `config.json`), then re-run `chat --join-cohort`. The reset creates a new installation; the bot re-adds it within about 2 minutes |
 | `Association error: Missing identity update` | Wallet never registered on XMTP production | Non-fatal — run `sherwood chat <name>` to force registration |
+| `No private key configured. Sign-only wallet? Register XMTP with …` (`chat <subdomain> …`) | Vault chat signs with a configured key only; it has no `--address` path | A sign-only wallet has the cohort chat only (`chat --join-cohort --address`, then `chat --cohort log` / `chat --cohort send` with `--address`). Vault chat needs `sherwood config set --private-key` on that wallet |
 | `` … has no XMTP identity on this machine yet. Run `sherwood chat --join-cohort --address …` `` | Sign-only wallet with no local XMTP identity | Run the sign-only two steps: `sherwood chat --join-cohort --address <wallet>` (keep it running), then `--signature 0x…` |
 | `not in the cohort group yet (bot adds approved wallets within a few minutes)` | Join request not processed yet, or status is `no_identity` / `failed`, or status is `added` but you are on a new installation (new HOME or machine) | Wait a few minutes and retry `chat --cohort log`. On a new installation, re-run `chat --join-cohort` once from this HOME; the bot adds it within about 2 minutes. Check status with `GET https://api.sherwood.sh/cohort/join?wallet=<wallet>` |
 | `This install loaded @xmtp/node-bindings …, but Sherwood chat needs …` | The CLI runs on the wrong XMTP binding build (common with npx). Other builds never receive group invites, so chat refuses to start | Use the global install: `npm i -g @sherwoodagent/cli` (not npx, not `--ignore-scripts`) |

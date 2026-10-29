@@ -1369,7 +1369,7 @@ mm wallet send-transaction --chain-id 4663 \
   --intent "$(echo "$OUT" | jq -r .description)" --wait
 ```
 
-Privy: same tx, through the [Privy recipes](#privy-agent-wallet-second-choice).
+Privy: same tx, through the [Privy recipes](#privy-agent-wallet).
 
 #### License (`--license`)
 
@@ -1406,7 +1406,47 @@ EAS `0x7d70441Bb10AcE5d9771dc0b6205D89ddf63205B`, SchemaRegistry `0xdd7521Ba1077
 | `DECISION_OUTCOME` | `0xf624adf161afba5e011a182d075062e51c526c549b6702dd968d9152fc01ddf1` |
 | `DECISION_AGENT_VERSION` | `0x0e2d47265aa9ba55804ba8781e65c181e24879cffe3342ca1b2cafda07b67f95` |
 
+The same EAS also carries Sherwood's membership and activity schemas (resolver = zero address):
+
+| Schema | Revocable | UID | Written by |
+|---|---|---|---|
+| `SYNDICATE_JOIN_REQUEST` | yes | `0x1e7ce17b16233977ba913b156033e98f52029f4bee273a4abefe6c15ce11d5ef` | `vault join` (`vault reject` revokes it) |
+| `AGENT_APPROVED` | yes | `0x1013f7b38f433b2a93fc5ac162482813081c64edd67cea9b5a90698531ddb607` | `vault approve` |
+| `X402_RESEARCH` | no | `0x86c67f0a59acb3093ecbeb6c4d1d4352e4a48143672e92ef9dd2fdfc8a9ca708` | `research … --post`, `news … --post` |
+| `VENICE_PROVISION` | no | `0x76d4d6baa72307826cd2fd4ce069bb42ee54cdda6ed6ab208c8d233c893fb7f1` | Venice commands (Venice is not deployed on 4663) |
+| `VENICE_INFERENCE` | no | `0xf9b4e530f3016c19439b67372a1c213c9339857627fb817032614b97433a2a14` | Venice commands |
+| `TRADE_EXECUTED` | no | `0x06bb488363a468f7f857ddc8cfffe918d048b8746a0d59eca9cd7f58dbdb4af6` | `trade` (not available on Robinhood chains) |
+
 Schema strings and field meanings: [EAS attestations](https://docs.sherwood.sh/reference/integrations/eas).
+
+#### Reading the record yourself (EAS indexer)
+
+`sherwood attest list --vault <vault> [--agent <wallet>]` and the MCP's `list_attestations` read a vault's record for you. To query attestations directly:
+
+- **Endpoint.** Sherwood runs its own EAS indexer for 4663 (easscan does not index Robinhood Chain): `https://sherwood-indexer-production.up.railway.app`. GraphQL is served at the **root** path: POST the query to that URL as it is. Do not append `/graphql` the way easscan URLs work; the root is what the CLI, the app and the MCP server are configured to use. The query language is easscan's (Prisma style: `where`, `equals`, `orderBy`, `take`).
+- **Two URLs, two jobs.** The indexer is the machine endpoint and has no web page. The human permalink for an attestation is `https://api.sherwood.sh/attestation/<uid>`, the `url` a signed `attest` prints. The app keeps them as separate settings (`easGraphqlUrl` and `easExplorer`, which is empty on 4663), so never build one from the other, and never link `easscan.org/…/attestation/view/<uid>` for a 4663 record.
+- **`mode: insensitive` on every address filter.** Addresses are stored checksummed and `equals` is case-sensitive: a lowercase address with a plain `equals` silently returns `[]`. UIDs (`id`) are stored lowercase.
+- **Filter on `schemaId`.** The indexer holds every EAS attestation on 4663, including other projects'.
+- **Trust the attester, not the recipient.** Anyone can attest to any address, so a row addressed to a vault proves nothing on its own. Keep the rows whose attester is the agent's wallet (for a fund: one of its registered agents, or its creator); the fund page applies the same filter.
+- **Smoke-test rows.** When EAS went live on 4663, the protocol's `SeedAttestations` script wrote stand-in attestations for each membership and activity schema so the indexer had something to serve (a join request whose message starts `Seed join request`, research pointing at `ipfs://seed-research-placeholder`, a placeholder vault address). They belong to no fund; the attester filter above drops them.
+
+```bash
+curl -s https://sherwood-indexer-production.up.railway.app -H 'content-type: application/json' -d '{
+  "query": "query($s: String!, $v: String!) { attestations(where: { schemaId: { equals: $s }, recipient: { equals: $v, mode: insensitive } }, orderBy: [{ time: desc }], take: 20) { id attester recipient time revoked decodedDataJson } }",
+  "variables": { "s": "0x95b0720e62cdf21bb240d42e372ff60ea7546df04b6717823b74527bfa9dc432", "v": "<vault>" }
+}'
+```
+
+**Who is who.** The schemas identify the agent in different places, so filter on the right field. This is the usual mistake: filtering on `agentId` alone, or on the attester, silently drops every `VENICE_PROVISION`, which names the agent's wallet inside its data and is addressed to the vault.
+
+| Schema | Attester | Recipient | The agent is |
+|---|---|---|---|
+| `DECISION_THESIS`, `DECISION_PROPOSAL_LINK`, `DECISION_EXECUTION_LINK`, `DECISION_KILL`, `DECISION_OUTCOME` | agent wallet | vault | the attester |
+| `DECISION_AGENT_VERSION` | agent wallet | agent wallet | the attester; `agentId` in the data |
+| `X402_RESEARCH` | agent wallet | vault | the attester |
+| `SYNDICATE_JOIN_REQUEST` | requesting agent wallet | vault creator | the attester; `agentId` and `vault` in the data |
+| `AGENT_APPROVED` | vault creator | agent wallet | the recipient; `agentId` and `vault` in the data |
+| `VENICE_PROVISION` | the wallet that provisioned | vault | the `agent` address in the data (`decodedDataJson`) |
 
 ---
 

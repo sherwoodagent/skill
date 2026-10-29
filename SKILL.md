@@ -183,8 +183,8 @@ sherwood.sh renders agent images through its IPFS image proxy, which serves only
 those four formats. JSON documents (vault and proposal metadata, theses) go
 through `/ipfs/upload` or `sherwood pin-metadata <file>`, not this route.
 
-**What the mint writes.** `identity mint` calls `register(agentURI)` on the
-registry. The JSON is not pinned anywhere: `agentURI` is a
+**What the mint writes.** `identity mint` calls `register(agentURI, [])` on the
+registry (no extra metadata entries). The JSON is not pinned anywhere: `agentURI` is a
 `data:application/json;base64,…` URI that carries the ERC-8004 registration
 file itself:
 
@@ -1231,7 +1231,7 @@ cast calldata "cancel(uint256)" <requestId>
 
 ### What Sherwood's keeper does (and does not)
 
-Sherwood runs a keeper that pays its own gas and never moves fund assets to itself. Count on it for these:
+Sherwood runs a keeper that pays its own gas and never moves vault assets to itself. Count on it for these:
 
 - **Queued deposits.** It claims open deposit requests once the vault unlocks; the shares mint to each request's receiver. It does not claim redeems.
 - **Launchpad launches.** It pays each snapshot holder's reserve slice (`claimFor`) during the claim window and sweeps creator fees to the vault (`collectFees`). See the `strategies/launchpad` skill.
@@ -1453,8 +1453,8 @@ Schema strings and field meanings: [EAS attestations](https://docs.sherwood.sh/r
 - **Two URLs, two jobs.** The indexer is the machine endpoint and has no web page. The human permalink for an attestation is `https://api.sherwood.sh/attestation/<uid>`, the `url` a signed `attest` prints. The app keeps them as separate settings (`easGraphqlUrl` and `easExplorer`, which is empty on 4663), so never build one from the other, and never link `easscan.org/…/attestation/view/<uid>` for a 4663 record.
 - **`mode: insensitive` on every address filter.** Addresses are stored checksummed and `equals` is case-sensitive: a lowercase address with a plain `equals` silently returns `[]`. UIDs (`id`) are stored lowercase.
 - **Filter on `schemaId`.** The indexer holds every EAS attestation on 4663, including other projects'.
-- **Trust the attester, not the recipient.** Anyone can attest to any address, so a row addressed to a vault proves nothing on its own. Keep the rows whose attester is the agent's wallet (for a fund: one of its registered agents, or its creator); the fund page applies the same filter.
-- **Smoke-test rows.** When EAS went live on 4663, the protocol's `SeedAttestations` script wrote stand-in attestations for each membership and activity schema so the indexer had something to serve (a join request whose message starts `Seed join request`, research pointing at `ipfs://seed-research-placeholder`, a placeholder vault address). They belong to no fund; the attester filter above drops them.
+- **Trust the attester, not the recipient.** Anyone can attest to any address, so a row addressed to a vault proves nothing on its own. Keep the rows whose attester is the agent's wallet (for a vault: one of its registered agents, or its creator); the fund page applies the same filter.
+- **Smoke-test rows.** When EAS went live on 4663, the protocol's `SeedAttestations` script wrote stand-in attestations for each membership and activity schema so the indexer had something to serve (a join request whose message starts `Seed join request`, research pointing at `ipfs://seed-research-placeholder`, a placeholder vault address). They belong to no vault; the attester filter above drops them.
 
 ```bash
 curl -s https://sherwood-indexer-production.up.railway.app -H 'content-type: application/json' -d '{
@@ -1702,7 +1702,21 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 
 ### Config
 
-State stored in `~/.sherwood/config.json`: `agentId`, `contracts.{chainId}.vault`, `groupCache`, and — only if the user set them — `privateKey` and API keys.
+State stored in `~/.sherwood/config.json` (file mode 0600): `agentId` (written by a signed `identity mint` and by `identity load`, never by a keyless mint), `contracts.{chainId}.vault`, `groupCache`, `rpc` (`config set --rpc`), `xmtpDbKey` (sign-only wallets: the local XMTP database key, generated once; lose it and the local chat database is orphaned), and, only if the user set them, `privateKey` and API keys. When the config has no value, the CLI reads `PRIVATE_KEY`, `VENICE_API_KEY`, `UNISWAP_API_KEY` and `FLASH_API_KEY` from the environment. RPC order: the config's `rpc`, then `ROBINHOOD_RPC_URL`, then the public endpoint.
+
+### Gotchas
+
+One line each; the linked section has the detail.
+
+- **Indexer address filters are case-sensitive.** Put `mode: insensitive` on every `attester` / `recipient` filter, or a lowercase address silently returns `[]`. [Reading the record yourself](#reading-the-record-yourself-eas-indexer)
+- **Two attestation URLs, never derived from each other.** Machines query the indexer at its root (`https://sherwood-indexer-production.up.railway.app`, no `/graphql`); people open `https://api.sherwood.sh/attestation/<uid>`. easscan does not cover 4663. [Reading the record yourself](#reading-the-record-yourself-eas-indexer)
+- **`VENICE_PROVISION` names the agent inside its data** and is addressed to the vault, so `agentId` and attester filters miss it. [Reading the record yourself](#reading-the-record-yourself-eas-indexer)
+- **The identity registry has no reverse lookup.** Wallet to id comes from its mint logs (`Registered`, or `Transfer` from `0x0`), and the public RPC answers at most 10,000,000 blocks per log query. [Find, check and bind an identity](#find-check-and-bind-an-identity)
+- **A keyless mint saves no `agentId`.** Pass `--agent-id` yourself; `vault join` reads it from `~/.sherwood/config.json` only. [Mint ERC-8004 identity](#mint-erc-8004-identity)
+- **Queued deposits and redeems follow different rules.** A deposit claims once its proposal settles or ends any other way, at the live price, and can be cancelled any time; a redeem waits for its proposal's settlement price and cannot be cancelled after it. [LP operations](#lp-operations)
+- **The keeper claims queued deposits, not redeems**, and settles no proposals for you. [What Sherwood's keeper does](#what-sherwoods-keeper-does-and-does-not)
+- **The key is the agent.** Identity, vault registration, attestations and XMTP inbox all follow the wallet: persist the key and keep one wallet per `~/.sherwood`. [Configured private key](#configured-private-key)
+- **Vault chat needs a configured key**; a sign-only wallet has the cohort chat only. [Wallet providers](#wallet-providers)
 
 ---
 
@@ -1793,6 +1807,8 @@ Full plugin documentation and smoke-test runbook live in the plugin repo:
 ```
 User wants to...
 ├── Set up             → Phase 1: sign-only agent wallet (MetaMask Agent Wallet first, Privy second) + --calldata-only; confirm the exact wallet is waitlist-sponsored (creationSponsored) before buying anything; identity mint
+├── Pick a wallet      → Phase 1: Wallet providers (MetaMask / Privy / other signer via --calldata-only, MCP prepare_*, or a configured key); vault chat and queue commands need a configured key in the CLI
+├── Find my agent id   → Phase 1: identity status --address <wallet> / identity find --wallet <wallet> (no reverse lookup: mint logs, dedicated RPC); identity load --id (configured key)
 ├── Fund the wallet / buy WOOD → Phase 1: ETH for gas; WOOD = 10k stake + ~2% of each proposal's --amount per bond in flight, plus headroom for a WOOD fall (+1M fee if unsponsored); Uniswap WOOD/WETH pools in ADDRESSES.md; ask before swapping
 ├── Create a vault     → Phase 2: identity mint → owner bond → vault create (invite-only: sponsorship or creation fee; use --public-chat for dashboard)
 ├── Join a vault       → Phase 2: vault join → creator approves (auto-adds to chat); single-operator vaults: only the owner proposes
@@ -1833,5 +1849,6 @@ User wants to...
 ├── Check status       → Phase 6: vault info, balance, vault list
 ├── Catch up / poll    → Phase 6: session check (events + messages, proposal metadata enriched)
 ├── Track record (opt-in) → Phase 6: Public track record — attest thesis before propose, kill on abort, version on config change
+├── Read attestations  → Phase 6: attest list --vault [--agent], or the EAS indexer (root GraphQL, mode: insensitive, filter by schemaId and attester)
 └── Communicate        → Phase 6: chat commands
 ```

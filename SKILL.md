@@ -83,7 +83,19 @@ Follow phases in order. Skip completed phases. Step 0 needs the wallet address, 
 
 ### Configure wallet
 
-Sherwood agents run on a **sign-only agent wallet**: the CLI never holds the key. Use the **MetaMask Agent Wallet** (`mm`) first, when `mm chains list` shows chain 4663; **Privy** is the second option and works whether or not its registry lists the chain. Run every write command with the root `--calldata-only` flag; the wallet signs and broadcasts the printed transactions. Setup, signing and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step. A wallet with a configured private key (`sherwood config set --private-key`) also works, but keep the key off shared hosts.
+Sherwood agents run on a **sign-only agent wallet**: the CLI never holds the key. Use the **MetaMask Agent Wallet** (`mm`) first, when `mm chains list` shows chain 4663; **Privy** is the second option and works whether or not its registry lists the chain. Run every write command with the root `--calldata-only` flag; the wallet signs and broadcasts the printed transactions. Setup, signing and broadcast recipes: [Agent wallet (calldata-only)](#agent-wallet-calldata-only) below. There is no `config set` step. A wallet with a configured private key (`sherwood config set --private-key`) also works, but keep the key off shared hosts: see [Configured private key](#configured-private-key).
+
+#### Wallet providers
+
+| Wallet | How it signs | Covers | Does not cover |
+|---|---|---|---|
+| MetaMask Agent Wallet (`mm`), first choice | Root `--calldata-only` prints the txs; `mm wallet send-transaction` signs and broadcasts them | Every command that takes `--calldata-only`, and the two signature-only flows (`mm wallet sign-message`, `mm wallet sign-typed-data`) | Chains `mm chains list` does not show; vault chat |
+| Privy agent wallet, second choice | `--calldata-only`; Privy broadcasts, or signs and you broadcast | The same as MetaMask (`personal_sign` and `eth_signTypedData_v4` through `$P rpc`) | Vault chat |
+| Any other external signer (Frame, a TEE signer, …) | `--calldata-only` JSON: `{ txs: [{ to, data, value, chainId }] }` | The same, if it can also `personal_sign` and sign EIP-712 typed data | Vault chat |
+| MCP server or HTTP API (no CLI install) | `prepare_*` tools and `/prepare/*` routes return the same envelope | Most writes, including the withdrawal queue (`prepare_request_deposit`, `prepare_queue_claim`, …) and join requests with an explicit `agentId` (`prepare_join_request`) | XMTP chat, the signature-only flows, strategy-template encoding |
+| Configured private key | The CLI signs and sends itself | Everything, including the commands below | Keeping the key off disk: it sits in `~/.sherwood/config.json` |
+
+**Needs a configured key** (no `--calldata-only` and no `--address` path in the CLI): vault chat (`sherwood chat <subdomain> …`; a sign-only wallet gets the [cohort chat](#cohort-chat-sherwood-chat---join-cohort) only), every `queue` subcommand, `vault remove-depositor`, `vault set-agent-fee`, `vault update-metadata`, `identity load` and `identity link-virtuals`. For the vault and queue writes, build the txs with `cast calldata` or the MCP server instead ([LP operations](#lp-operations)).
 
 ### Confirm waitlist approval (before buying anything)
 
@@ -289,6 +301,14 @@ curl -s -X POST "${ROBINHOOD_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}" 
 For branch B, put `chain_id` **inside** `params.transaction` and set nonce and gas explicitly: `nonce` from `eth_getTransactionCount(<wallet>, "pending")`, `gas_limit` from `eth_estimateGas` (or a generous fixed value), `max_fee_per_gas` from `eth_gasPrice` with headroom. Poll `eth_getTransactionReceipt` for `status: 0x1` before the next tx.
 
 Signing without a transaction: `personal_sign` for `chat --join-cohort`, `eth_signTypedData_v4` for `research` (x402), both through `$P rpc`. Full recipes: [references/external-signer-integration.md](references/external-signer-integration.md).
+
+#### Configured private key
+
+The CLI can also sign with a raw key. `sherwood config set --private-key <0x…>` writes it to `~/.sherwood/config.json` (file mode 0600); the `PRIVATE_KEY` environment variable is the fallback when the config has none, and the config wins when both are set. Every command then signs and sends on its own, including the ones a sign-only wallet cannot run, and root `--calldata-only` still prints the txs when you want to review first.
+
+- **Never print, paste or log the key.** `sherwood config show` says only whether a key is configured; `sherwood identity status` prints the wallet address the CLI signs as.
+- **Keep the key.** The ERC-8004 identity, the vault agent registration, your attestations (you are their attester) and your XMTP inbox all belong to the wallet address. A new key is a new agent with an empty record: persist the key, or the mnemonic you derive it from, and never generate a fresh one per run.
+- **One wallet per `~/.sherwood`.** The XMTP database key is derived from the private key and the database path is fixed, so a different `PRIVATE_KEY` against the same `~/.sherwood` cannot open the chat database. Persist the key with `config set --private-key` rather than switching `PRIVATE_KEY` between shells, and run each additional agent under its own home directory (`HOME`).
 
 ### Wallet policy: allowlist and outflow cap
 

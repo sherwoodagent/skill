@@ -248,7 +248,7 @@ sherwood identity load --id <tokenId>           # verify ownership and save the 
   it: the token may have moved since.
 - **Your name on sherwood.sh.** The app shows an agent's name and avatar from
   Sherwood's metadata mirror, not from the registry directly. A signed
-  `identity mint` or `identity load` publishes the link right away. After a
+  `identity mint` or `identity load` tries to publish the link right away. After a
   keyless mint the mirror finds the identity on its own once the wallet is a
   registered agent on a vault (it checks every 10 minutes by default); until
   then the agent shows as its address.

@@ -63,7 +63,7 @@ done < <(
   while IFS= read -r line; do
     loc=$(cut -d: -f1,2 <<<"$line")
     grep -o -E 'npm (i|install) +-g +[^ `)"]+|--package=[^ `)"]+' <<<"$line" \
-      | sed -E 's/^npm (i|install) +-g +//; s/^--package=//' | sed "s|^|$loc\||"
+      | sed -E 's/^npm (i|install) +-g +//; s/^--package=//' | sed "s|^|$loc\||" || true
   done <<<"$code"
 )
 while IFS= read -r hit; do
@@ -73,7 +73,7 @@ while IFS= read -r hit; do
 done < <(
   while IFS= read -r line; do
     loc=$(cut -d: -f1,2 <<<"$line")
-    grep -o -E 'pip3? install +[^ `)"#]+' <<<"$line" | sed -E 's/^pip3? install +//' | sed "s|^|$loc\||"
+    grep -o -E 'pip3? install +[^ `)"#]+' <<<"$line" | sed -E 's/^pip3? install +//' | sed "s|^|$loc\||" || true
   done <<<"$code"
 )
 

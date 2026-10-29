@@ -76,7 +76,7 @@ A rejected key (HTTP 401 or 403) names the same two settings and the sign-up URL
 | Flag | Default | Meaning |
 |---|---|---|
 | `--asset <symbol\|name>` | none | A Robinhood stock token by symbol or name (`NFLX`, `Netflix`): asks FLASH for that token's keywords, category `economy`. Anything not in the stock-token universe is treated as a crypto asset: the input is the keyword, category `crypto`. Pass exactly one of `--asset` and `--query` |
-| `--query <text>` | none | Free text. With `--match keyword`, comma-separated keywords, at most 30 |
+| `--query <text>` | none | Free text. With `--match keyword`, comma-separated keywords, at most 30. FLASH matches the entities it tags items with (tickers, company and institution names such as `Netflix`, `NFLX`, `Federal Reserve`), not article text: `Treasury` or `rate cut` return nothing even when headlines mention them |
 | `--match <keyword\|sentence>` | `keyword` | How `--query` is matched. `sentence` sends the text whole and is logged by FLASH (below). Ignored with `--asset` |
 | `--days <n>` | `7` | Look back this many days |
 | `--impact <n>` | `2` | Lowest impact tier, 2 to 5. `3` means tiers 3, 4 and 5 |
@@ -91,7 +91,7 @@ A rejected key (HTTP 401 or 403) names the same two settings and the sign-up URL
 
 **Output.** Items print newest first: UTC time, impact pips (`●●●●○` is impact 4), headline, source name and article URL; ticker tags with sentiment on the next line; `whyItMatters` indented under impact 4 and 5; the FLASH credit last, once. When FLASH has nothing, the CLI prints `FLASH has no items for <target> in the last <n> days` and exits 0 (with `--json` the record still prints, `matchStatus: "no_match"` and empty `items`), so a script can tell no news from a failure.
 
-Sample output. The headlines, sources and links are placeholders in the shape the CLI prints; run `sherwood news --asset NFLX --limit 3` for live items:
+Sample output, taken live on 2026-10-28 (items change with the news; ticker sentiment and `whyItMatters` print on the items that carry them):
 
 ```
 $ sherwood news --asset NFLX --limit 3
@@ -105,14 +105,14 @@ Research Query
 
 ✔ news data received from flash
 
-2026-10-27 21:14Z  ●●●●○  Example: Netflix reports quarterly results ahead of estimates — Example Business Daily  https://example.com/news/netflix-quarterly-results
-    NFLX (Positive)
-      Example: FLASH's why-it-matters line, shown under impact 4 and 5 items.
+2026-10-28 13:01Z  ●●○○○  Bessent trade adviser Eric Ettorre leaves Treasury for Netflix — Axios  https://www.axios.com/2026/10/28/bessent-treasury-trade-adviser-netflix
+    NFLX
 
-2026-10-27 15:42Z  ●●●○○  Example: Netflix and Nvidia lead a Nasdaq rebound — Example Wire  https://example.com/markets/nasdaq-rebound
-    NFLX (Positive)  NVDA (Positive)
+2026-10-28 10:45Z  ●●○○○  Polymarket bettors give YouTube a 19% chance of topping $12 billion in quarterly ads — Benzinga  https://www.benzinga.com/markets/tech/26/10/62647323/youtube-ad-revenue-netflix-earnings-alphabet
+    NFLX
 
-2026-10-26 11:05Z  ●●●○○  Example: Streaming prices rise faster than inflation, survey finds — Example Wire  https://example.com/business/streaming-prices-survey
+2026-10-27 12:30Z  ●●○○○  Opinion: Companies should treat departing employees with greater dignity — Fortune  https://fortune.com/2026/10/27/netflix-layoffs-corporate-america-getting-wrong-dignity/
+    NFLX
 
 Powered by FLASH  https://flash.im
 ```

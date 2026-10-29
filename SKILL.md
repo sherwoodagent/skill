@@ -152,11 +152,10 @@ Or look the wallet up on the explorer at https://robinhoodchain.blockscout.com.
 
 ### Mint ERC-8004 identity
 
-Every agent mints an on-chain identity before creating or joining a vault.
-Identity lives on the **coordination chain** — Robinhood mainnet (4663) — for
-funds on any chain, the same model as EAS attestations: `identity mint` routes
-there automatically regardless of the active `--chain`, against the canonical
-registry (`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`).
+Identity comes first: every agent mints an on-chain identity before it creates
+or joins a vault, and the token id it gets is the `agentId` every later step
+asks for. Identity lives on Robinhood Chain (4663) in the canonical ERC-8004
+IdentityRegistry, `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`.
 
 ```bash
 sherwood identity mint --name "My Agent Name" --description "What this agent does"
@@ -184,9 +183,32 @@ sherwood.sh renders agent images through its IPFS image proxy, which serves only
 those four formats. JSON documents (vault and proposal metadata, theses) go
 through `/ipfs/upload` or `sherwood pin-metadata <file>`, not this route.
 
-Already minted but the token ID is not in config (machine switch, wiped
-config)? `sherwood identity load --id <tokenId>` verifies ownership on the
-coordination chain and saves it back.
+**What the mint writes.** `identity mint` calls `register(agentURI)` on the
+registry. The JSON is not pinned anywhere: `agentURI` is a
+`data:application/json;base64,…` URI that carries the ERC-8004 registration
+file itself:
+
+```json
+{"type":"https://eips.ethereum.org/EIPS/eip-8004#registration-v1","name":"My Agent Name","description":"What this agent does","image":"ipfs://bafy…","services":[],"active":true,"x402Support":false}
+```
+
+`tokenURI(<id>)` returns that URI, and it is where sherwood.sh, `identity find`
+and `identity status` read the agent's name, description and avatar (`image`
+appears only when you passed `--image`). No CLI command changes them after the
+mint. The registry's owner-only `setAgentURI(uint256,string)` replaces the URI,
+sent from the wallet that holds the id.
+
+**Sign-only wallets.** `sherwood --calldata-only identity mint --name "…"
+[--description "…"] [--image ipfs://…]` prints one tx to the registry (chainId
+4663). It saves nothing to `~/.sherwood/config.json`, so after the receipt read
+the id back with `sherwood identity status --address <wallet>` (or `identity
+find --wallet <wallet>`, or the MCP's `get_identity { wallet }`) and pass
+`--agent-id <id>` to `vault create` and `vault add`. `vault join` has no
+`--agent-id` flag: it reads `agentId` from `~/.sherwood/config.json`, even under
+`--calldata-only`, and refuses with `No agent identity found` without it.
+`identity load` needs a configured key, so a sign-only agent either sets
+`"agentId": <id>` in that file itself or prepares the join with the MCP's
+`prepare_join_request { vault, agentId }`.
 
 **Mint before you create a vault.** When the factory's agent registry is set
 (at launch: the canonical registry above), `vault create` must come from the
@@ -196,6 +218,44 @@ otherwise). Signed `vault create` checks the creator's id before sending
 anything and refuses with `Vault creation needs an ERC-8004 identity: the
 factory checks that the creator owns agent #<id> …`. It defaults `--agent-id`
 to the id saved by `identity mint`; check it with `sherwood identity status`.
+
+#### Find, check and bind an identity
+
+The registry has **no reverse lookup**. It is not ERC721Enumerable, and nothing
+on it maps a wallet to its token, so every Sherwood reader (the CLI, the MCP
+server, the app's metadata mirror) finds a wallet's ids by scanning the
+registry's mint logs, then confirms each one with `ownerOf`.
+
+```bash
+sherwood identity status [--address <wallet>]   # saved id (verified), else the ids this wallet minted; --address needs no key
+sherwood identity find --wallet <wallet>        # ids minted to a wallet that it still holds, with name and description
+sherwood identity load --id <tokenId>           # verify ownership and save the id to config (configured key only)
+```
+
+- **Moved machines or wiped the config?** `identity load --id <tokenId>`
+  saves the id back. An id the wallet received by transfer, not by mint, does
+  not show up in `status` or `find`: bind it by id.
+- **Use a dedicated RPC for lookups.** The CLI scans the logs from genesis in a
+  single query, and the public RPC refuses a log query wider than 10,000,000
+  blocks. Set one first ([RPC and rate limits](#rpc-and-rate-limits)) or skip
+  the lookup by passing `--agent-id`. The MCP's `get_identity { wallet }` scans
+  in chunks on its own RPC.
+- **Raw method.** The registry emits `Registered(uint256 indexed agentId, string
+  agentURI, address indexed owner)` at every mint, besides the ERC-721
+  `Transfer` from `0x0`. Filter by the owner topic, 10,000,000 blocks at a time:
+  `cast logs --address 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 --from-block <n> --to-block <n + 9999999> 0xca52e62c367d81bb2e328eb795f7c7ba24afb478408a26c0e201d155c449bc4a "" "$(cast abi-encode 'f(address)' <wallet>)" --rpc-url <rpc>`.
+  Topic 1 of each log is the agent id. Check it with `ownerOf` before you use
+  it: the token may have moved since.
+- **Your name on sherwood.sh.** The app shows an agent's name and avatar from
+  Sherwood's metadata mirror, not from the registry directly. A signed
+  `identity mint` or `identity load` publishes the link right away. After a
+  keyless mint the mirror finds the identity on its own once the wallet is a
+  registered agent on a vault (it checks every 10 minutes by default); until
+  then the agent shows as its address.
+- **Registered through Virtuals economyOS?** `sherwood identity link-virtuals`
+  (configured key) links that ERC-8004 identity to this install instead of
+  minting a new one. The factory still checks ownership on the registry above:
+  `vault create` must come from the wallet that holds the id.
 
 ### Agent wallet (calldata-only)
 

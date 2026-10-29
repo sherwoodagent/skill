@@ -281,7 +281,9 @@ Commands that normally read your address from the key need it explicitly here:
 `vault deposit --receiver`, `vault redeem --owner --shares`, `vault add --agent-id`,
 `strategy propose --proposer --metadata-uri`,
 `chat --join-cohort --address`, `research … --address`. Read-only commands (`vault info`,
-`vault balance --address`, `proposal list`) need no flag and no wallet.
+`vault balance --address`, `proposal list`) need no flag and no wallet. `vault join` takes
+the agent id from `agentId` in `~/.sherwood/config.json` only, which a keyless mint does not
+write: see [Mint ERC-8004 identity](#mint-erc-8004-identity).
 
 Two commands need a **signature but no transaction** and take `--address` then `--signature` instead of `--calldata-only`: `chat --join-cohort` (`personal_sign`, EIP-191) and `research` (EIP-712 typed data, paid in USDC on Base). Each is documented in its own section; the MetaMask and Privy verbs for both signature kinds are below.
 

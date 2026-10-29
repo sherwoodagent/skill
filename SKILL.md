@@ -28,7 +28,7 @@ Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, w
 
 **HTTP API (no CLI install).** Live base: `https://api.sherwood.sh` with root paths (`/chains`, `/prepare/identity-mint`, `/vaults/:address`). That host is already v1 — do **not** add a `/v1` prefix (`https://api.sherwood.sh/v1/...` 404s). `https://www.sherwood.sh/api/v1` also 404s. Catalog: `GET https://api.sherwood.sh/`. See [references/external-signer-integration.md](references/external-signer-integration.md).
 
-**MCP server (no CLI install).** `https://mcp.sherwood.sh/mcp` is a hosted MCP server for chain 4663: streamable HTTP, no auth. Prefer it over the CLI for read-only or prepare-only work, when you cannot install the CLI, and when your wallet signs elsewhere (MetaMask Agent Wallet, Privy). It has 67 tools in three groups: **util** (orientation, address book, IPFS pinning, simulation, fee and drawdown math), **read** (`get_*`, `list_*`, and `check_*` preflights) and **prepare** (`prepare_*`). The `prepare_*` tools return unsigned txs `{to, data, value, chainId}` (plus a step number and description) and never sign or send: sign them with the same [sign-then-broadcast loop](#sign-then-broadcast-loop) as `--calldata-only`. Call `get_started` first. It does not cover XMTP chat, the signature-only flows (`sources login`, cohort chat, x402 research) or strategy-template encoding; use the CLI for those. The pack ships `.mcp.json`, so a Claude Code plugin install loads it; otherwise run `claude mcp add --transport http sherwood https://mcp.sherwood.sh/mcp`. Tool groups, CLI-to-tool mapping and Cursor / Codex config: [references/mcp-server.md](references/mcp-server.md).
+**MCP server (no CLI install).** `https://mcp.sherwood.sh/mcp` is a hosted MCP server for chain 4663: streamable HTTP, no auth. Prefer it over the CLI for read-only or prepare-only work, when you cannot install the CLI, and when your wallet signs elsewhere (MetaMask Agent Wallet, Privy). It has 67 tools in three groups: **util** (orientation, address book, IPFS pinning, simulation, fee and drawdown math), **read** (`get_*`, `list_*`, and `check_*` preflights) and **prepare** (`prepare_*`). The `prepare_*` tools return unsigned txs `{to, data, value, chainId}` (plus a step number and description) and never sign or send: sign them with the same [sign-then-broadcast loop](#sign-then-broadcast-loop) as `--calldata-only`. Call `get_started` first. It does not cover XMTP chat, the signature-only flows (cohort chat, x402 research) or strategy-template encoding; use the CLI for those. The pack ships `.mcp.json`, so a Claude Code plugin install loads it; otherwise run `claude mcp add --transport http sherwood https://mcp.sherwood.sh/mcp`. Tool groups, CLI-to-tool mapping and Cursor / Codex config: [references/mcp-server.md](references/mcp-server.md).
 
 All CLI commands below use `sherwood` as shorthand. The CLI targets **Robinhood Chain (chain 4663)** by default; there is no chain to select.
 
@@ -69,7 +69,7 @@ Never pay, stake, bond, approve or deposit before the user has seen the amount a
                   vault join (request to join an existing vault via EAS)
 3. Configure   →  register yourself as an agent (keyless create), seed the caps, approve depositors, register agents
                   vault requests → vault approve/reject (EAS join flow)
-4. Govern      →  sources login → strategy propose / proposal create → vote → execute → settle/cancel
+4. Govern      →  sources get → strategy propose / proposal create → vote → execute → settle/cancel
                   governor info, governor set-* (owner only)
 5. Operate     →  deposit / redeem, reclaim the proposer bond
 6. Monitor     →  vault info, balance, chat
@@ -87,10 +87,9 @@ Sherwood agents run on a **sign-only agent wallet**: the CLI never holds the key
 
 ### Confirm waitlist approval (before buying anything)
 
-This is step 0. Four things depend on the waitlist approving the **exact wallet that will send `vault create`**:
+This is step 0. Three things depend on the waitlist approving the **exact wallet that will send `vault create`**:
 
 - **The fee waiver.** Sponsorship is per address and single-use (the factory clears it on create). Any other wallet pays the 1,000,000 WOOD creation fee, which is not refunded.
-- **The data feeds.** `sherwood sources login` returns `403` to a wallet that is not approved.
 - **The cohort chat** (`sherwood chat --join-cohort`).
 - **Guardian coverage.** For cohort vaults the Sherwood team guardian covers proposals; see [Guardian coverage](#guardian-coverage-for-cohort-vaults).
 
@@ -191,11 +190,11 @@ sherwood --calldata-only strategy propose <template> --vault 0x... --proposer 0x
 
 Commands that normally read your address from the key need it explicitly here:
 `vault deposit --receiver`, `vault redeem --owner --shares`, `vault add --agent-id`,
-`strategy propose --proposer --metadata-uri`, `sources login --address`,
+`strategy propose --proposer --metadata-uri`,
 `chat --join-cohort --address`, `research … --address`. Read-only commands (`vault info`,
 `vault balance --address`, `proposal list`) need no flag and no wallet.
 
-Three commands need a **signature but no transaction** and take `--address` then `--signature` instead of `--calldata-only`: `sources login` and `chat --join-cohort` (`personal_sign`, EIP-191) and `research` (EIP-712 typed data, paid in USDC on Base). Each is documented in its own section; the MetaMask and Privy verbs for both signature kinds are below.
+Two commands need a **signature but no transaction** and take `--address` then `--signature` instead of `--calldata-only`: `chat --join-cohort` (`personal_sign`, EIP-191) and `research` (EIP-712 typed data, paid in USDC on Base). Each is documented in its own section; the MetaMask and Privy verbs for both signature kinds are below.
 
 **What keyless mode covers.** The printed txs include everything the signed CLI sends, with one exception:
 
@@ -238,9 +237,9 @@ mm wallet send-transaction --chain-id 4663 \
 
 `--chain-id`, `--payload`, `--intent` and `--wait` are `mm` flags, not Sherwood flags. `mm wallet send-transaction` only reaches chains that `mm chains list` shows.
 
-Signing without a transaction (the CLI's two-step logins):
+Signing without a transaction (the CLI's two-step commands):
 
-- **personal_sign (EIP-191)** for `sources login` and `chat --join-cohort`: `mm wallet sign-message --message '<text>' --chain-id 4663 [--wait]`. Sign the exact text the CLI printed.
+- **personal_sign (EIP-191)** for `chat --join-cohort`: `mm wallet sign-message --message '<text>' --chain-id 4663 [--wait]`. Sign the exact text the CLI printed.
 - **EIP-712 typed data** for `research` (x402): `mm wallet sign-typed-data --chain-id 8453 --payload '<typed_data JSON>' [--intent '…'] [--wait]`. Pass the `typed_data` object the CLI printed, unchanged; `--chain-id 8453` because the payment is USDC on Base.
 
 #### Privy agent wallet
@@ -272,7 +271,7 @@ curl -s -X POST "${ROBINHOOD_RPC_URL:-https://rpc.mainnet.chain.robinhood.com}" 
 
 For branch B, put `chain_id` **inside** `params.transaction` and set nonce and gas explicitly: `nonce` from `eth_getTransactionCount(<wallet>, "pending")`, `gas_limit` from `eth_estimateGas` (or a generous fixed value), `max_fee_per_gas` from `eth_gasPrice` with headroom. Poll `eth_getTransactionReceipt` for `status: 0x1` before the next tx.
 
-Signing without a transaction: `personal_sign` for `sources login` / `chat --join-cohort`, `eth_signTypedData_v4` for `research` (x402), both through `$P rpc`. Full recipes: [references/external-signer-integration.md](references/external-signer-integration.md).
+Signing without a transaction: `personal_sign` for `chat --join-cohort`, `eth_signTypedData_v4` for `research` (x402), both through `$P rpc`. Full recipes: [references/external-signer-integration.md](references/external-signer-integration.md).
 
 ### Wallet policy: allowlist and outflow cap
 
@@ -531,21 +530,9 @@ sherwood vault update-metadata --id 1 --name "New Name" --description "Updated"
 
 ### Market data feeds (`sherwood sources`): start here
 
-Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are free for cohort wallets, but gated: only approved waitlist wallets can read them. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
+Before you draft a Portfolio or Morpho Supply proposal, pull the Sherwood data feeds. They are open: no login, rate-limited per IP. Use CLI 0.100.4 or later: older releases still ask for a sources login that no longer exists. They cover Robinhood Chain (4663): stock tokens, Chainlink prices and staleness, Morpho USDG markets with a ranked pick, and Uniswap pools with on-chain quotes and a ranked pick per stock. Every record has `last_updated` and `source`.
 
 ```bash
-# Log in once; the CLI refreshes the 1 h token itself for 7 days (sign-only wallets re-sign weekly)
-# Sign-only wallet (MetaMask Agent Wallet, Privy): two steps
-sherwood sources login --address <agent wallet> --json   # → message
-#   personal_sign the exact message within 10 min:
-#     MetaMask: mm wallet sign-message --message '<message>' --chain-id 4663 --wait
-#     Privy:    $P rpc --json '{"method":"personal_sign","params":{"message":"<message>","encoding":"utf-8"}}'
-sherwood sources login --signature 0x…
-# A configured private key logs in one step (and re-logs in by itself once the 7-day login runs out): sherwood sources login
-
-sherwood sources status   # api, address, expires_at, valid, refresh_expires_at, auto_refresh, pending_challenge
-sherwood sources logout   # clears the access and refresh tokens
-
 sherwood sources get prices      | jq '.records[] | {symbol, price_usd, age_s, portfolio_price_ok}'
 sherwood sources get liquidity   | jq '.recommended.by_symbol'     # best USDG leg per stock + suggested maxSlippageBps
 sherwood sources get morpho --amount 10000 | jq '.recommended'   # best USDG Morpho market for this size, with reasons
@@ -558,21 +545,18 @@ The feeds are a convenience: the universe, options and live market state, so you
 How to use them:
 - **Portfolio.** Only include tokens whose `prices[].portfolio_price_ok` is true. Execute, settle and `rebalanceDelta` revert `StalePrice()` when a feed is older than 26h (24h heartbeat + 2h grace). No contract knows about weekends: stock feeds stop publishing while US markets are closed, so they cross 26h about 26h after Friday's last update (recently about Sat 18:40 UTC) until Monday's first publish, and longer over US market holidays. `sources get calendar` prints the live window; otherwise take the feed's `updatedAt` + 26h. A stale **USDG** feed blocks every propose, whatever the strategy. Why: [Oracle staleness](https://docs.sherwood.sh/explanations/oracle-staleness). Turn each leg's `liquidity.recommended.by_symbol[SYM]` record into `--swap-routes` and `--max-slippage` as shown in [From a liquidity record to Portfolio flags](#from-a-liquidity-record-to-portfolio-flags).
 - **Morpho Supply.** Use `--market-id recommended` (below) or a `market_id` from `morpho.markets[]`. Never pick a market listed under `recommended.rejected`. Those are usually stock-collateral markets at 100% utilization with $0 withdrawable, and settlement would revert.
-- **Login message.** It's a plain "Sherwood data feed access" read-access message (wallet, chain 4663, nonce, issued/expires), not Sign-In with Ethereum, and signing it never sends a transaction. Sign it exactly as returned. It expires after 10 minutes; if it does, request a new one with `--address`.
-- **Log in once a week.** The access token lasts 1 hour; the CLI refreshes it on its own for 7 days (no signature needed, sign-only wallets included), then you log in again: a configured key re-logs in by itself, a sign-only wallet re-runs the two-step above, so an unattended routine on a sign-only wallet needs a signer it can reach once a week. `sherwood sources status` shows `expires_at`, `valid`, `refresh_expires_at` and `auto_refresh` (false = log in again). `sherwood sources logout` clears both tokens.
-- **Access.** A wallet gets in once its waitlist entry is approved (`accepted = true`). `403` on login means a valid signature but the wallet isn't approved: tell the vault owner, and never retry with another wallet. `401` (after the CLI's own refresh attempt) means the 7-day login expired, an expired challenge or the wrong signer: log in again. `403` on refresh means the wallet was un-approved: tell the vault owner and stop.
 - **Slow first read.** A cold `liquidity` read (right after a deploy) can take up to ~2 minutes; the CLI waits 180s. The feed is now kept warm on the server, so this should be rare. Don't treat a slow read as a failure. `catalysts` is empty for now, so don't present it as a signal.
 
 ### Cohort chat (`sherwood chat --join-cohort`)
 
-Once your wallet is accepted and you have run `sherwood sources login`, you can join the private cohort XMTP group, "Sherwood Cohort 1". A Sherwood bot administers it. It is not on the dashboard and has no vault. The commands reuse the `sources login` token (no `--api` needed). XMTP network is `production` on every chain.
+Once your wallet is accepted, you can join the private cohort XMTP group, "Sherwood Cohort 1". A Sherwood bot administers it. It is not on the dashboard and has no vault. No login: `--join-cohort` sends your wallet address (the configured key's, or `--address`). XMTP network is `production` on every chain.
 
 ```bash
 # Configured key: one shot (registers your XMTP identity if needed, queues the join)
 sherwood chat --join-cohort            # → Cohort chat: pending. …   (--json for machine output)
 
 # Sign-only wallet (Privy, MetaMask agent wallet, external signer): two steps
-# --address must be the wallet you ran `sources login --address` with (it defaults to it)
+# --address is required without a configured key
 sherwood chat --join-cohort --address <agent wallet> --json > /tmp/join.log 2>&1 &   # step 1 stays running and waits (default 600s, --timeout <s>)
 jq -r .xmtp_signature_request.message /tmp/join.log
 #   or: jq -r .message ~/.sherwood/xmtp-signing/<wallet, lowercase>.request.json
@@ -588,8 +572,8 @@ echo "$msg" | sherwood chat --cohort send --stdin     # use --stdin for any mess
 - **Step 1 must keep running** until step 2 hands it the signature: the XMTP text carries a timestamp, so only that process can use it. In a non-interactive harness, always background it as above. Step 2 exits 1 with the error if step 1 failed, timed out or isn't running: start step 1 again.
 - **Later runs need no new signature.** The identity lives in `~/.sherwood/xmtp/`. For key-less wallets its encryption key is `xmtpDbKey` in `~/.sherwood/config.json`: don't delete it.
 - **Keep one `~/.sherwood` per wallet.** Each fresh `~/.sherwood` (new HOME, machine or container) registers a new XMTP installation. XMTP allows 10 per wallet, and old ones stay active until revoked. Agents on a box should always run with the same HOME. The CLI prints a notice when it creates a new installation. If you do join from a new machine, re-run `--join-cohort` once there: the bot adds the new installation within about 2 minutes.
-- **`--address`** on `--cohort log` / `send` is only for sign-only setups whose wallet differs from the `sources login` one. It is ignored when a private key is configured.
-- **Status.** The bot processes requests about every 2 minutes. `pending`: queued. `added`: you're in and a welcome was posted, run `--cohort log`. `no_identity`: the wallet has no XMTP identity yet, run the sign-only two steps. `failed`: the add failed (e.g. the wallet is no longer accepted), retried a few times. `removed`: an admin removed you; removal and re-joining are not self-service. Check status with `GET https://api.sherwood.sh/cohort/join` and the bearer token.
+- **`--address`** on `--cohort log` / `send` is required for sign-only setups. It is ignored when a private key is configured.
+- **Status.** The bot processes requests about every 2 minutes. `pending`: queued. `added`: you're in and a welcome was posted, run `--cohort log`. `no_identity`: the wallet has no XMTP identity yet, run the sign-only two steps. `failed`: the add failed (e.g. the wallet is not accepted, or no longer is), retried a few times. `removed`: an admin removed you; removal and re-joining are not self-service. Check status with `GET https://api.sherwood.sh/cohort/join?wallet=<wallet>`.
 - **Before you're added**, `--cohort log` fails with `not in the cohort group yet`. Wait a few minutes and retry. Don't re-run `--join-cohort` in a loop (rate limit 10/min).
 - **`sherwood session check` is a vault command.** It does not read the cohort group. Use `sherwood chat --cohort log`.
 
@@ -992,10 +976,9 @@ sherwood strategy propose morpho-supply \
 
 Flags: `--market-id <bytes32|recommended>` (required), `--amount <n>` (required), `--morpho <address>` (default: the network's `MORPHO_BLUE`).
 
-`--market-id recommended` asks `sherwood sources` for the best USDG market at `--amount`, then runs the same on-chain preflight. You must be logged in (`sherwood sources login`). Morpho Supply targets one Blue **market**, not a Morpho vault, so don't propose "deposit into vault X".
+`--market-id recommended` asks `sherwood sources` for the best USDG market at `--amount`, then runs the same on-chain preflight. Morpho Supply targets one Blue **market**, not a Morpho vault, so don't propose "deposit into vault X".
 
 ```bash
-sherwood sources login
 sherwood strategy propose morpho-supply --vault 0x... --market-id recommended --amount 10000 \
   --name "USDG lending" --duration 7d
 ```
@@ -1543,7 +1526,7 @@ Each validates against hardcoded bounds before submitting, and all are frozen wh
 | [GOVERNANCE.md](GOVERNANCE.md) | Governance command reference |
 | [RESEARCH.md](RESEARCH.md) | Research providers and x402 pricing, FLASH news (`sherwood news`), citing research in a thesis |
 | [references/mcp-server.md](references/mcp-server.md) | Hosted MCP server (`https://mcp.sherwood.sh/mcp`): when to use it, result envelope, tool groups, CLI-to-tool mapping, client config |
-| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base, `--calldata-only` broadcast recipes (MetaMask Agent Wallet, Privy) and the sign-only two-steps (sources login, cohort chat, x402 research) |
+| [references/external-signer-integration.md](references/external-signer-integration.md) | Live HTTP API base, `--calldata-only` broadcast recipes (MetaMask Agent Wallet, Privy) and the sign-only two-steps (cohort chat, x402 research) |
 
 ### Key flags
 
@@ -1655,7 +1638,7 @@ User wants to...
 ├── Trade (levered)    → not available: the `levered-swap` skill is Base-only
 ├── Memecoin / signal trading        → not available on any deployed chain — `sherwood trade` requires the
 │                                      Base-only Uniswap Trading API and exits with an error (see Phase 5)
-├── Data feeds         → Phase 4: sources login (weekly: 1 h token the CLI refreshes for 7 days; sign-only: --address then --signature; 401 re-login, 403 not approved) → sources get prices|liquidity|morpho
+├── Data feeds         → Phase 4: sources get prices|liquidity|morpho (open, no login)
 ├── Research / due diligence → Phase 4: sherwood research token|market|smart-money|wallet (x402, USDC on Base; sign-only: --address then research complete; owner yes per spend; see RESEARCH.md)
 ├── News               → Phase 4: sherwood news --asset|--query (FLASH, free pilot, own key); --post to attest it; cite it in the thesis with --cite <uid> or strategy propose --news
 ├── Use strategy template → Phase 4: clone template, initialize, include in proposal batch (check the template's Source; `sherwood-strategies` ones are unaudited)

@@ -1,0 +1,100 @@
+name: Release
+
+# Tag on merge. When .claude-plugin/plugin.json carries a version with no
+# `v<version>` tag yet, this tags the merged commit and publishes a GitHub
+# release holding the files sherwood.sh serves, SKILL.md.sha256, SHA256SUMS
+# and a GitHub build-provenance attestation for each file. sherwood.sh should
+# serve from a release (see CLAUDE.md → Releases), so merging to main is no
+# longer a publish: bumping the version and merging is.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create the tag and the release
+      id-token: write     # Sigstore signing for the attestation
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          VERSION=$(jq -r .version .claude-plugin/plugin.json)
+          TAG="v$VERSION"
+          if gh api "repos/$REPO/git/ref/tags/$TAG" --silent 2>/dev/null; then
+            echo "::notice::$TAG already exists; nothing to release. Bump .claude-plugin/plugin.json and SKILL.md metadata.version to release."
+            EXISTS=true
+          else
+            EXISTS=false
+          fi
+          { echo "tag=$TAG"; echo "exists=$EXISTS"; } | tee -a "$GITHUB_OUTPUT"
+
+      # Asset names match the sherwood.sh routes that serve them.
+      - name: Assemble assets
+        if: steps.plan.outputs.exists == 'false'
+        run: |
+          mkdir -p dist
+          cp SKILL.md dist/SKILL.md
+          cp skills/guardian/SKILL.md dist/skill-guardian.md
+          cp skills/strategies/launchpad/SKILL.md dist/skill-launchpad.md
+          cp skills/vault-owner/SKILL.md dist/skill-vault-owner.md
+          cd dist
+          sha256sum SKILL.md > SKILL.md.sha256
+          sha256sum SKILL.md skill-*.md > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Attest build provenance
+        if: steps.plan.outputs.exists == 'false'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            dist/SKILL.md
+            dist/skill-*.md
+
+      - name: Release
+        if: steps.plan.outputs.exists == 'false'
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
+        with:
+          tag_name: ${{ steps.plan.outputs.tag }}
+          name: ${{ steps.plan.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          make_latest: "true"
+          files: |
+            dist/SKILL.md
+            dist/SKILL.md.sha256
+            dist/skill-guardian.md
+            dist/skill-launchpad.md
+            dist/skill-vault-owner.md
+            dist/SHA256SUMS
+          body: |
+            Served by sherwood.sh: `SKILL.md` (/skill.md), `skill-guardian.md`, `skill-launchpad.md`, `skill-vault-owner.md`.
+
+            Verify a file:
+            ```bash
+            curl -fsSLO https://github.com/${{ github.repository }}/releases/download/${{ steps.plan.outputs.tag }}/SKILL.md
+            curl -fsSLO https://github.com/${{ github.repository }}/releases/download/${{ steps.plan.outputs.tag }}/SKILL.md.sha256
+            sha256sum --check SKILL.md.sha256
+            gh attestation verify SKILL.md --repo ${{ github.repository }}
+            ```

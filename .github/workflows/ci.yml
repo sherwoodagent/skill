@@ -1,0 +1,26 @@
+name: CI
+
+# Release invariants (scripts/check-skill.sh): versions agree, no @latest,
+# one published CLI pin, exact versions in install commands, no blanket
+# allowed-tools. Also called by release.yml before anything is tagged.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Skill release invariants
+        run: scripts/check-skill.sh

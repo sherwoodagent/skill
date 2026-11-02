@@ -113,7 +113,7 @@ sherwood proposal settle --vault <addr> --id <proposalId> [--calls <path-to-json
 Auto-routes to the correct settlement path:
 - **Proposer:** `settleProposal` — from 1 hour after execute (`StrategyDurationNotElapsed` before that)
 - **Duration elapsed:** `settleProposal` — permissionless, anyone can call after the strategy duration
-- **Vault owner emergency:** `emergencySettleWithCalls` — owner commits new unwind calldata, must hold a bond covering `requiredOwnerBond` (10,000 WOOD at launch), and opens a guardian emergency review. Calls do **not** execute until `finalizeEmergencySettle`. A blocked review burns the owner bond. (`unstick` only replays already-voted settlement calls.)
+- **Vault owner emergency:** `emergencySettleWithCalls`. The owner commits new unwind calldata, must hold a bond covering `requiredOwnerBond` (never below 1,000 WOOD; an owner who bonded nothing before create cannot use it), and opens a guardian emergency review. Calls do **not** execute until `finalizeEmergencySettle`. A blocked review burns the owner bond. (`unstick` only replays already-voted settlement calls.)
 
 Settlement reverts `StrategyNotSettled` if the strategy still reports `executed()` afterwards, and `SettlePriceBelowFloor` if the whole vault's share price fell more than the declared `maxDrawdownBps` (capped at 9000) since execute. The floor is on price per share, not on the deployed amount, so idle assets dilute the basket's loss. Below it only the owner's `unstick` (90% floor) or bonded emergency settle closes the proposal. Why: [Settlement and drawdown](https://docs.sherwood.sh/explanations/settlement-and-drawdown).
 

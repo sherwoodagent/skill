@@ -7,7 +7,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (cast) for the direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.5.2'
+  version: '0.5.3'
 ---
 
 # Vault Owner (Sherwood on Robinhood Chain, 4663)
@@ -77,7 +77,7 @@ cast call $VAULT_ADDRESS "isApprovedDepositor(address)(bool)" 0xLP --rpc-url $RP
 
 "Only your own vault" is enforced only by this whitelist: anyone you approve can deposit, and nobody you did not approve can. Depositors need no WOOD.
 
-Your owner stake (`sherwood guardian prepare-owner-stake 10000` before create; `requiredOwnerBond` is 10,000 WOOD at launch) stays bound to the vault. Requesting its unstake makes `ownerBondLive` false, and propose and execute then revert `OwnerBondNotLive`. Keep it bound while you operate. It exists to back your emergency settle with new calldata, the one power guardians can burn it for ([why](https://docs.sherwood.sh/explanations/owner-stake)); there is no top-up and no CLI command for the exit (`cast` only).
+Your owner stake is optional. `StakedWood.minOwnerStake()` is 0 on Robinhood Chain, so a vault can exist with no WOOD bonded, and propose, execute, settle and `unstick` all work without one (`ownerBondLive` is keyed on the owner, not the amount). A bond buys one thing: your emergency settle with new calldata, which needs `ownerStake(vault) >= requiredOwnerBond(vault)`, never below 1,000 WOOD. Post it with `sherwood guardian prepare-owner-stake 1000` (or more) before `vault create`; the prepared amount binds at create and there is no top-up later. Once bound, keep it bound while you operate: requesting its unstake makes `ownerBondLive` false, and propose and execute then revert `OwnerBondNotLive`. Guardians can burn it only by blocking your emergency settle ([why](https://docs.sherwood.sh/explanations/owner-stake)); there is no CLI command for the exit (`cast` only).
 
 ---
 
@@ -239,7 +239,7 @@ There is no owner transaction that immediately runs arbitrary calls. Owner-suppl
 | Function | What it does | Owner bond | Guardian review |
 |---|---|---|---|
 | `unstick(id)` | Replays the **already-voted** settlement calls with the same caps and zero egress budget. Past duration only. Same `StrategyNotSettled` check as settle | Not required | No |
-| `emergencySettleWithCalls(id, calls)` | Commits **new** unwind calldata and opens a registry emergency review for `reviewPeriod` (30 min on 4663). Calls do **not** run in this tx | `ownerStake(vault) >= requiredOwnerBond(vault)` (10,000 WOOD at launch), read **after** the review opens so a prior blocked round slashes first; else `OwnerBondInsufficient` | Yes |
+| `emergencySettleWithCalls(id, calls)` | Commits **new** unwind calldata and opens a registry emergency review for `reviewPeriod` (30 min on 4663). Calls do **not** run in this tx | `ownerStake(vault) >= requiredOwnerBond(vault)` (never below 1,000 WOOD; with no bond posted before create this path is closed), read **after** the review opens so a prior blocked round slashes first; else `OwnerBondInsufficient` | Yes |
 | `cancelEmergencySettle(id)` | Recalls the open window (`EmergencyNotProposed` if none) | — | Closes it |
 | `finalizeEmergencySettle(id)` | After `reviewPeriod`: reverts `EmergencySettleBlocked` if guardians blocked, else runs the committed calls uncapped with zero net egress and finishes settlement. **Exempt from `StrategyNotSettled`** | Stake must be nonzero | Resolves |
 

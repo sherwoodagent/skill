@@ -6,7 +6,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.16.1'
+  version: '0.16.2'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -348,7 +348,7 @@ The vault owner may open `emergencySettleWithCalls` — a bonded window. Calls d
 cast send $GUARDIAN_REGISTRY "voteBlockEmergencySettle(address,uint256)" $GOVERNOR_ADDRESS <PROPOSAL_ID> --private-key $PRIVATE_KEY --rpc-url $RPC_URL
 ```
 
-Block-only, weighted at the review snapshot. Do **not** call `emergencySettleWithCalls`, `unstick`, `finalizeEmergencySettle`, or `cancelEmergencySettle`; those are owner transactions. A blocked emergency review burns the **owner** bond (10,000 WOOD at launch), so block only drain-shaped calldata.
+Block-only, weighted at the review snapshot. Do **not** call `emergencySettleWithCalls`, `unstick`, `finalizeEmergencySettle`, or `cancelEmergencySettle`; those are owner transactions. A blocked emergency review burns the **owner** bond (at least 1,000 WOOD, the `requiredOwnerBond` floor), so block only drain-shaped calldata.
 
 ---
 

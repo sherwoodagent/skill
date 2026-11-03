@@ -3,10 +3,10 @@ name: network-guardian
 description: Operate as a staked Sherwood network guardian on Robinhood Chain (4663) — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Long-form reference for the `guardian` skill, which owns the guardian-review triggers; load this when that skill points here (openReview keeping, vote weight and quorum, late-vote lockout, coverage underwriting detail, what Approve commits you to). NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read Glob Grep Bash(sherwood *) Bash(cast call *) Bash(cast calldata *) Bash(cast chain-id *) WebFetch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli 0.102.0 or later (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.7.3'
+  version: '0.8.0'
 ---
 
 # Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -203,11 +203,17 @@ sherwood proposal show <proposalId> --vault <vault>   # CLI 0.96.0: prints the s
    Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
 
    On 4663 the `sherwood-strategies` templates deployed are `LaunchpadStrategy` (`0x1F8221c4176B8B017A6Ef699947BB4A33730Df32`, redeployed 2026-10-22, Sushi venue only) and `LighterPerpStrategy` (see [ADDRESSES.md](../../ADDRESSES.md)). The first Launchpad template, `0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, is no longer approved: a clone of it is legitimate only if it was created before 2026-10-22. A clone claiming to be any other template is a warning on its own.
-3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
+3. **Not cloned from any template: hand-written (custom).** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. Judge it by the hardening result, not by where it came from. `sherwood guardian review` (CLI 0.102.0 or later; codes in the `guardian` skill) clears a hand-written strategy only when all of these hold, and then returns **APPROVE `STRATEGY_CUSTOM`**:
+   - it is registered (`StrategyFactory.isRegisteredStrategy`);
+   - its source is verified on Blockscout;
+   - every contract it reaches passes the hardening checks (no critical anywhere in the walk);
+   - the settle calls call it, and its `vault()` returns this vault.
 
-If provenance cannot be read, treat the strategy as hand-written.
+   `STRATEGY_CUSTOM` is a warning to you, not a pass: it records that the strategy is hand-written, and the vote carries it as its code and reason. Read the verified source yourself: what `execute` does with the vault's funds, and how `settle` turns the position back into the vault's deposit asset. The review checks that much only statically (bound to this vault and settled by this proposal), not that `settle()` actually returns the asset. Tell your user the strategy is hand-written, and Approve only what you would underwrite with your own stake. If the review Blocks it (`UNVERIFIED_CONTRACT`, `STRATEGY_SETTLE_NO_ASSET`, or any other critical), Block.
 
-The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written strategy is critical (`STRATEGY_WITHOUT_PROVENANCE`, Block) and a clone of a non-core template is a warning (`UNAUDITED_TEMPLATE`, never an unattended Approve).
+If provenance cannot be read, the review cannot clear the strategy and Blocks it: do the same.
+
+The fleet's guardian agent (`sherwood-guardian`) adopts this rule when it vendors the CLI review. Until then it Blocks every hand-written strategy (`STRATEGY_WITHOUT_PROVENANCE`). A clone of a non-core template is a warning there (`UNAUDITED_TEMPLATE`, never an unattended Approve).
 
 ### Flags from the 2026-10-08 audit
 
@@ -224,10 +230,12 @@ The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written s
 
 - Execute or settle calls cannot be decoded; metadata is missing, unreachable, or
   contradicts the decoded calldata.
-- A target is an unlabeled EOA, or a contract that is neither on this chain's known
-  set nor a verified clone of a known template (`vault()` resolves to **this** vault).
-- The strategy was not cloned from any template (hand-written), or its provenance
-  cannot be read.
+- A target is an unlabeled EOA, or an unverified contract that is neither on this
+  chain's known set nor a verified clone of a known template (`vault()` resolves to
+  **this** vault). An unlabeled target the review found verified and clean is a
+  warning: abstain unless you have read its source.
+- The strategy is hand-written and `sherwood guardian review` does not clear it (no
+  `STRATEGY_CUSTOM`), or its provenance cannot be read.
 - Any `transfer` / `transferFrom` / `approve` to an address the description does not
   explain.
 - Outflow with no return path on settle; settle empty, noop, or missing `minOut` /
@@ -263,9 +271,12 @@ Neither Approve nor Block is ever the safe default — abstain is.
 ### Approve only if every one of these holds
 
 - The description matches the decoded calls — protocol, assets, direction, approximate size.
-- Every target is labeled for **this** chain, or is a template clone verified on **this** chain.
-- The strategy comes from a core-protocol template, or from a `sherwood-strategies`
-  template you verified and told your user is unaudited.
+- Every target is labeled for **this** chain, or is a template clone verified on **this** chain,
+  or is the proposal's own hand-written strategy the review cleared.
+- The strategy comes from a core-protocol template, from a `sherwood-strategies`
+  template you verified and told your user is unaudited, or is hand-written and
+  cleared by `sherwood guardian review` (`STRATEGY_CUSTOM`), with its verified source
+  read and its hand-written status told to your user.
 - Execute deploys into known venues; settle returns the vault's deposit asset; slippage
   bounds are present and sane.
 - Simulation succeeds **and** the value trace agrees with the mandate — no extra recipients.
@@ -364,16 +375,18 @@ nobody opened resolves **not-blocked**, so opening is part of blocking:
 sherwood proposal open-reviews --vault $VAULT
 #    or: cast send $REGISTRY "openReview(address,uint256)" $GOVERNOR 7 --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 
-# 2. Block proposal 7 on this vault's governor (lockWood = 0 on a Block).
-sherwood proposal review-vote --vault $VAULT --id 7 --support block --lock-wood 0
+# 2. Block proposal 7 on this vault's governor (lockWood = 0 on a Block). --reason is required.
+sherwood proposal review-vote --vault $VAULT --id 7 --support block --lock-wood 0 --reason "<why>"
 #    Approve with a declared lock, in decimal WOOD:
-sherwood proposal review-vote --vault $VAULT --id 7 --support approve --lock-wood 2500
+sherwood proposal review-vote --vault $VAULT --id 7 --support approve --lock-wood 2500 --reason "<why>"
 #    or: cast send $REGISTRY "voteOnProposal(address,uint256,uint8,uint256)" $GOVERNOR 7 2 0 --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
 The signed CLI refuses if the review is not opened, prints the proposal's state and the
-strategy's provenance, then sends; `--calldata-only` emits the encoded call for an external
-signer. Encoding the old three-argument form produces a reverting call — that selector does
+strategy's provenance, runs `sherwood guardian review` (refusing an Approve it does not
+clear; see the `guardian` skill for its codes), then sends and records your reason with the
+vote; `--calldata-only` emits the encoded call for an external signer and prints the
+`guardian verdict submit` command that records the reason once your wallet broadcasts it. Encoding the old three-argument form produces a reverting call — that selector does
 not exist.
 
 Preconditions, each of which reverts if unmet: the governor is authorized in the

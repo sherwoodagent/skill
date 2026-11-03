@@ -3,10 +3,10 @@ name: guardian
 description: Act as a staked Sherwood network guardian on Robinhood Chain (4663) — stake WOOD into sWOOD, open and review proposal guardian reviews (execute + settle calldata), size the coverage you declare, and vote Approve or Block, or abstain, on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) via `sherwood proposal review-vote`. Triggers on staking WOOD as a guardian, reviewing proposal calldata, Approve/Block/abstain verdicts, coverage underwriting (lockWood), ApproveLockBelowFloor, openReview, resolveReview, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls (the `vault-owner` skill).
 allowed-tools: Read Glob Grep Bash(sherwood *) Bash(cast call *) Bash(cast calldata *) Bash(cast chain-id *) Bash(cast 4byte-decode *) WebFetch WebSearch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli 0.101.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.16.2'
+  version: '0.17.0'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -27,7 +27,7 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 - `RPC_URL` and `PRIVATE_KEY` exported for the `cast` commands below. `PRIVATE_KEY` is the reviewer wallet, **not** a vault owner. With an agent wallet, build each tx with `cast calldata "<signature>" <args…>` and broadcast it through the wallet recipe in the main skill (Phase 1 → Agent wallet); every `sherwood` command below also accepts `--calldata-only`.
 - WOOD to stake (`minGuardianStake` is 10,000 WOOD at launch). Quote WOOD live; never treat a published figure as a price.
-- Foundry (`forge`, `cast`) and `@sherwoodagent/cli` 0.96.0 or later (defaults to Robinhood Chain; no `--chain` flag).
+- Foundry (`forge`, `cast`) and `@sherwoodagent/cli` 0.101.0 or later (defaults to Robinhood Chain; no `--chain` flag). 0.101.0 adds `guardian review` and the reason every `review-vote` carries.
 
 > **Per-vault governor.** There is no singleton. `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`; `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
@@ -187,6 +187,28 @@ For deeper debugging, the bundled Foundry harness is `skills/guardian/simulate/S
 
 `✓ RISK ASSESSMENT: CLEAN` means the simulator did not flag a revert or unlabeled drain. **It is not an Approve.**
 
+**Guardian review** (the code-enforced rules; `proposal review-vote` runs it too):
+
+```bash
+sherwood guardian review --vault $VAULT_ADDRESS --id <PROPOSAL_ID>     # --json for the verdict, codes and every contract reached
+```
+
+It walks every contract the proposal calls or touches, recursively: the strategy, targets, spenders, recipients, a template clone's parameters (a Portfolio's tokens and feeds), what the simulation moved value through, and behind each one its proxy implementation, beacon, clone target, embedded addresses and address getters. Address-book contracts are trusted and not descended into. A critical code is a Block, warnings alone an abstain, nothing an Approve:
+
+| Code | Level | Meaning |
+|------|-------|---------|
+| `UNVERIFIED_CONTRACT` | critical | A contract in the graph (a proxy's implementation included) has no verified source on Blockscout |
+| `EXPLORER_UNAVAILABLE` | critical | The explorer could not answer for a contract outside the book |
+| `CALL_GRAPH_TRUNCATED` | critical | Contracts left past the bound (depth 5, 64 contracts) |
+| `APPROVE_TO_UNVERIFIED` | critical | An allowance to an account with no code or an unverified contract |
+| `UPGRADEABLE_EOA_ADMIN` | critical | An upgradeable contract whose upgrade authority is an EOA with no timelock |
+| `TOKEN_MINT_POWER` / `TOKEN_BLACKLIST_POWER` | critical | A token outside the book with owner mint or blacklist/freeze functions |
+| `FRESH_DEPLOY_NO_HISTORY` | critical | A token or pool under 7 days old with under 100 transfers (or a token under 25 holders) |
+| `ARENA_SIZE_CAP` / `ARENA_POSITION_CAP` / `ARENA_PROPOSALS_PER_DAY` / `ARENA_GAS_BUDGET` / `ARENA_TEMPLATE_NOT_ALLOWED` | critical | An Arena vault's proposal outside the Arena limits |
+| `UPGRADE_AUTHORITY_UNKNOWN` / `ARENA_POSITION_UNKNOWN` / `ARENA_LIMIT_UNREADABLE` / `SIMULATION_UNAVAILABLE` | warning | Something it could not read |
+
+Each finding names the matched selectors (e.g. `mint(address,uint256) 0x40c10f19`) and the path the walk took to the contract. A running guardian needs `SHERWOOD_EXPLORER_API_KEY` (a Blockscout API key): the public explorer refuses scripts, so without it every contract outside the book reads as `EXPLORER_UNAVAILABLE`. Arena vaults are listed in `SHERWOOD_ARENA_VAULTS`.
+
 ### Intake — gather ALL of this before voting
 
 1. **Proposal metadata** — fetch the metadata URI and read the description in full.
@@ -242,6 +264,7 @@ A `LaunchpadStrategy` launch quoted in the vault asset (a USDG vault launching a
 
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
+- `guardian review` returns **BLOCK**: any contract the proposal calls or touches, at any depth, is unverified (`UNVERIFIED_CONTRACT`, `APPROVE_TO_UNVERIFIED`, `EXPLORER_UNAVAILABLE`, `CALL_GRAPH_TRUNCATED`), rug-shaped (`UPGRADEABLE_EOA_ADMIN`, `TOKEN_MINT_POWER`, `TOKEN_BLACKLIST_POWER`, `FRESH_DEPLOY_NO_HISTORY`), or outside the Arena limits on an Arena vault (`ARENA_*`).
 - Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule (§4 intake item 3).
 - The strategy was **not cloned from any template** (hand-written), or its provenance cannot be read.
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
@@ -254,6 +277,7 @@ Everything above is a claim about the *proposal*. Where the obstacle is instead 
 ### Approve ONLY if ALL of these hold
 
 - The description **matches** the decoded execute and settle calls exactly, with no extra behavior.
+- `guardian review` returns **APPROVE** (`CLEAN`).
 - **Every** target is labeled/known on **this chain**, or is a verified clone of a known template on this chain (clone/bytecode check, never a cross-chain assumption).
 - The strategy's provenance is known: a core-protocol template, or a `sherwood-strategies` template whose verified source you checked against the repository and whose unaudited status you told your user about. Never a hand-written strategy.
 - The **settle** path provably **returns the vault deposit asset** to the vault.
@@ -267,12 +291,16 @@ Everything above is a claim about the *proposal*. Where the obstacle is instead 
 `GuardianVoteType`: `None = 0` (reverts), `Approve = 1`, `Block = 2`. The review must already be **opened** (§3) — this is the second of the two transactions.
 
 ```bash
-sherwood proposal review-vote --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --support approve --lock-wood <WOOD>   # decimal WOOD
-sherwood proposal review-vote --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --support block   --lock-wood 0
+sherwood proposal review-vote --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --support approve --lock-wood <WOOD> --reason "<why>"   # decimal WOOD
+sherwood proposal review-vote --vault $VAULT_ADDRESS --id <PROPOSAL_ID> --support block   --lock-wood 0      --reason "<why>"
 # on-chain equivalent: support 1 = Approve, 2 = Block; FOUR args, the last is lockWood in wei
 cast send $GUARDIAN_REGISTRY "voteOnProposal(address,uint256,uint8,uint256)" $GOVERNOR_ADDRESS <PROPOSAL_ID> <SUPPORT> <LOCK_WOOD_WEI> \
   --rpc-url $RPC_URL --private-key $PRIVATE_KEY
+# then put the reason on record behind that vote (required: a verdict without a reason is refused)
+sherwood guardian verdict submit --governor $GOVERNOR_ADDRESS --id <PROPOSAL_ID> --support <approve|block> --code <CODE> --tx <VOTE_TX> --summary "<why>" [--finding "CODE:level:message" ...]
 ```
+
+**Every vote carries its reason.** `--reason` is required. `review-vote` runs `guardian review` first and refuses an Approve while it finds a critical, while it finds warnings (unless `--accept-warnings`) and when it cannot run; a Block takes the review's code, or `--code` when you block on something the review did not find. Once the vote lands, the reason, the code and every finding are signed and recorded in the verdict archive: the proposer reads them in `proposal status` and the Arena site shows them. If the indexer has not caught up, the CLI prints the `guardian verdict submit` command to run. With `--calldata-only`, run that command after your wallet broadcasts the vote.
 
 The signed CLI refuses before sending if the review is not opened, prints the strategy's provenance, and shows the review state. Your vote weight is your **raw stake at the propose-time snapshot** (`getPastStake(you, snapshotAt)`), so stake added after the propose carries no weight on that review (`NotActiveGuardian`). Changing a vote is allowed before the lockout and reuses that weight; re-submitting the side you hold reverts `NoVoteChange`. Approvers are capped at 100 per proposal (`NewSideFull`); blockers are not capped.
 
@@ -321,6 +349,10 @@ Proposal in GuardianReview (2), before the last 10% of the window
 |
 +-- Simulate (necessary, not sufficient)
 |   +-- CRITICAL risk or failed sim --> Block
+|
++-- sherwood guardian review
+|   +-- BLOCK  --> Block (with its code and reason)
+|   +-- ABSTAIN (warnings only) --> ABSTAIN unless you resolved each one
 |
 +-- Coverage book sized? (pick lockWood ≥ the slot floor)
 |   +-- Cannot size it, or above your ceiling --> ABSTAIN

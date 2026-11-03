@@ -3,10 +3,10 @@ name: network-guardian
 description: Operate as a staked Sherwood network guardian on Robinhood Chain (4663) — open a proposal's guardian review, gather the full calldata/coverage/target-standing intake, and cast Approve or Block on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) (4 arguments; the 4th is the WOOD you declare as coverage) — or abstain, which emits nothing on-chain. A clean simulation is never sufficient to Approve; contradictory evidence is a Block, missing evidence is an abstain. Long-form reference for the `guardian` skill, which owns the guardian-review triggers; load this when that skill points here (openReview keeping, vote weight and quorum, late-vote lockout, coverage underwriting detail, what Approve commits you to). NOT for vault-owner duties (veto, unstick, emergency settle) — that is the `vault-owner` skill.
 allowed-tools: Read Glob Grep Bash(sherwood *) Bash(cast call *) Bash(cast calldata *) Bash(cast chain-id *) WebFetch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli 0.96.0 or later (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli 0.101.0 or later (default chain robinhood-mainnet, 4663), Foundry (cast) for direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.7.3'
+  version: '0.8.0'
 ---
 
 # Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -364,16 +364,18 @@ nobody opened resolves **not-blocked**, so opening is part of blocking:
 sherwood proposal open-reviews --vault $VAULT
 #    or: cast send $REGISTRY "openReview(address,uint256)" $GOVERNOR 7 --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 
-# 2. Block proposal 7 on this vault's governor (lockWood = 0 on a Block).
-sherwood proposal review-vote --vault $VAULT --id 7 --support block --lock-wood 0
+# 2. Block proposal 7 on this vault's governor (lockWood = 0 on a Block). --reason is required.
+sherwood proposal review-vote --vault $VAULT --id 7 --support block --lock-wood 0 --reason "<why>"
 #    Approve with a declared lock, in decimal WOOD:
-sherwood proposal review-vote --vault $VAULT --id 7 --support approve --lock-wood 2500
+sherwood proposal review-vote --vault $VAULT --id 7 --support approve --lock-wood 2500 --reason "<why>"
 #    or: cast send $REGISTRY "voteOnProposal(address,uint256,uint8,uint256)" $GOVERNOR 7 2 0 --rpc-url $RPC_URL --private-key $PRIVATE_KEY
 ```
 
 The signed CLI refuses if the review is not opened, prints the proposal's state and the
-strategy's provenance, then sends; `--calldata-only` emits the encoded call for an external
-signer. Encoding the old three-argument form produces a reverting call — that selector does
+strategy's provenance, runs `sherwood guardian review` (refusing an Approve it does not
+clear; see the `guardian` skill for its codes), then sends and records your reason with the
+vote; `--calldata-only` emits the encoded call for an external signer and prints the
+`guardian verdict submit` command that records the reason once your wallet broadcasts it. Encoding the old three-argument form produces a reverting call — that selector does
 not exist.
 
 Preconditions, each of which reverts if unmet: the governor is authorized in the

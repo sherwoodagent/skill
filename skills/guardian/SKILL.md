@@ -3,7 +3,7 @@ name: guardian
 description: Act as a staked Sherwood network guardian on Robinhood Chain (4663) — stake WOOD into sWOOD, open and review proposal guardian reviews (execute + settle calldata), size the coverage you declare, and vote Approve or Block, or abstain, on GuardianRegistry.voteOnProposal(governor, proposalId, support, lockWood) via `sherwood proposal review-vote`. Triggers on staking WOOD as a guardian, reviewing proposal calldata, Approve/Block/abstain verdicts, coverage underwriting (lockWood), ApproveLockBelowFloor, openReview, resolveReview, or slashable guardian review. Not for vault-owner veto, pause, unstick, set-agent-fee, or emergencySettleWithCalls (the `vault-owner` skill).
 allowed-tools: Read Glob Grep Bash(sherwood *) Bash(cast call *) Bash(cast calldata *) Bash(cast chain-id *) Bash(cast 4byte-decode *) WebFetch WebSearch AskUserQuestion
 license: MIT
-compatibility: Node 22+ with @sherwoodagent/cli 0.101.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
+compatibility: Node 22+ with @sherwoodagent/cli 0.102.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
   version: '0.17.0'
@@ -27,7 +27,7 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 - `RPC_URL` and `PRIVATE_KEY` exported for the `cast` commands below. `PRIVATE_KEY` is the reviewer wallet, **not** a vault owner. With an agent wallet, build each tx with `cast calldata "<signature>" <args…>` and broadcast it through the wallet recipe in the main skill (Phase 1 → Agent wallet); every `sherwood` command below also accepts `--calldata-only`.
 - WOOD to stake (`minGuardianStake` is 10,000 WOOD at launch). Quote WOOD live; never treat a published figure as a price.
-- Foundry (`forge`, `cast`) and `@sherwoodagent/cli` 0.101.0 or later (defaults to Robinhood Chain; no `--chain` flag). 0.101.0 adds `guardian review` and the reason every `review-vote` carries.
+- Foundry (`forge`, `cast`) and `@sherwoodagent/cli` 0.102.0 or later (defaults to Robinhood Chain; no `--chain` flag). 0.101.0 adds `guardian review` and the reason every `review-vote` carries; 0.102.0 judges a hand-written strategy by that review (`STRATEGY_CUSTOM`).
 
 > **Per-vault governor.** There is no singleton. `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`; `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
@@ -193,7 +193,7 @@ For deeper debugging, the bundled Foundry harness is `skills/guardian/simulate/S
 sherwood guardian review --vault $VAULT_ADDRESS --id <PROPOSAL_ID>     # --json for the verdict, codes and every contract reached
 ```
 
-It walks every contract the proposal calls or touches, recursively: the strategy, targets, spenders, recipients, a template clone's parameters (a Portfolio's tokens and feeds), what the simulation moved value through, and behind each one its proxy implementation, beacon, clone target, embedded addresses and address getters. Address-book contracts are trusted and not descended into. A critical code is a Block, warnings alone an abstain, nothing an Approve:
+It walks every contract the proposal calls or touches, recursively: the strategy, targets, spenders, recipients, a template clone's parameters (a Portfolio's tokens and feeds), what the simulation moved value through, and behind each one its proxy implementation, beacon, clone target, embedded addresses and address getters. Address-book contracts are trusted and not descended into. A critical code is a Block, warnings alone an abstain, nothing an Approve. A hand-written strategy the review clears is an Approve that carries `STRATEGY_CUSTOM` (see Strategy provenance below):
 
 | Code | Level | Meaning |
 |------|-------|---------|
@@ -205,7 +205,10 @@ It walks every contract the proposal calls or touches, recursively: the strategy
 | `TOKEN_MINT_POWER` / `TOKEN_BLACKLIST_POWER` | critical | A token outside the book with owner mint or blacklist/freeze functions |
 | `FRESH_DEPLOY_NO_HISTORY` | critical | A token or pool under 7 days old with under 100 transfers (or a token under 25 holders) |
 | `ARENA_SIZE_CAP` / `ARENA_POSITION_CAP` / `ARENA_PROPOSALS_PER_DAY` / `ARENA_GAS_BUDGET` / `ARENA_TEMPLATE_NOT_ALLOWED` | critical | An Arena vault's proposal outside the Arena limits |
+| `STRATEGY_SETTLE_NO_ASSET` | critical | A hand-written strategy has no path back to the deposit asset: the settle calls never call it, or its `vault()` is missing or names another address |
 | `UPGRADE_AUTHORITY_UNKNOWN` / `ARENA_POSITION_UNKNOWN` / `ARENA_LIMIT_UNREADABLE` / `SIMULATION_UNAVAILABLE` | warning | Something it could not read |
+| `UNKNOWN_TARGET` / `UNDECODED_CALLDATA` | critical, or warning | From the pre-flight check: critical by default. A warning when the target is verified and the walk found no critical. Dropped for a hand-written strategy the review cleared |
+| `STRATEGY_CUSTOM` | info (carried by the verdict) | A hand-written strategy the review cleared. With nothing else, the verdict is APPROVE `STRATEGY_CUSTOM` |
 
 Each finding names the matched selectors (e.g. `mint(address,uint256) 0x40c10f19`) and the path the walk took to the contract. A running guardian needs `SHERWOOD_EXPLORER_API_KEY` (a Blockscout API key): the public explorer refuses scripts, so without it every contract outside the book reads as `EXPLORER_UNAVAILABLE`. Arena vaults are listed in `SHERWOOD_ARENA_VAULTS`.
 
@@ -233,11 +236,17 @@ sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # CLI 0.96.0: prin
    Tell your user the strategy is unaudited and used at their own risk before you approve. If you cannot do all three before the lockout, **abstain**.
 
    On 4663 the `sherwood-strategies` templates deployed are `LaunchpadStrategy` (`0x1F8221c4176B8B017A6Ef699947BB4A33730Df32`, redeployed 2026-10-22, Sushi venue only) and `LighterPerpStrategy` (see [ADDRESSES.md](../../ADDRESSES.md)). The first Launchpad template, `0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, is no longer approved: a clone of it is legitimate only if it was created before 2026-10-22. A clone claiming to be any other template is a warning on its own.
-3. **Not cloned from any template: hand-written.** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. This is unverified code and **the highest-risk case: Block** unless you have read and verified its full source yourself — and even then, only Approve what you would underwrite with your own stake.
+3. **Not cloned from any template: hand-written (custom).** `StrategyFactory.registerStrategy` is permissionless and `propose` only requires a registered strategy, so a proposal can point at code that is in no repository. Judge it by the hardening result, not by where it came from. `sherwood guardian review` (CLI 0.102.0 or later) clears a hand-written strategy only when all of these hold, and then returns **APPROVE `STRATEGY_CUSTOM`**:
+   - it is registered (`StrategyFactory.isRegisteredStrategy`);
+   - its source is verified on Blockscout;
+   - every contract it reaches passes the hardening checks (no critical anywhere in the walk);
+   - the settle calls call it, and its `vault()` returns this vault.
 
-If provenance cannot be read, treat the strategy as hand-written.
+   `STRATEGY_CUSTOM` is a warning to you, not a pass: it records that the strategy is hand-written, and the vote carries it as its code and reason. Read the verified source yourself: what `execute` does with the vault's funds, and how `settle` turns the position back into the vault's deposit asset. The review checks that much only statically (bound to this vault and settled by this proposal), not that `settle()` actually returns the asset. Tell your user the strategy is hand-written, and Approve only what you would underwrite with your own stake. If the review Blocks it (`UNVERIFIED_CONTRACT`, `STRATEGY_SETTLE_NO_ASSET`, or any other critical), Block.
 
-The guardian agent (`sherwood-guardian`) applies the same rule: a hand-written strategy is critical (`STRATEGY_WITHOUT_PROVENANCE`, Block) and a clone of a non-core template is a warning (`UNAUDITED_TEMPLATE`, never an unattended Approve).
+If provenance cannot be read, the review cannot clear the strategy and Blocks it: do the same.
+
+The fleet's guardian agent (`sherwood-guardian`) adopts this rule when it vendors the CLI review. Until then it Blocks every hand-written strategy (`STRATEGY_WITHOUT_PROVENANCE`). A clone of a non-core template is a warning there (`UNAUDITED_TEMPLATE`, never an unattended Approve).
 
 ### Flags from the 2026-10-08 audit
 
@@ -265,8 +274,8 @@ A `LaunchpadStrategy` launch quoted in the vault asset (a USDG vault launching a
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
 - `guardian review` returns **BLOCK**: any contract the proposal calls or touches, at any depth, is unverified (`UNVERIFIED_CONTRACT`, `APPROVE_TO_UNVERIFIED`, `EXPLORER_UNAVAILABLE`, `CALL_GRAPH_TRUNCATED`), rug-shaped (`UPGRADEABLE_EOA_ADMIN`, `TOKEN_MINT_POWER`, `TOKEN_BLACKLIST_POWER`, `FRESH_DEPLOY_NO_HISTORY`), or outside the Arena limits on an Arena vault (`ARENA_*`).
-- Any target is **unlabeled / unverified** on this chain, or fails the batch-reachability rule (§4 intake item 3).
-- The strategy was **not cloned from any template** (hand-written), or its provenance cannot be read.
+- Any target is **unverified** on this chain, or fails the batch-reachability rule (§4 intake item 3). An unlabeled target the review found verified and clean is a warning (`UNKNOWN_TARGET`): abstain unless you have read its source and it does what the description says.
+- The strategy is **hand-written** and `guardian review` does not clear it (no `STRATEGY_CUSTOM`), or its provenance cannot be read.
 - The **description does not match** the decoded calls (extra calls, different protocol, different amounts, different recipient).
 - The **settle** path **cannot return the vault deposit asset** — missing settle, different token, or a return path that depends on an unverified contract.
 - **Undisclosed value movement** — any transfer, approval, or ETH/token flow not explained by the description, **even if `simulate` passes**.
@@ -277,9 +286,9 @@ Everything above is a claim about the *proposal*. Where the obstacle is instead 
 ### Approve ONLY if ALL of these hold
 
 - The description **matches** the decoded execute and settle calls exactly, with no extra behavior.
-- `guardian review` returns **APPROVE** (`CLEAN`).
-- **Every** target is labeled/known on **this chain**, or is a verified clone of a known template on this chain (clone/bytecode check, never a cross-chain assumption).
-- The strategy's provenance is known: a core-protocol template, or a `sherwood-strategies` template whose verified source you checked against the repository and whose unaudited status you told your user about. Never a hand-written strategy.
+- `guardian review` returns **APPROVE** (`CLEAN`, or `STRATEGY_CUSTOM` for a hand-written strategy).
+- **Every** target is labeled/known on **this chain**, or is a verified clone of a known template on this chain (clone/bytecode check, never a cross-chain assumption), or is the proposal's own hand-written strategy the review cleared.
+- The strategy's provenance is known: a core-protocol template; a `sherwood-strategies` template whose verified source you checked against the repository and whose unaudited status you told your user about; or a hand-written strategy the review cleared (`STRATEGY_CUSTOM`), whose verified source you read and whose hand-written status you told your user about.
 - The **settle** path provably **returns the vault deposit asset** to the vault.
 - The **simulation and the value trace agree** — every balance/approval delta is explained by the description.
 - You are willing to **underwrite the coverage book** with slashable WOOD for 23–53 days.
@@ -358,7 +367,8 @@ Proposal in GuardianReview (2), before the last 10% of the window
 |   +-- Cannot size it, or above your ceiling --> ABSTAIN
 |
 +-- Description matches decoded calls, every target labeled
-|   on THIS chain, provenance known, settle returns the vault
+|   on THIS chain (or the cleared custom strategy), provenance
+|   known or STRATEGY_CUSTOM, settle returns the vault
 |   asset, value trace agrees?
 |   +-- No  --> Block      (the proposal is wrong)
 |   +-- Yes --> Approve
@@ -388,7 +398,7 @@ Block-only, weighted at the review snapshot. Do **not** call `emergencySettleWit
 
 Verify targets against known protocol addresses **for the chain the proposal executes on**: Robinhood Chain (4663). Addresses differ across chains. See [ADDRESSES.md](../../ADDRESSES.md). Strategy template clones are valid only after you verify the implementation on this chain; the shipped templates are Portfolio, Morpho Supply and Concentrated Liquidity. Batch callees still have to pass the reachability rule (intake item 3).
 
-Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template. A known template from `sherwood-strategies` is still unaudited; a strategy that was not cloned from any template is hand-written and a Block (see §4, Strategy provenance).
+Calls to addresses not in the known list for this chain require extra scrutiny. Unlabeled is a Block unless you independently verify bytecode against a known template. A known template from `sherwood-strategies` is still unaudited. A strategy that was not cloned from any template is hand-written: judge it by `guardian review` (see §4, Strategy provenance).
 
 ---
 

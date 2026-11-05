@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.34.2'
+  version: '0.35.0'
 ---
 
 # Sherwood
@@ -792,6 +792,7 @@ Its **Strategy** section prints the strategy's address and one of these (signed 
 | The CLI prints | What it means |
 |---|---|
 | `Cloned from the core protocol <name> template 0x… (sherwoodagent/sherwood-protocol).` (`<name>` is Portfolio, Morpho Supply or Concentrated Liquidity) | A core-protocol template. This notice does not cover it, and this skill makes no claim about the core protocol's audit status. If the line goes on ` The factory owner has since withdrawn approval of this template.`, tell the user. |
+| `Cloned from the core protocol Generic Call template 0x… (sherwoodagent/sherwood-protocol).` then `Unaudited and never certified (tier 2 at full notional): …` | A Generic Call clone: core protocol, but unaudited and never certified, and it runs whatever calls the proposer fixed. Read its calls with `sherwood guardian review` and tell the user. See [GenericCallStrategy](#genericcallstrategy). |
 | `Cloned from the <name> template 0x… (sherwoodagent/sherwood-strategies).` then `This strategy is unaudited: verify the template's source on the block explorer and against the sherwoodagent/sherwood-strategies repository before approving.` | A `sherwood-strategies` template (Launchpad, Lighter Perp): unaudited. Run the three steps above on that template address. |
 | `Cloned from template 0x…, which the factory owner approved but this CLI does not recognise.` (or `… which this CLI does not recognise and the factory owner no longer approves.`) then `This strategy is unaudited: verify the template's source on the block explorer and against its repository before approving.` | A template this CLI does not know: unaudited. Find its repository and run the three steps. |
 | `Not cloned from any template: this strategy is hand-written code the StrategyFactory did not deploy from a template.` then ``Guardians judge it by `sherwood guardian review`: its source must be verified on the block explorer, every contract it reaches must pass the hardening checks, and its settle must return to this vault. Read its source before approving.`` | Hand-written code. Guardians approve it only when `sherwood guardian review` clears it (`STRATEGY_CUSTOM`). With no verified source on the explorer, recommend against it. |
@@ -806,7 +807,7 @@ Where the rest comes from:
 - **Explorer.** Use the block explorer of the chain the vault is on; the CLI prints links to it for the transactions it sends.
 - **Repository.** https://github.com/sherwoodagent/sherwood-strategies: Launchpad in `src/launchpad/` (template and adapters), Lighter in `src/lighter/`.
 
-The **Source** column below says which templates the notice covers. Templates whose source is in neither repository are covered too. `PortfolioStrategy`, `MorphoSupplyStrategy` and `ConcentratedLiquidityStrategy` come from the core protocol (`sherwoodagent/sherwood-protocol`, `src/strategies/`); they are outside this notice, and this skill makes no claim about the core protocol's audit status.
+The **Source** column below says which templates the notice covers. Templates whose source is in neither repository are covered too. `PortfolioStrategy`, `MorphoSupplyStrategy` and `ConcentratedLiquidityStrategy` come from the core protocol (`sherwoodagent/sherwood-protocol`, `src/strategies/`); they are outside this notice, and this skill makes no claim about the core protocol's audit status. `GenericCallStrategy` is core protocol too, but the protocol itself marks it unaudited and never certified: treat it as used at the vault's own risk.
 
 #### Available Templates
 
@@ -821,8 +822,9 @@ Choosing a template marked unaudited? Run the checks in [Strategies from `sherwo
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Core protocol (outside the notice) | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
 | **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 (StonkBrokers is not on 4663); holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. Deployed on Robinhood Chain (4663); class-certified at tier 0 (3,500 bps) since 2026-10-27, so coverage and the bond are sized on 35% of the capital in |
 | **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. Deployed on Robinhood Chain (4663); uncertified, so it prices as tier 2 |
+| **GenericCallStrategy** | `generic-call` | Core protocol, **unaudited, never certified** | Run a fixed list of calls against any protocol without Solidity. Tier 2 at full notional for good. **Not deployed on 4663 yet** (CLI 0.103.0 or later once it is) |
 
-On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity, Launchpad and Lighter Perp** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
+On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity, Launchpad and Lighter Perp** (addresses in [ADDRESSES.md](ADDRESSES.md)). Generic Call is not deployed yet: `strategy propose generic-call` refuses until the address book carries it. Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
 
 There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
@@ -1109,6 +1111,17 @@ sherwood strategy propose concentrated-liquidity \
 ```
 
 Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--pool <address>`, or `--pair-token <token>` + `--pool-fee <fee>`), and a range (`--range-pct <pct>`, or `--tick-lower <tick>` + `--tick-upper <tick>`). Optional: `--expected-liquidity`, `--swap-fraction-bps`, `--swap-route`, `--twap-window` (default 1800, min 300), `--max-twap-deviation` (ticks, default 100, max 1000), `--mint-slippage-bps` (default 500), `--settle-slippage-bps` (default 500; 50 to 1000, and fixed for the strategy's life, so choose it for the settle swap you expect), `--settle-deadline`, `--rerange-half-width`, `--rerange-trigger-bps` (default 8000), `--rerange-min-interval` (default 3600), `--max-reranges` (default 3, max 20), `--rerange-slippage-bps` (default 500), `--rerange-swap-fraction-bps`, `--morpho`, `--position-manager`, `--uniswap-factory`. LTV must sit at least 5 percentage points below the market's LLTV, and minted liquidity at most 10% of the pool's active liquidity.
+
+#### GenericCallStrategy
+
+**Not deployed on Robinhood Chain (4663) yet**; the CLI reads its address only from the address book (`GENERIC_CALL_TEMPLATE`) and refuses until it is there. Core-protocol template (`src/strategies/GenericCallStrategy.sol`, `name()` is `"Generic Call"`), **unaudited and never certified**: it runs a fixed list of calls the proposer sets when the clone is created, against any protocol, and does not limit where funds go. Tier 2 at full notional for good, so coverage and the proposer bond are sized on the whole pull, and the pull must fit under the vault's `tier2CallCapBps` ceiling (the CLI checks it). Settlement counts only USDG: sell everything back in the settle leg.
+
+```bash
+sherwood strategy propose generic-call --vault 0x... --calls plan.json --amount 250 \
+  --name "..." --description "..." --duration 3d
+```
+
+The plan file, balance patches ("patch argument N of settle call K with my balance of token T"), every rule the CLI checks before gas and what guardians check: [skills/strategies/generic-call/SKILL.md](skills/strategies/generic-call/SKILL.md). Requires CLI 0.103.0 or later.
 
 #### LaunchpadStrategy
 

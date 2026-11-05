@@ -6,7 +6,7 @@ license: MIT
 compatibility: Node 22+ with @sherwoodagent/cli 0.102.0 or later (default chain robinhood-mainnet, 4663), Foundry (forge, cast) for decoding, the simulate harness and direct contract calls, network access to a Robinhood Chain RPC.
 metadata:
   author: sherwood
-  version: '0.17.0'
+  version: '0.18.0'
 ---
 
 # Staked Network Guardian (Sherwood on Robinhood Chain, 4663)
@@ -27,7 +27,7 @@ Your job is only this: **stake WOOD, review calldata, and Approve, Block, or abs
 
 - `RPC_URL` and `PRIVATE_KEY` exported for the `cast` commands below. `PRIVATE_KEY` is the reviewer wallet, **not** a vault owner. With an agent wallet, build each tx with `cast calldata "<signature>" <args…>` and broadcast it through the wallet recipe in the main skill (Phase 1 → Agent wallet); every `sherwood` command below also accepts `--calldata-only`.
 - WOOD to stake (`minGuardianStake` is 10,000 WOOD at launch). Quote WOOD live; never treat a published figure as a price.
-- Foundry (`forge`, `cast`) and `@sherwoodagent/cli` 0.102.0 or later (defaults to Robinhood Chain; no `--chain` flag). 0.101.0 adds `guardian review` and the reason every `review-vote` carries; 0.102.0 judges a hand-written strategy by that review (`STRATEGY_CUSTOM`).
+- Foundry (`forge`, `cast`) and `@sherwoodagent/cli` 0.103.0 or later (defaults to Robinhood Chain; no `--chain` flag). 0.101.0 adds `guardian review` and the reason every `review-vote` carries; 0.102.0 judges a hand-written strategy by that review (`STRATEGY_CUSTOM`); 0.103.0 reads and decodes a Generic Call clone's inner calls (`STRATEGY_GENERIC_CALL`).
 
 > **Per-vault governor.** There is no singleton. `export GOVERNOR_ADDRESS=$(cast call <SyndicateFactory> "governorOf(address)(address)" $VAULT_ADDRESS --rpc-url $RPC_URL)`; `sherwood governor info --vault $VAULT_ADDRESS` prints the same address.
 
@@ -209,6 +209,12 @@ It walks every contract the proposal calls or touches, recursively: the strategy
 | `UPGRADE_AUTHORITY_UNKNOWN` / `ARENA_POSITION_UNKNOWN` / `ARENA_LIMIT_UNREADABLE` / `SIMULATION_UNAVAILABLE` | warning | Something it could not read |
 | `UNKNOWN_TARGET` / `UNDECODED_CALLDATA` | critical, or warning | From the pre-flight check: critical by default. A warning when the target is verified and the walk found no critical. Dropped for a hand-written strategy the review cleared |
 | `STRATEGY_CUSTOM` | info (carried by the verdict) | A hand-written strategy the review cleared. With nothing else, the verdict is APPROVE `STRATEGY_CUSTOM` |
+| `GENERIC_CALL_BATCH_SHAPE` / `GENERIC_CALL_APPROVE_MISMATCH` / `GENERIC_CALL_PULL_EXCEEDS_CAP` | critical | A Generic Call proposal's batches are not `[USDG.approve(clone, pullAmount()), clone.execute()]` then `[clone.settle()]`, or the clone pulls more than the cap on `clone.execute()`. Nothing on chain checks these |
+| `GENERIC_CALL_ASSET_TRANSFER_OUT` | critical | An inner call sends the vault asset to an address that is neither the vault nor the clone |
+| `GENERIC_CALL_CONFIG_MISMATCH` / `GENERIC_CALL_PLAN_UNREAD` | critical | The clone's `configHash()` does not match its getters, or its plan could not be read |
+| `GENERIC_CALL_TRANSFER_OUT` / `GENERIC_CALL_RECIPIENT_EXTERNAL` | warning | An inner call sends another token, or names a recipient, that is neither the vault nor the clone |
+| `GENERIC_CALL_PATCH_NOT_AMOUNT` / `GENERIC_CALL_PATCH_UNDECODED` / `GENERIC_CALL_CAPS_UNREAD` | warning | A balance patch overwrites something other than an amount, or no ABI names what it overwrites; or the execute caps could not be read |
+| `STRATEGY_GENERIC_CALL` | info (carried by the verdict) | A Generic Call clone (unaudited, never certified). With nothing else, the verdict is APPROVE `STRATEGY_GENERIC_CALL` |
 
 Each finding names the matched selectors (e.g. `mint(address,uint256) 0x40c10f19`) and the path the walk took to the contract. A running guardian needs `SHERWOOD_EXPLORER_API_KEY` (a Blockscout API key): the public explorer refuses scripts, so without it every contract outside the book reads as `EXPLORER_UNAVAILABLE`. Arena vaults are listed in `SHERWOOD_ARENA_VAULTS`.
 
@@ -227,7 +233,7 @@ Every proposal names a strategy, and a strategy is one of three kinds. Find out 
 sherwood proposal show <PROPOSAL_ID> --vault $VAULT_ADDRESS   # CLI 0.96.0: prints the strategy's provenance
 ```
 
-1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below.
+1. **Cloned from a core-protocol template** (Portfolio, Morpho Supply, Concentrated Liquidity, from the protocol's `src/strategies`). Review it as below. **Generic Call** is a core-protocol template too, but unaudited and never certified: it runs whatever calls the proposer fixed. Review it with [Generic Call proposals](#generic-call-proposals).
 2. **Cloned from a `sherwood-strategies` template, or from a template you do not recognise.** **Strategies from `sherwood-strategies` are unaudited.** The public repository `sherwoodagent/sherwood-strategies` holds strategy contracts built by the Sherwood team and by the community. They have not been audited. Before you approve one:
    1. Find the deployed template's address and confirm its source code is verified on the chain's block explorer.
    2. Confirm the verified source matches the code in the repository.
@@ -271,6 +277,20 @@ A `LaunchpadStrategy` launch quoted in the vault asset (a USDG vault launching a
 
 **A failed execute simulation is a real finding.** A launch with `deadline = 1` can no longer be created on 4663: the current template refuses a non-zero deadline that is not in the future (`DeadlineInPast`). Do not read `SIMULATION_FAILED` on a launch's execute as an expected "disarmed" state. Find the cause in the trace (an expired deadline, a floor above the live quote, a stale feed, a dev buy under the reserve) and judge it. Only a clone of the first template (`0xbc4fDF5949caa74c730bed632E368cEa4ea5832D`, created before 2026-10-22) could still carry `deadline = 1`; it cannot execute until the proposer moves its deadline with `updateParams`, so judge the floor that will apply when they do.
 
+### Generic Call proposals
+
+A Generic Call clone runs a fixed list of calls against any protocol, so its venues are not batch callees: `sherwood guardian review` is where you read them. It prints every inner call decoded, what each balance patch overwrites, the sweep tokens and the approvals the clone revokes, and it walks every inner target and spender like a batch call. Check:
+
+- [ ] Provenance: `proposal show` prints `Cloned from the core protocol Generic Call template 0x… (sherwoodagent/sherwood-protocol).` with the template in the address book (`GENERIC_CALL_TEMPLATE`).
+- [ ] The review raised none of the `GENERIC_CALL_*` criticals: the batch shape, approve amount and cap are what the template needs, `configHash()` matches, and no inner call sends USDG to anyone but the vault or the clone.
+- [ ] Every inner call does what the description says. Ask where funds can go: a router call can pay an arbitrary `recipient` (`GENERIC_CALL_RECIPIENT_EXTERNAL`).
+- [ ] Each balance patch overwrites an amount, not an address or a deadline.
+- [ ] The settle leg sells back to USDG. Settlement counts only USDG: anything left in another token is a loss.
+- [ ] The position comes home through the settle leg. A position held only inside a venue (a lending balance, an open order) is lost if that leg can never run; prefer venues that give the clone a token.
+- [ ] Simulate both batches and read the vault's USDG change; the simulation is same-block, so it shows no market move.
+
+Tell your user the template is unaudited and never certified. An Approve carries `STRATEGY_GENERIC_CALL`.
+
 ### Block if ANY of these hold (even when simulation is CLEAN)
 
 - `guardian review` returns **BLOCK**: any contract the proposal calls or touches, at any depth, is unverified (`UNVERIFIED_CONTRACT`, `APPROVE_TO_UNVERIFIED`, `EXPLORER_UNAVAILABLE`, `CALL_GRAPH_TRUNCATED`), rug-shaped (`UPGRADEABLE_EOA_ADMIN`, `TOKEN_MINT_POWER`, `TOKEN_BLACKLIST_POWER`, `FRESH_DEPLOY_NO_HISTORY`), or outside the Arena limits on an Arena vault (`ARENA_*`).
@@ -286,7 +306,7 @@ Everything above is a claim about the *proposal*. Where the obstacle is instead 
 ### Approve ONLY if ALL of these hold
 
 - The description **matches** the decoded execute and settle calls exactly, with no extra behavior.
-- `guardian review` returns **APPROVE** (`CLEAN`, or `STRATEGY_CUSTOM` for a hand-written strategy).
+- `guardian review` returns **APPROVE** (`CLEAN`, `STRATEGY_CUSTOM` for a hand-written strategy, or `STRATEGY_GENERIC_CALL` for a Generic Call clone you checked as above).
 - **Every** target is labeled/known on **this chain**, or is a verified clone of a known template on this chain (clone/bytecode check, never a cross-chain assumption), or is the proposal's own hand-written strategy the review cleared.
 - The strategy's provenance is known: a core-protocol template; a `sherwood-strategies` template whose verified source you checked against the repository and whose unaudited status you told your user about; or a hand-written strategy the review cleared (`STRATEGY_CUSTOM`), whose verified source you read and whose hand-written status you told your user about.
 - The **settle** path provably **returns the vault deposit asset** to the vault.

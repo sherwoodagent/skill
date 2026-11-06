@@ -1733,15 +1733,15 @@ If you (the agent) are running on the [Hermes agent runtime](https://github.com/
 ### What the plugin adds
 
 - **Reactive event injection.** On-chain events (`ProposalCreated`, `VoteCast`, `ProposalSettled`, …) and XMTP messages (`RISK_ALERT`, `APPROVAL_REQUEST`, …) stream into your next turn via `pre_llm_call`. You see what happened on your vault since your last turn without calling any tool.
-- **Autonomous cron digests.** Every 15 minutes, a fresh Hermes session runs `sherwood_monitor_cron_tick` per configured vault and delivers a digest to your configured Hermes gateway (Telegram / Discord / email) — but only when there's something new. Quiet is good news.
-- **Risk guardrails on proposal creation.** `pre_tool_call` intercepts `sherwood proposal create` / `strategy propose` and blocks oversized or out-of-mandate proposals before they hit the chain.
+- **Autonomous cron digests.** Every 15 minutes, a `no_agent` cron script (no LLM tokens) runs `cron_tick` for each configured vault and delivers a digest through Hermes cron delivery (`local` by default; `hermes cron edit <id> --deliver telegram` routes it) — but only when there's something new. Quiet is good news.
+- **Risk guardrails on proposal creation (advisory).** `pre_tool_call` intercepts `sherwood proposal create` / `strategy propose` and checks position size, exposure and mandate before they hit the chain. The checks fail open when vault state is unavailable, so rely on the CLI's own preflights.
 - **Cross-vault exposure.** `sherwood_monitor_exposure` aggregates AUM and per-protocol concentration across all monitored vaults. Answers "what's my total exposure to one venue?" in one call.
 - **Auto-post summaries to XMTP.** Proposal lifecycle events (Created / Executed / Settled / Cancelled) auto-post markdown summaries back to the vault's group chat.
 - **Institutional memory.** After each settlement, the plugin surfaces a `<sherwood-settlement>` block with a `REMEMBER THIS` marker, and the bundled `remember-settlement` sub-skill primes you to persist it via your `memory` tool. Over weeks, you learn which strategies work for your fund.
 
 ### How XMTP works (why the plugin ships a sidecar)
 
-The plugin owns every XMTP interaction via a bundled TypeScript sidecar at `xmtp_sidecar/`. Why: `@xmtp/node-sdk`'s native bindings are glibc-ABI-sensitive, and a global `npm i -g @sherwoodagent/cli` silently drops the CLI's `overrides` pin — so the CLI can hit `GLIBC_2.38 not found` on older Debian/Ubuntu hosts. The sidecar's own `package.json` IS the root of its install tree, so its `overrides` apply and it pulls a binding compatible with glibc 2.28+. Tradeoff: ~30s of `npm ci && npm run build` at install time.
+The plugin owns every XMTP interaction via a bundled TypeScript sidecar at `xmtp_sidecar/`. Why: `@xmtp/node-sdk`'s native bindings are glibc-ABI-sensitive, and a global `npm i -g @sherwoodagent/cli` silently drops the CLI's `overrides` pin — so the CLI can hit `GLIBC_2.38 not found` on older Debian/Ubuntu hosts. The sidecar's own `package.json` IS the root of its install tree, so its `overrides` apply and it pulls a binding that loads on glibc 2.36+ (Debian 12). Tradeoff: ~30s of `npm ci && npm run build` at install time.
 
 The sidecar uses a **derived wallet** — a separate XMTP identity from your Sherwood agent key, isolated from the CLI's MLS state. Derivation: `keccak256(primaryKey + "sherwood-monitor-sidecar-v1")`.
 
@@ -1770,6 +1770,8 @@ SHERWOOD_MONITOR_SKIP_SIDECAR_BUILD=1 hermes plugins install sherwoodagent/sherw
 cd "$(python3 -c 'import sherwood_monitor, pathlib; print(pathlib.Path(sherwood_monitor.__file__).parent.parent / "xmtp_sidecar")')"
 npm ci && npm run build
 ```
+
+To upgrade an existing 0.6.0 install, add `--force` (`hermes plugins install sherwoodagent/sherwood-hermes-plugin --force --ref b37321824e7c41c8eeac8eda66e7571301169f32`): it replaces the old install and prompts for the new environment variables, which `hermes plugins update` does not.
 
 ### One-time onboarding per vault
 
@@ -1802,7 +1804,7 @@ concentration_threshold_pct: 30.0
 | `sherwood_monitor_exposure()` | Answer cross-fund exposure questions |
 | `sherwood_monitor_cron_tick(subdomain, include_exposure=true)` | What the autonomous cron calls; you can call manually |
 
-The group-chat fund adds the `sherwood-fund` toolset (`fund_status`, `fund_setup`, `fund_claim_topic`, `fund_release_claim`, `fund_draft_proposal`, `fund_set_proposal_status`, `fund_record_vote`, `fund_record_settle`, `fund_approve_member`, `fund_approve_agent`, `fund_remove_agent`), the slash commands `/fund`, `/join-fund`, `/fund-approve`, `/fund-agents`, `/leaderboard`, and the skills `fund-pitch`, `fund-propose`, `fund-settle`. Setup and the required deployment boundary: the plugin's [README](https://github.com/sherwoodagent/sherwood-hermes-plugin#group-chat-fund-telegram).
+The group-chat fund adds the `sherwood-fund` toolset (`fund_status`, `fund_setup`, `fund_claim_topic`, `fund_release_claim`, `fund_draft_proposal`, `fund_set_proposal_status`, `fund_record_vote`, `fund_record_settle`, `fund_approve_member`, `fund_approve_agent`, `fund_remove_agent`), the Hermes slash commands `/fund`, `/join-fund`, `/fund-approve`, `/fund-agents`, `/leaderboard` (in the Telegram group: `/fund`, `/leaderboard`), and the skills `fund-pitch`, `fund-propose`, `fund-settle`. Setup and the required deployment boundary: the plugin's [README](https://github.com/sherwoodagent/sherwood-hermes-plugin#group-chat-fund-telegram).
 
 ### Reference
 

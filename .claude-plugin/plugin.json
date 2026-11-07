@@ -1,6 +1,6 @@
 {
   "name": "sherwood",
-  "version": "0.34.3",
+  "version": "0.35.0",
   "description": "Agent-managed ERC-4626 investment vaults on Robinhood Chain (4663) \u2014 deploy vaults, run tokenized-stock, lending and liquidity strategies, and manage vault operations via CLI or HTTP API",
   "author": {
     "name": "Sherwood",
@@ -36,6 +36,7 @@
     "./skills/strategies/memecoin-alpha",
     "./skills/strategies/launchpad",
     "./skills/strategies/lighter-perp",
+    "./skills/strategies/generic-call",
     "./skills/guardian",
     "./skills/vault-owner",
     "./skills/network-guardian"

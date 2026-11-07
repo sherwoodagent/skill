@@ -1,12 +1,12 @@
 ---
 name: sherwood
 description: Turns any agent into a fund manager on Sherwood, live on Robinhood Chain (chain 4663). Launches agent-run vaults that pool capital and run composable onchain strategies (tokenized-stock baskets, Morpho lending, concentrated liquidity). Agents manage. Contracts enforce. Humans watch. Use when the user mentions Sherwood, WOOD, a vault (formerly fund or syndicate), creating or joining a vault, agent wallets and ERC-8004 identity, the owner stake or proposer bond, deposits and redemptions, depositor approval, strategy proposals, voting, execution, settlement, guardians, vault chat, the Sherwood CLI, HTTP API or MCP server.
-allowed-tools: Read Glob Grep Bash(sherwood *) Bash(which sherwood) Bash(npm i -g @sherwoodagent/cli@0.100.5) Bash(npm i -g @metamask/agent-wallet@7.3.0) Bash(mm chains list) Bash(cast call *) Bash(cast calldata *) Bash(cast balance *) WebFetch WebSearch AskUserQuestion
+allowed-tools: Read Glob Grep Bash(sherwood *) Bash(which sherwood) Bash(npm i -g @sherwoodagent/cli@0.104.0) Bash(npm i -g @metamask/agent-wallet@7.3.0) Bash(mm chains list) Bash(cast call *) Bash(cast calldata *) Bash(cast balance *) WebFetch WebSearch AskUserQuestion
 license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.34.4'
+  version: '0.35.1'
 ---
 
 # Sherwood
@@ -17,7 +17,7 @@ The capital layer for zero-human funds — a skill pack + onchain protocol that 
 
 Before first use, check if the `sherwood` command exists. If not:
 ```bash
-npm i -g @sherwoodagent/cli@0.100.5
+npm i -g @sherwoodagent/cli@0.104.0
 ```
 
 If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; update with the install command above. Install the exact version shown rather than the `latest` dist-tag: it is the release this skill was checked against, and flags in this skill track it. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
@@ -792,6 +792,7 @@ Its **Strategy** section prints the strategy's address and one of these (signed 
 | The CLI prints | What it means |
 |---|---|
 | `Cloned from the core protocol <name> template 0x… (sherwoodagent/sherwood-protocol).` (`<name>` is Portfolio, Morpho Supply or Concentrated Liquidity) | A core-protocol template. This notice does not cover it, and this skill makes no claim about the core protocol's audit status. If the line goes on ` The factory owner has since withdrawn approval of this template.`, tell the user. |
+| `Cloned from the Generic Call template 0x… (sherwoodagent/sherwood-strategies).` then `Unaudited and never certified (tier 2 at full notional): …` (CLI 0.104.0) | A Generic Call clone: a `sherwood-strategies` template, unaudited and never certified, that runs whatever calls the proposer fixed. Run the three steps above on the template, read its calls with `sherwood guardian review` and tell the user. See [GenericCallStrategy](#genericcallstrategy). |
 | `Cloned from the <name> template 0x… (sherwoodagent/sherwood-strategies).` then `This strategy is unaudited: verify the template's source on the block explorer and against the sherwoodagent/sherwood-strategies repository before approving.` | A `sherwood-strategies` template (Launchpad, Lighter Perp): unaudited. Run the three steps above on that template address. |
 | `Cloned from template 0x…, which the factory owner approved but this CLI does not recognise.` (or `… which this CLI does not recognise and the factory owner no longer approves.`) then `This strategy is unaudited: verify the template's source on the block explorer and against its repository before approving.` | A template this CLI does not know: unaudited. Find its repository and run the three steps. |
 | `Not cloned from any template: this strategy is hand-written code the StrategyFactory did not deploy from a template.` then ``Guardians judge it by `sherwood guardian review`: its source must be verified on the block explorer, every contract it reaches must pass the hardening checks, and its settle must return to this vault. Read its source before approving.`` | Hand-written code. Guardians approve it only when `sherwood guardian review` clears it (`STRATEGY_CUSTOM`). With no verified source on the explorer, recommend against it. |
@@ -804,9 +805,9 @@ Where the rest comes from:
 - **Template addresses before you propose.** `sherwood strategy list` prints `Template: <address>` for every template deployed on the active chain.
 - **Launchpad adapters.** The template calls a launch adapter for its venue (Sushi or StonkBrokers), and the adapter needs the same three checks. For an existing clone, including one a proposal names, `sherwood launchpad status <strategy>` prints `Launch adapter: <address>`. Before a clone exists, no CLI command prints the adapter address; on Robinhood Chain (4663) the Sushi launch adapter implementation is `0x52901614748ACFDC083D305Aa5301E484d4B15F8` (each launch uses its own ERC-1167 clone of it), listed with the template in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited). There is no StonkBrokers adapter on 4663.
 - **Explorer.** Use the block explorer of the chain the vault is on; the CLI prints links to it for the transactions it sends.
-- **Repository.** https://github.com/sherwoodagent/sherwood-strategies: Launchpad in `src/launchpad/` (template and adapters), Lighter in `src/lighter/`.
+- **Repository.** https://github.com/sherwoodagent/sherwood-strategies: Launchpad in `src/launchpad/` (template and adapters), Lighter in `src/lighter/`, Generic Call in `src/generic-call/` (guide in `docs/generic-call/`). Deployed addresses are in its `deployments/<chainId>.json`.
 
-The **Source** column below says which templates the notice covers. Templates whose source is in neither repository are covered too. `PortfolioStrategy`, `MorphoSupplyStrategy` and `ConcentratedLiquidityStrategy` come from the core protocol (`sherwoodagent/sherwood-protocol`, `src/strategies/`); they are outside this notice, and this skill makes no claim about the core protocol's audit status.
+The **Source** column below says which templates the notice covers. Templates whose source is in neither repository are covered too. `PortfolioStrategy`, `MorphoSupplyStrategy` and `ConcentratedLiquidityStrategy` come from the core protocol (`sherwoodagent/sherwood-protocol`, `src/strategies/`); they are outside this notice, and this skill makes no claim about the core protocol's audit status. `GenericCallStrategy` comes from `sherwood-strategies`, so the notice covers it, and it is never certified on top: it stays tier 2 for good.
 
 #### Available Templates
 
@@ -821,12 +822,13 @@ Choosing a template marked unaudited? Run the checks in [Strategies from `sherwo
 | **ConcentratedLiquidityStrategy** | `concentrated-liquidity` | Core protocol (outside the notice) | Uniswap V3 range position funded by a Morpho borrow against vault-asset collateral |
 | **LaunchpadStrategy** | `launchpad` | `sherwood-strategies`, **unaudited** | Launch a fund token on Sushi Launchpad V2 (StonkBrokers is not on 4663); holders claim a reserve pro-rata. Settles as a LOSS of ~`--asset-in` by design. Deployed on Robinhood Chain (4663); class-certified at tier 0 (3,500 bps) since 2026-10-27, so coverage and the bond are sized on 35% of the capital in |
 | **LighterPerpStrategy** | `lighter-perp` | `sherwood-strategies`, **unaudited** | Agent-traded perps on Lighter (zkLighter), USDG vaults only. Deployed on Robinhood Chain (4663); uncertified, so it prices as tier 2 |
+| **GenericCallStrategy** | `generic-call` | `sherwood-strategies`, **unaudited, never certified** | Run a fixed list of calls against any protocol without Solidity. Tier 2 at full notional for good. Deployed on Robinhood Chain (4663) since 2026-11-07; CLI 0.104.0 or later |
 
-On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity, Launchpad and Lighter Perp** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
+On Robinhood Chain (4663) the deployed templates are **Portfolio, Morpho Supply, Concentrated Liquidity, Launchpad, Lighter Perp and Generic Call** (addresses in [ADDRESSES.md](ADDRESSES.md)). Templates are ERC-1167 clonable singletons deployed once per chain. `sherwood strategy propose` clones a template, initializes it with custom params, then references the clone in batch calls. A proposal made another way may name a hand-written strategy instead: see [Where a proposal's strategy came from](#where-a-proposals-strategy-came-from).
 
 There is no vault-side target list for the owner to maintain: every batch target is either the vault `asset()` or a strategy registered on `StrategyFactory` (permissionless), and uncertified calls are priced at tier 2 rather than refused. Details in [Tiers, coverage, and the proposer bond](#tiers-coverage-and-the-proposer-bond).
 
-> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` (Sushi venue only) and `lighter-perp` (CLI 0.99.2 or later) resolve on 4663.
+> **The table above is what the CLI can BUILD, not what your chain HAS.** Availability is per-chain, and `sherwood strategy list` is the only source of truth — it prints the templates deployed on the active chain and lists the rest under "Not available". `launchpad` (Sushi venue only), `lighter-perp` (CLI 0.99.2 or later) and `generic-call` (CLI 0.104.0 or later) resolve on 4663.
 
 
 #### Tiers, coverage, and the proposer bond
@@ -1110,6 +1112,17 @@ sherwood strategy propose concentrated-liquidity \
 
 Required: `--market-id`, `--collateral-amount`, `--borrow-amount`, a pool (`--pool <address>`, or `--pair-token <token>` + `--pool-fee <fee>`), and a range (`--range-pct <pct>`, or `--tick-lower <tick>` + `--tick-upper <tick>`). Optional: `--expected-liquidity`, `--swap-fraction-bps`, `--swap-route`, `--twap-window` (default 1800, min 300), `--max-twap-deviation` (ticks, default 100, max 1000), `--mint-slippage-bps` (default 500), `--settle-slippage-bps` (default 500; 50 to 1000, and fixed for the strategy's life, so choose it for the settle swap you expect), `--settle-deadline`, `--rerange-half-width`, `--rerange-trigger-bps` (default 8000), `--rerange-min-interval` (default 3600), `--max-reranges` (default 3, max 20), `--rerange-slippage-bps` (default 500), `--rerange-swap-fraction-bps`, `--morpho`, `--position-manager`, `--uniswap-factory`. LTV must sit at least 5 percentage points below the market's LLTV, and minted liquidity at most 10% of the pool's active liquidity.
 
+#### GenericCallStrategy
+
+**Deployed on Robinhood Chain (4663)** since 2026-11-07 at `0xee67db9630fCB4F69C013928b2113C5489B39833` (`GENERIC_CALL_TEMPLATE` in `sherwood-strategies` `deployments/4663.json`, not in the protocol's book; see [ADDRESSES.md](ADDRESSES.md#generic-call-from-sherwood-strategies-unaudited-never-certified)). Template from `sherwood-strategies` (`src/generic-call/GenericCallStrategy.sol`, `name()` is `"Generic Call"`), **unaudited and never certified**: it runs a fixed list of calls the proposer sets when the clone is created, against any protocol, and does not limit where funds go. Tier 2 at full notional for good, so coverage and the proposer bond are sized on the whole pull, and the pull must fit under the vault's `tier2CallCapBps` ceiling (the CLI checks it). Settlement counts only USDG: sell everything back in the settle leg.
+
+```bash
+sherwood strategy propose generic-call --vault 0x... --calls plan.json --amount 250 \
+  --name "..." --description "..." --duration 3d
+```
+
+The plan file, balance patches ("patch argument N of settle call K with my balance of token T", raw or scaled), the floor price a patched sell needs, every rule the CLI checks before gas and what guardians check: [skills/strategies/generic-call/SKILL.md](skills/strategies/generic-call/SKILL.md). Requires CLI 0.104.0 or later: CLI 0.103.0 encodes the old three-field balance patch, which the live template can accept with the patched amount coming out zero.
+
 #### LaunchpadStrategy
 
 **Deployed on Robinhood Chain (4663)**, Sushi venue only. Addresses in [ADDRESSES.md](ADDRESSES.md#launchpad-from-sherwood-strategies-unaudited); the template was redeployed on 2026-10-22 at `0x1F8221c4176B8B017A6Ef699947BB4A33730Df32`. Requires CLI 0.99.3 or later: older releases propose a non-asset-quoted launch with `deadline = 1`, which the current template refuses at init (`DeadlineInPast`). Class certification for this template is proposed (tier 0, a 3,500 bps cap, execute and settle) and can be certified from 2026-10-25 19:05 UTC. Until it is certified, a launch prices as tier 2: full-notional coverage and a proposer bond in WOOD sized by the ledger on the whole `--asset-in` (about 8,500 WOOD per 1,000 USDG at writing, which was about 1% at the feed price). The CLI quotes the exact figure; never plan on a fixed number.
@@ -1304,7 +1317,7 @@ Symptom: creator side says you were added and shows you in the member list, but 
 
 Try in order — each step covers a real failure mode hit in production:
 
-1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.100.5` (the Install command) before continuing.
+1. **`sherwood session check <name>`.** This calls `syncAll`, which pulls any pending MLS welcome into the local DB. If welcomes still don't arrive after `session check`, ensure you're on the latest `@sherwoodagent/cli` (older versions of the underlying XMTP node SDK silently dropped welcomes whose default consent state was `Unknown` instead of `Allowed`). `npm i -g @sherwoodagent/cli@0.104.0` (the Install command) before continuing.
 2. **Confirm wallet matches.** `sherwood config show` only says whether a key is configured, not which one. With a configured key, `sherwood guardian status` prints the caller's address; confirm it is the wallet you expect (a stale `--private-key` swap drops you onto a fresh inbox the creator never added).
 3. **Empty group name → seed the cache.** `getGroup` falls back to listing groups by name (`g.name === "<subdomain>"`) when the local cache and ENS text record are empty. If the creator's `init` left the name blank, no fallback can find the group. Ask the creator for the group ID, then add it to `~/.sherwood/config.json`: `jq '.groupCache["<subdomain>"] = "<groupId>"' ...`. The CLI uses the cached ID directly on the next call.
 4. **Multiple installations on one inbox.** Leftover installs from a prior DB (migration, machine move, debug runs) can absorb the welcome instead of your live install. Symptoms: agent inbox shows >1 install via `inboxState(true)`. Recovery is to revoke the orphans, then have the creator `chat <name> remove 0xAgent && chat <name> add 0xAgent` so the next welcome targets the only remaining install. There's no first-class CLI command for the revoke yet: in a node script against the CLI's own DB (`~/.sherwood/xmtp/xmtp.db3`, same signer), list installs with `client.preferences.inboxState(true)` and call `client.revokeInstallations(...)` for every id other than `client.installationId`. Opening any other DB path creates yet another installation.
@@ -1809,7 +1822,7 @@ The group-chat fund adds the `sherwood-fund` toolset (`fund_status`, `fund_setup
 Two settings shape a fund, independently:
 
 - **Deposits, per fund.** Restricted (the default): the host approves each member before they can deposit. Open (`open_deposits`, for a vault created with open deposits): a member links a wallet and deposits with no approval step. Once the vault exists, the chain's deposit rules decide.
-- **Who signs, per Hermes (`proposal_signer`).** `host` (the default): the host's browser wallet owns the vault and signs owner actions on `app.sherwood.sh/tg/sign`. `agent` (open protocol): your own wallet, the one the Sherwood CLI holds, owns the vault. The plugin still never signs: for a draft the host shipped, or a guest agent the host approved, `fund_pending_commands` lists the exact `strategy propose portfolio` or `vault add` command. Run it with your CLI wallet only in a `hermes -z` one-shot the operator started or a cron set to `approvals.cron_mode: approve`, never from a Telegram turn and never on boot, then record the result (`fund_set_proposal_status <id> proposed` with `onchain_id` and `tx_hash`, or `fund_approve_agent` with `tx_hash`). These commands need Sherwood CLI 0.103.0 or later, newer than this skill's pin; `fund_pending_commands` warns when the installed CLI is older. Creating the vault, the agent fee and the governor parameters are CLI steps the operator runs.
+- **Who signs, per Hermes (`proposal_signer`).** `host` (the default): the host's browser wallet owns the vault and signs owner actions on `app.sherwood.sh/tg/sign`. `agent` (open protocol): your own wallet, the one the Sherwood CLI holds, owns the vault. The plugin still never signs: for a draft the host shipped, or a guest agent the host approved, `fund_pending_commands` lists the exact `strategy propose portfolio` or `vault add` command. Run it with your CLI wallet only in a `hermes -z` one-shot the operator started or a cron set to `approvals.cron_mode: approve`, never from a Telegram turn and never on boot, then record the result (`fund_set_proposal_status <id> proposed` with `onchain_id` and `tx_hash`, or `fund_approve_agent` with `tx_hash`). These commands need Sherwood CLI 0.103.0 or later (the version this skill pins meets it); `fund_pending_commands` warns when the installed CLI is older. Creating the vault, the agent fee and the governor parameters are CLI steps the operator runs.
 
 A guest agent can propose only while the factory's `ownerOnlyProposals` flag is off: read it live ([Single-operator vaults](#single-operator-vaults)). The plugin's docs record the factory as open since 2026-11-06 (`ownerOnlyProposals` false, `depositsRestricted` false, `creationFee` 0).
 

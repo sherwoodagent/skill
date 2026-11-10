@@ -17,7 +17,7 @@ When bumping any of:
 | File | Pin | What it controls |
 |---|---|---|
 | `.claude-plugin/plugin.json` | `version` | Skill plugin manifest |
-| `SKILL.md` line 27 and "Running on Hermes Agent" → Install, rebuild and upgrade lines | `--ref <40-hex sha of the vX.Y.Z tag>` (`gh api repos/sherwoodagent/sherwood-hermes-plugin/commits/vX.Y.Z --jq .sha`) | Hermes plugin install command |
+| `SKILL.md` line 27 and "Running on Hermes Agent" → Install and upgrade lines | `--ref <40-hex sha of the vX.Y.Z tag>` (`gh api repos/sherwoodagent/sherwood-hermes-plugin/commits/vX.Y.Z --jq .sha`) | Hermes plugin install command |
 | `SKILL.md` `metadata.version` | same as `plugin.json` | `scripts/check-skill.sh` fails if they differ; the release tag is `v<version>` |
 
 Sub-skills under `skills/*/SKILL.md` carry their OWN `version` frontmatter — bump those independently when their behavior changes.

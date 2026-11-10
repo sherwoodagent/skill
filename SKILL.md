@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires Node.js 22+, the @sherwoodagent/cli npm package, network access to Robinhood Chain (4663) RPC and https://api.sherwood.sh
 metadata:
   author: sherwood
-  version: '0.35.2'
+  version: '0.35.3'
 ---
 
 # Sherwood
@@ -22,7 +22,7 @@ npm i -g @sherwoodagent/cli@0.104.0
 
 If it does exist, run `sherwood --version`. It must be **0.96.0 or later**; update with the install command above. Install the exact version shown rather than the `latest` dist-tag: it is the release this skill was checked against, and flags in this skill track it. Older versions default to a closed test chain and cannot talk to Robinhood Chain. Install globally (`npm i -g`), not through npx: chat needs the pinned XMTP binding build, and it refuses to start on any other build. Keep one `~/.sherwood` per wallet; each new one is a new XMTP installation that groups you already joined don't reach until you're added again.
 
-Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [Running on Hermes Agent](#running-on-hermes-agent) for the symptom).
+Requires Node.js v22+ (including Node 24). XMTP chat runs on `@xmtp/node-sdk`, whose native bindings can fail on older glibc hosts (see [XMTP / Chat Errors](ERRORS.md#xmtp--chat-errors)).
 
 **Running on Hermes Agent?** After installing the CLI, also install the companion plugin — `hermes plugins install sherwoodagent/sherwood-hermes-plugin --ref 8ede29a7a0165f8047c7e181b60b901311507028` (the v0.8.4 release commit; once the plugin is in the Hermes catalog, `hermes plugins install sherwood-monitor`) — which adds always-on event streaming, cron digests and risk guardrails on top of the CLI, and can run a fund inside a Telegram group. Full details in [Running on Hermes Agent](#running-on-hermes-agent) below. Skip if you're on Claude Code, Codex, or another runtime.
 
@@ -1741,22 +1741,15 @@ One line each; the linked section has the detail.
 
 ## Running on Hermes Agent
 
-If you (the agent) are running on the [Hermes agent runtime](https://github.com/NousResearch/hermes-agent), there is a dedicated plugin — **`sherwood-monitor`** — that gives you always-on reactive awareness of your vaults beyond what the CLI alone provides. This is a **separate install** from the skill pack and CLI above. Skip this section if you're on Claude Code, Codex, or another runtime. The current plugin release (v0.8.4) runs on Robinhood Chain (4663). Its risk guardrails are advisory (they fail open when vault state is unavailable), so rely on the CLI's own preflights. XMTP streaming and posting work only for vaults whose XMTP group id is in their ENS record on Base; Robinhood Chain vaults have no such record, so for them the plugin streams on-chain events only.
+If you (the agent) are running on the [Hermes agent runtime](https://github.com/NousResearch/hermes-agent), there is a dedicated plugin — **`sherwood-monitor`** — that gives you always-on reactive awareness of your vaults beyond what the CLI alone provides. This is a **separate install** from the skill pack and CLI above. Skip this section if you're on Claude Code, Codex, or another runtime. The current plugin release (v0.8.4) runs on Robinhood Chain (4663). Its risk guardrails are advisory (they fail open when vault state is unavailable), so rely on the CLI's own preflights.
 
 ### What the plugin adds
 
-- **Reactive event injection.** On-chain events (`ProposalCreated`, `VoteCast`, `ProposalSettled`, …) and XMTP messages (`RISK_ALERT`, `APPROVAL_REQUEST`, …) stream into your next turn via `pre_llm_call`. You see what happened on your vault since your last turn without calling any tool.
+- **Reactive event injection.** On-chain events (`ProposalCreated`, `VoteCast`, `ProposalSettled`, …) stream into your next turn via `pre_llm_call`. You see what happened on your vault since your last turn without calling any tool.
 - **Autonomous cron digests.** Every 15 minutes, a `no_agent` cron script (no LLM tokens) runs `cron_tick` for each configured vault and delivers a digest through Hermes cron delivery (`local` by default; `hermes cron edit <id> --deliver telegram` routes it) — but only when there's something new. Quiet is good news.
 - **Risk guardrails on proposal creation (advisory).** `pre_tool_call` intercepts `sherwood proposal create` / `strategy propose` and checks position size, exposure and mandate before they hit the chain. The checks fail open when vault state is unavailable, so rely on the CLI's own preflights.
 - **Cross-vault exposure.** `sherwood_monitor_exposure` aggregates AUM and per-protocol concentration across all monitored vaults. Answers "what's my total exposure to one venue?" in one call.
-- **Auto-post summaries to XMTP.** Proposal lifecycle events (Created / Executed / Settled / Cancelled) auto-post markdown summaries back to the vault's group chat.
 - **Institutional memory.** After each settlement, the plugin surfaces a `<sherwood-settlement>` block with a `REMEMBER THIS` marker, and the bundled `remember-settlement` sub-skill primes you to persist it via your `memory` tool. Over weeks, you learn which strategies work for your fund.
-
-### How XMTP works (why the plugin ships a sidecar)
-
-The plugin owns every XMTP interaction via a bundled TypeScript sidecar at `xmtp_sidecar/`. Why: `@xmtp/node-sdk`'s native bindings are glibc-ABI-sensitive, and a global `npm i -g @sherwoodagent/cli` silently drops the CLI's `overrides` pin — so the CLI can hit `GLIBC_2.38 not found` on older Debian/Ubuntu hosts. The sidecar's own `package.json` IS the root of its install tree, so its `overrides` apply and it pulls a binding that loads on glibc 2.36+ (Debian 12). Tradeoff: ~30s of `npm ci && npm run build`, once, by hand (below).
-
-The sidecar uses a **derived wallet** — a separate XMTP identity from your Sherwood agent key, isolated from the CLI's MLS state. Derivation: `keccak256(primaryKey + "sherwood-monitor-sidecar-v1")`.
 
 ### Detect
 
@@ -1772,28 +1765,11 @@ hermes plugins install sherwoodagent/sherwood-hermes-plugin --ref 8ede29a7a0165f
 
 Hermes has no `@tag` install syntax: `--ref` takes the full commit sha, here the commit the v0.8.4 tag points at (also on the [v0.8.4 release page](https://github.com/sherwoodagent/sherwood-hermes-plugin/releases/tag/v0.8.4)). Once the plugin is in the Hermes catalog, `hermes plugins install sherwood-monitor` installs the reviewed pin.
 
-Requirements: Python ≥ 3.11, **Node ≥ 22 and npm** (for the bundled sidecar build), and a configured Sherwood CLI (the monitor runs it; the CLI reads its own config). The plugin never reads `~/.sherwood/config.json`: for XMTP and the gas watchdog, set the monitor wallet in the Hermes profile `.env` (`SHERWOOD_PRIVATE_KEY`, optional, the sidecar derives its own key from it; or `SHERWOOD_AGENT_ADDRESS` alone for the gas watchdog). The install may attempt the sidecar build itself (`setup.py`, when npm is on PATH), but that is not verified under Hermes: build it by hand (below).
+Requirements: Python ≥ 3.11 and a configured Sherwood CLI (the monitor runs it; the CLI reads its own config). The plugin never reads `~/.sherwood/config.json`: for the gas watchdog, set `SHERWOOD_AGENT_ADDRESS` (the monitor wallet's address) in the Hermes profile `.env`. `SHERWOOD_PRIVATE_KEY` is optional (the gas watchdog derives the address from it when `SHERWOOD_AGENT_ADDRESS` is unset); leave it unset.
 
-The plugin runs a preflight on load. If it doesn't find `sherwood --version`, or (with `SHERWOOD_PRIVATE_KEY` set) a built sidecar (`xmtp_sidecar/dist/index.js`), it injects a one-time warning with remediation steps. The plugin cannot create vaults, trade, or sign transactions on its own — it composes on top of the CLI.
-
-Without a built sidecar (no Node, npm offline, etc.) everything except XMTP still works. For XMTP, build it in the plugin's own directory (Node ≥ 22 and npm), then restart Hermes:
-
-```bash
-cd "${HERMES_HOME:-$HOME/.hermes}/plugins/sherwood-monitor/xmtp_sidecar"
-npm ci && npm run build
-```
+The plugin runs a preflight on load. If `sherwood --version` is missing or older than 0.71.0, it injects a one-time warning with remediation steps. The plugin cannot create vaults, trade, or sign transactions on its own — it composes on top of the CLI.
 
 To upgrade from an earlier release, add `--force` (`hermes plugins install sherwoodagent/sherwood-hermes-plugin --force --ref 8ede29a7a0165f8047c7e181b60b901311507028`): it replaces the old install and prompts for any environment variables you have not set. `hermes plugins update` refuses an install pinned with `--ref`, and it never prompts.
-
-### One-time onboarding per vault
-
-On first Hermes boot after install (with `SHERWOOD_PRIVATE_KEY` set), the plugin derives the sidecar wallet and checks membership in each configured vault's XMTP group. This applies only to vaults whose XMTP group id is in their ENS record on Base; adding the sidecar to a Robinhood Chain vault does not help. If the sidecar isn't a member yet, it injects a warning with the exact command to run, e.g.:
-
-```bash
-sherwood chat hermes-alpha add 0xSidecarAddr...
-```
-
-Run this as the vault **creator**. Until then, on-chain monitoring, risk hooks, exposure, and cron digests still work; XMTP subscribe and auto-posts are inactive for that vault.
 
 ### Configure
 
@@ -1803,7 +1779,6 @@ Edit `~/.hermes/plugins/sherwood-monitor/config.yaml`:
 funds:
   - alpha-fund           # subdomains you want monitored
 auto_start: true         # spawn supervisors on Hermes boot
-xmtp_summaries: true     # auto-post proposal lifecycle summaries to XMTP
 concentration_threshold_pct: 30.0
 ```
 
